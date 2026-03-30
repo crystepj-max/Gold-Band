@@ -139,6 +139,20 @@ Gold Band Progress 用来定义工作流运行过程中的**观测层文件**。
 - [Worker Ref 规范](../provider/worker-ref.md)
 - [Runtime 概览](../runtime/overview.md)
 
-## 8. 一句话总结
+## 8. 当前实现说明
+
+当前代码已优先落地：
+- run 级 `run-progress.json`
+- run 级 `events.jsonl`
+- attempt 级 `raw.stream.jsonl`
+- `.gold-band/logs/runtime.log*` debug 日志
+
+说明：
+- `.gold-band/logs/` 仅用于 debug / 排障 / 运行分析，不是 canonical state
+- `run-progress.json`、`events.jsonl`、`raw.stream.jsonl` 都属于 observability files
+- 当前轮次尚未完整实现 `progress.events.jsonl`，但路径仍保留为后续扩展位
+- 所有 observability 写入都应视为 best-effort，失败不能影响主流程
+
+## 9. 一句话总结
 
 > Progress 的三层结构是：`raw.stream.jsonl` 保存 provider 原始流，`progress.events.jsonl` 保存 Gold Band 规范化进度事件，`run-progress.json` 保存整个 workflow 当前运行到哪里；它们共同服务观测与调试，但不直接参与工作流控制流判断。

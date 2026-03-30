@@ -6,6 +6,7 @@ pub mod domain;
 pub mod dsl;
 pub mod exec;
 pub mod inspect;
+pub mod observability;
 pub mod provider;
 pub mod runtime;
 pub mod storage;

@@ -111,6 +111,9 @@ Layout 用来定义 Gold Band runtime 的整体文件夹结构，包括：
   presets/
     workflows/
     profiles/
+  logs/
+    runtime.log
+    runtime.log.YYYY-MM-DD
   tasks/
   index.json
 ```
@@ -125,6 +128,14 @@ Layout 用来定义 Gold Band runtime 的整体文件夹结构，包括：
 
 #### `tasks/`
 存放当前项目的所有 task。
+
+#### `logs/`
+存放 runtime debug 日志与 rolling 归档。
+
+边界：
+- 只用于 debug / 排障 / 运行分析
+- 不属于 canonical state
+- 不作为 UI 主数据源或控制流输入
 
 #### `index.json`
 用于快速索引当前项目下：

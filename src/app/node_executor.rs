@@ -8,6 +8,7 @@ use crate::artifacts::{
 use crate::domain::{InvocationKind, NodeOutcome, RunStatus, SessionMode, VERSION};
 use crate::dsl::{NodeDsl, ValidatedWorkflow};
 use crate::exec::run_exec_plan;
+use crate::observability::{progress, ProgressStage};
 use crate::provider::{ColdFileRef, ProviderRunResult, ProviderRunStatus, StreamMode, WorkerInvocation};
 use crate::runtime::{validate_node_state, validate_worker_ref_state, NodeState, WorkerRefState};
 use crate::storage::{read_json, write_json};
@@ -78,7 +79,7 @@ pub(crate) fn execute_ai_node(
         task_instruction,
         session_mode,
         continue_ref,
-        stream_mode: StreamMode::None,
+        stream_mode: StreamMode::Raw,
         feedback_summary,
         verify_result_path: verify_result_path.map(ToOwned::to_owned),
         attachments_dir: Some(app.paths.attachments_dir(task_id, run_id, round_id, node_id, attempt_id)),
@@ -86,7 +87,12 @@ pub(crate) fn execute_ai_node(
         cold_attachments: Vec::new(),
     };
 
+    progress(&format!("calling provider for {}/{}/{}", round_id, node_id, attempt_id));
+    progress(&format!("raw stream file: {}", app.paths.raw_stream_file(task_id, run_id, round_id, node_id, attempt_id)));
+    tracing::debug!(task_id, run_id, round_id, node_id, attempt_id, stage = ?ProgressStage::CallingProvider, "calling provider");
     let result = app.provider.run_worker(invocation)?;
+    progress(&format!("normalizing artifact for {}/{}/{}", round_id, node_id, attempt_id));
+    tracing::debug!(task_id, run_id, round_id, node_id, attempt_id, stage = ?ProgressStage::NormalizingArtifact, "normalizing provider result");
     finalize_ai_attempt(app, task_id, run_id, round_id, attempt_id, node_id, node, result)
 }
 
@@ -109,6 +115,8 @@ pub(crate) fn execute_exec_node(
     let exec_plan: ExecPlanArtifact = read_json(&exec_plan_path)?;
     validate_exec_plan(&exec_plan)?;
 
+    progress(&format!("running command for {}/{}/{}", round_id, node.node_id, node.attempt_id));
+    tracing::debug!(task_id, run_id, round_id, node_id = %node.node_id, attempt_id = %node.attempt_id, stage = ?ProgressStage::RunningCommand, "running exec plan");
     let exec_result = run_exec_plan(
         &exec_plan,
         &app.paths.repo_root,

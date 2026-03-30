@@ -1,4 +1,5 @@
 use crate::app::App;
+use crate::observability::{init_tracing, touch_log_file_best_effort};
 use anyhow::Result;
 use camino::Utf8PathBuf;
 use clap::{Parser, Subcommand};
@@ -45,6 +46,8 @@ pub async fn run() -> Result<()> {
     let cwd = std::env::current_dir()?;
     let repo_root = Utf8PathBuf::from_path_buf(cwd).map_err(|_| anyhow::anyhow!("working directory is not valid UTF-8"))?;
     let app = App::new(repo_root);
+    init_tracing(&app.paths);
+    touch_log_file_best_effort(&app.paths);
 
     match cli.command {
         Commands::Task { command } => match command {

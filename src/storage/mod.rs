@@ -1,6 +1,8 @@
 use anyhow::Result;
 use camino::{Utf8Path, Utf8PathBuf};
 use serde::Serialize;
+use std::fs::OpenOptions;
+use std::io::Write;
 
 #[derive(Debug, Clone)]
 pub struct GoldBandPaths {
@@ -13,6 +15,14 @@ impl GoldBandPaths {
         let repo_root = repo_root.into();
         let runtime_root = repo_root.join(".gold-band");
         Self { repo_root, runtime_root }
+    }
+
+    pub fn logs_dir(&self) -> Utf8PathBuf {
+        self.runtime_root.join("logs")
+    }
+
+    pub fn runtime_log_file(&self) -> Utf8PathBuf {
+        self.logs_dir().join("runtime.log")
     }
 
     pub fn tasks_dir(&self) -> Utf8PathBuf {
@@ -49,6 +59,14 @@ impl GoldBandPaths {
 
     pub fn workflow_snapshot_file(&self, task_id: &str, run_id: &str) -> Utf8PathBuf {
         self.run_dir(task_id, run_id).join("workflow.snapshot.json")
+    }
+
+    pub fn run_progress_file(&self, task_id: &str, run_id: &str) -> Utf8PathBuf {
+        self.run_dir(task_id, run_id).join("run-progress.json")
+    }
+
+    pub fn run_events_file(&self, task_id: &str, run_id: &str) -> Utf8PathBuf {
+        self.run_dir(task_id, run_id).join("events.jsonl")
     }
 
     pub fn round_dir(&self, task_id: &str, run_id: &str, round_id: &str) -> Utf8PathBuf {
@@ -88,6 +106,10 @@ impl GoldBandPaths {
         self.attempt_dir(task_id, run_id, round_id, node_id, attempt_id).join("attachments")
     }
 
+    pub fn progress_events_file(&self, task_id: &str, run_id: &str, round_id: &str, node_id: &str, attempt_id: &str) -> Utf8PathBuf {
+        self.attempt_dir(task_id, run_id, round_id, node_id, attempt_id).join("progress.events.jsonl")
+    }
+
     pub fn raw_stream_file(&self, task_id: &str, run_id: &str, round_id: &str, node_id: &str, attempt_id: &str) -> Utf8PathBuf {
         self.attempt_dir(task_id, run_id, round_id, node_id, attempt_id).join("raw.stream.jsonl")
     }
@@ -110,4 +132,12 @@ pub fn write_json<T: Serialize>(path: &Utf8Path, value: &T) -> Result<()> {
 pub fn read_json<T: serde::de::DeserializeOwned>(path: &Utf8Path) -> Result<T> {
     let content = std::fs::read_to_string(path)?;
     Ok(serde_json::from_str(&content)?)
+}
+
+pub fn append_jsonl<T: Serialize>(path: &Utf8Path, value: &T) -> Result<()> {
+    ensure_parent_dir(path)?;
+    let mut file = OpenOptions::new().create(true).append(true).open(path.as_std_path())?;
+    serde_json::to_writer(&mut file, value)?;
+    file.write_all(b"\n")?;
+    Ok(())
 }

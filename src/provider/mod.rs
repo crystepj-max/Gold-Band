@@ -1,9 +1,14 @@
 pub use crate::domain::SessionRef;
 use crate::domain::{InvocationKind, SessionMode};
+use crate::observability::append_raw_stream_best_effort;
+use crate::storage::ensure_parent_dir;
 use anyhow::{anyhow, bail, ensure, Result};
 use camino::Utf8PathBuf;
 use serde::{Deserialize, Serialize};
-use std::process::Command;
+use std::io::{BufReader, Read};
+use std::process::{Command, Stdio};
+use std::thread;
+use tracing::{debug, warn};
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct ProviderInfo {
@@ -139,6 +144,7 @@ impl ProviderAdapter for ClaudeCodeProvider {
     fn run_worker(&self, req: WorkerInvocation) -> Result<ProviderRunResult> {
         let prompt = render_prompt_bundle(&req)?;
         let mut command = Command::new("claude");
+        debug!(invocation_kind = ?req.invocation_kind, attempt_dir = %req.attempt_dir, session_mode = ?req.session_mode, stream_mode = ?req.stream_mode, "starting claude provider invocation");
         command.current_dir(req.workspace_dir.as_std_path());
         command.arg("--bare").arg("-p");
         command.arg(format!("{}\n\n{}", prompt.system_prompt, prompt.user_prompt));
@@ -159,18 +165,41 @@ impl ProviderAdapter for ClaudeCodeProvider {
             }
         }
 
-        let output = command.output()?;
-        let exit_code = output.status.code();
-        let stdout = String::from_utf8_lossy(&output.stdout).trim().to_string();
-        let stderr = String::from_utf8_lossy(&output.stderr).trim().to_string();
+        command.stdout(Stdio::piped());
+        command.stderr(Stdio::piped());
+        let raw_stream_path = matches!(req.stream_mode, StreamMode::Raw).then(|| req.attempt_dir.join("raw.stream.jsonl"));
+        if let Some(path) = raw_stream_path.as_ref() {
+            ensure_parent_dir(path)?;
+            let _ = std::fs::File::options().create(true).append(true).open(path.as_std_path())?;
+            debug!(path = %path, "prepared raw stream file");
+        }
+        let mut child = command.spawn()?;
 
-        if !output.status.success() {
+        let stdout = child.stdout.take().ok_or_else(|| anyhow!("failed to capture claude stdout"))?;
+        let stderr = child.stderr.take().ok_or_else(|| anyhow!("failed to capture claude stderr"))?;
+        let stdout_path = raw_stream_path.clone();
+        let stderr_path = raw_stream_path.clone();
+
+        let stdout_handle = thread::spawn(move || read_stream(stdout, "stdout", stdout_path));
+        let stderr_handle = thread::spawn(move || read_stream(stderr, "stderr", stderr_path));
+
+        let status = child.wait()?;
+        let exit_code = status.code();
+        let stdout = stdout_handle.join().map_err(|_| anyhow!("stdout reader thread panicked"))?;
+        let stderr = stderr_handle.join().map_err(|_| anyhow!("stderr reader thread panicked"))?;
+        let stdout = stdout.trim().to_string();
+        let stderr = stderr.trim().to_string();
+        let stream_path = raw_stream_path;
+        debug!(?exit_code, stdout_len = stdout.len(), stderr_len = stderr.len(), "claude provider finished");
+
+        if !status.success() {
+            warn!(?exit_code, "claude provider returned failure status");
             return Ok(ProviderRunResult {
                 status: ProviderRunStatus::Failure,
                 exit_code,
                 result_payload: None,
                 worker_ref_seed: None,
-                stream_path: None,
+                stream_path,
             });
         }
 
@@ -198,7 +227,7 @@ impl ProviderAdapter for ClaudeCodeProvider {
             exit_code,
             result_payload,
             worker_ref_seed,
-            stream_path: None,
+            stream_path,
         })
     }
 
@@ -219,6 +248,37 @@ struct ClaudeJsonResponse {
     result: String,
     #[serde(default)]
     session_id: Option<String>,
+}
+
+fn current_timestamp() -> String {
+    let secs = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .map(|duration| duration.as_secs())
+        .unwrap_or_default();
+    format!("{secs}Z")
+}
+
+fn read_stream<R: Read>(reader: R, stream: &'static str, path: Option<Utf8PathBuf>) -> String {
+    let mut collected = String::new();
+    let mut reader = BufReader::new(reader);
+    let mut buffer = [0_u8; 4096];
+    loop {
+        match reader.read(&mut buffer) {
+            Ok(0) => break,
+            Ok(read_len) => {
+                let chunk = String::from_utf8_lossy(&buffer[..read_len]);
+                if let Some(path) = path.as_ref() {
+                    append_raw_stream_best_effort(path, &current_timestamp(), stream, &chunk);
+                }
+                collected.push_str(&chunk);
+            }
+            Err(err) => {
+                warn!(stream, error = %err, "failed reading provider stream");
+                break;
+            }
+        }
+    }
+    collected
 }
 
 fn render_prompt_bundle(req: &WorkerInvocation) -> Result<PromptBundle> {

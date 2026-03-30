@@ -5,6 +5,7 @@ use camino::Utf8PathBuf;
 use crate::control::{decide_next_step, ControlDecision};
 use crate::domain::{NodeOutcome, PauseReason, RoundTrigger, RunOutcome, RunStatus, SessionMode, VERSION};
 use crate::dsl::{validate_workflow, ValidatedWorkflow, WorkflowDsl};
+use crate::observability::{append_run_event_best_effort, progress, run_event_data, write_progress_hint, write_run_progress_best_effort, ExecutionContext, ProgressStage};
 use crate::runtime::{validate_round_state, validate_run_state, NodeState, RoundState, RunState, WorkerRefState};
 use crate::storage::{read_json, write_json};
 
@@ -61,6 +62,22 @@ pub(crate) fn run_start(app: &App, task_id: &str, workflow_override: Option<&Utf
     write_json(&app.paths.round_file(task_id, &run_id, &round_id), &round)?;
 
     let node = create_node_state(&run_id, &round_id, &validated.raw.entry, &attempt_id, validated.get_node(&validated.raw.entry).expect("validated entry exists"));
+    let ctx = ExecutionContext::for_run(task_id, &run.id)
+        .with_round(round.id.clone())
+        .with_node(node.node_id.clone())
+        .with_attempt(node.attempt_id.clone());
+    let summary = format!("starting run {} at {}/{}/{}", run.id, round.id, node.node_id, node.attempt_id);
+    progress(&summary);
+    write_run_progress_best_effort(&app.paths, task_id, &run, Some(node.node_type), ProgressStage::Starting, summary.clone());
+    append_run_event_best_effort(
+        &app.paths,
+        task_id,
+        &run.id,
+        "run_started",
+        now.clone(),
+        run_event_data(&ctx, Some(ProgressStage::Starting), Some(run.status), Some(summary), None),
+    );
+    write_progress_hint(&app.paths, task_id, &run.id, Some(app.paths.raw_stream_file(task_id, &run.id, &round.id, &node.node_id, &node.attempt_id).as_path()));
     drive_from_node(app, task_id, &validated, &mut run, &mut round, node)?;
     Ok(run)
 }
@@ -71,6 +88,21 @@ pub(crate) fn run_continue(app: &App, task_id: &str, run_id: &str) -> Result<Run
     let mut run = app.run_status(task_id, run_id)?;
     let current = current_attempt_state(app, task_id, &run)?;
     let (mut round, mut node) = current;
+    let ctx = ExecutionContext::for_run(task_id, &run.id)
+        .with_round(round.id.clone())
+        .with_node(node.node_id.clone())
+        .with_attempt(node.attempt_id.clone());
+    let summary = format!("continuing run {} at {}/{}/{}", run.id, round.id, node.node_id, node.attempt_id);
+    progress(&summary);
+    write_run_progress_best_effort(&app.paths, task_id, &run, Some(node.node_type), ProgressStage::Starting, summary.clone());
+    append_run_event_best_effort(
+        &app.paths,
+        task_id,
+        &run.id,
+        "run_continue_requested",
+        run.updated_at.clone(),
+        run_event_data(&ctx, Some(ProgressStage::Starting), Some(run.status), Some(summary), run.pause_reason),
+    );
 
     match node.status {
         RunStatus::Paused => {
@@ -112,6 +144,20 @@ pub(crate) fn run_retry(app: &App, task_id: &str, run_id: &str) -> Result<RunSta
     let node_id = node.node_id.clone();
     let attempt_id = next_attempt_id(&app.paths.node_dir(task_id, run_id, &round.id, &node_id))?;
     let fresh = create_node_state(run_id, &round.id, &node_id, &attempt_id, validated.get_node(&node_id).expect("validated node exists"));
+    let ctx = ExecutionContext::for_run(task_id, &run.id)
+        .with_round(round.id.clone())
+        .with_node(node_id.clone())
+        .with_attempt(attempt_id.clone());
+    let summary = format!("retrying node {} with {}", node_id, attempt_id);
+    progress(&summary);
+    append_run_event_best_effort(
+        &app.paths,
+        task_id,
+        &run.id,
+        "run_retry_requested",
+        run.updated_at.clone(),
+        run_event_data(&ctx, Some(ProgressStage::Starting), Some(run.status), Some(summary), None),
+    );
     drive_from_node(app, task_id, &validated, &mut run, &mut round, fresh)?;
     Ok(run)
 }
@@ -132,6 +178,26 @@ pub(crate) fn drive_from_node(
     loop {
         let current_attempt_id = node.attempt_id.clone();
         let current_node_id = node.node_id.clone();
+        let ctx = ExecutionContext::for_run(task_id, &run.id)
+            .with_round(round.id.clone())
+            .with_node(current_node_id.clone())
+            .with_attempt(current_attempt_id.clone());
+        let node_stage = match node.node_type {
+            crate::domain::NodeType::Exec => ProgressStage::RunningCommand,
+            crate::domain::NodeType::Verify => ProgressStage::Verifying,
+            crate::domain::NodeType::Worker => ProgressStage::CallingProvider,
+        };
+        let summary = format!("running {}/{}/{}", round.id, current_node_id, current_attempt_id);
+        progress(&summary);
+        write_run_progress_best_effort(&app.paths, task_id, run, Some(node.node_type), node_stage, summary.clone());
+        append_run_event_best_effort(
+            &app.paths,
+            task_id,
+            &run.id,
+            "node_started",
+            now_rfc3339_like(),
+            run_event_data(&ctx, Some(node_stage), Some(run.status), Some(summary), run.pause_reason),
+        );
         node = match workflow.get_node(&current_node_id).expect("validated node exists") {
             crate::dsl::NodeDsl::Worker(_) | crate::dsl::NodeDsl::Verify(_) => execute_ai_node(
                 app,
@@ -150,6 +216,25 @@ pub(crate) fn drive_from_node(
             crate::dsl::NodeDsl::Exec(_) => execute_exec_node(app, task_id, &run.id, &round.id, workflow, node)?,
         };
 
+        let completion_summary = format!("completed {}/{}/{}", round.id, node.node_id, node.attempt_id);
+        write_run_progress_best_effort(&app.paths, task_id, run, Some(node.node_type), ProgressStage::NormalizingArtifact, completion_summary.clone());
+        append_run_event_best_effort(
+            &app.paths,
+            task_id,
+            &run.id,
+            "node_completed",
+            now_rfc3339_like(),
+            run_event_data(
+                &ExecutionContext::for_run(task_id, &run.id)
+                    .with_round(round.id.clone())
+                    .with_node(node.node_id.clone())
+                    .with_attempt(node.attempt_id.clone()),
+                Some(ProgressStage::NormalizingArtifact),
+                Some(node.status),
+                Some(completion_summary),
+                None,
+            ),
+        );
         persist_runtime_state(app, task_id, run, round, &node)?;
         let decision = decide_next_step(workflow, run, round, &node);
 
@@ -171,11 +256,31 @@ pub(crate) fn drive_from_node(
                 feedback_summary = feedback_summary_from_previous_node(app, task_id, &run.id, &round.id, &node)?;
                 verify_result_path = None;
                 node = create_node_state(&run.id, &round.id, &node_id, &next_attempt_id, next_node_dsl);
-                run.current_node = Some(node_id);
-                run.current_attempt = Some(next_attempt_id);
+                run.current_node = Some(node_id.clone());
+                run.current_attempt = Some(next_attempt_id.clone());
                 run.status = RunStatus::Running;
                 run.pause_reason = None;
                 run.updated_at = now_rfc3339_like();
+                let transition_summary = format!("transitioned to {}/{}/{}", round.id, node_id, next_attempt_id);
+                progress(&transition_summary);
+                write_run_progress_best_effort(&app.paths, task_id, run, Some(node.node_type), ProgressStage::Starting, transition_summary.clone());
+                append_run_event_best_effort(
+                    &app.paths,
+                    task_id,
+                    &run.id,
+                    "transitioned",
+                    run.updated_at.clone(),
+                    run_event_data(
+                        &ExecutionContext::for_run(task_id, &run.id)
+                            .with_round(round.id.clone())
+                            .with_node(node_id)
+                            .with_attempt(next_attempt_id),
+                        Some(ProgressStage::Starting),
+                        Some(run.status),
+                        Some(transition_summary),
+                        None,
+                    ),
+                );
                 validate_round_state(round)?;
                 validate_run_state(run)?;
                 continue;
@@ -212,10 +317,30 @@ pub(crate) fn drive_from_node(
                 node = create_node_state(&run.id, &round.id, &workflow.raw.entry, &next_attempt_id, next_node_dsl);
                 run.current_round = Some(round.id.clone());
                 run.current_node = Some(node.node_id.clone());
-                run.current_attempt = Some(next_attempt_id);
+                run.current_attempt = Some(next_attempt_id.clone());
                 run.status = RunStatus::Running;
                 run.pause_reason = None;
                 run.updated_at = now_rfc3339_like();
+                let round_summary = format!("opened {} and restarted at {}/{}", round.id, node.node_id, next_attempt_id);
+                progress(&round_summary);
+                write_run_progress_best_effort(&app.paths, task_id, run, Some(node.node_type), ProgressStage::Starting, round_summary.clone());
+                append_run_event_best_effort(
+                    &app.paths,
+                    task_id,
+                    &run.id,
+                    "round_opened",
+                    run.updated_at.clone(),
+                    run_event_data(
+                        &ExecutionContext::for_run(task_id, &run.id)
+                            .with_round(round.id.clone())
+                            .with_node(node.node_id.clone())
+                            .with_attempt(next_attempt_id),
+                        Some(ProgressStage::Starting),
+                        Some(run.status),
+                        Some(round_summary),
+                        None,
+                    ),
+                );
                 validate_run_state(run)?;
                 continue;
             }
@@ -224,8 +349,31 @@ pub(crate) fn drive_from_node(
                 run.pause_reason = Some(reason);
                 run.updated_at = now_rfc3339_like();
                 round.status = RunStatus::Paused;
-                validate_round_state(round)?;
-                validate_run_state(run)?;
+                let pause_stage = if reason == PauseReason::ErrorBlocked {
+                    ProgressStage::Blocked
+                } else {
+                    ProgressStage::Paused
+                };
+                let pause_summary = format!("run {} paused at {}/{}/{}", run.id, round.id, node.node_id, node.attempt_id);
+                progress(&pause_summary);
+                write_run_progress_best_effort(&app.paths, task_id, run, Some(node.node_type), pause_stage, pause_summary.clone());
+                append_run_event_best_effort(
+                    &app.paths,
+                    task_id,
+                    &run.id,
+                    "run_paused",
+                    run.updated_at.clone(),
+                    run_event_data(
+                        &ExecutionContext::for_run(task_id, &run.id)
+                            .with_round(round.id.clone())
+                            .with_node(node.node_id.clone())
+                            .with_attempt(node.attempt_id.clone()),
+                        Some(pause_stage),
+                        Some(run.status),
+                        Some(pause_summary),
+                        Some(reason),
+                    ),
+                );
                 persist_runtime_state(app, task_id, run, round, &node)?;
                 return Ok(());
             }
@@ -236,6 +384,26 @@ pub(crate) fn drive_from_node(
                 run.updated_at = now_rfc3339_like();
                 round.status = RunStatus::Completed;
                 round.outcome = Some(outcome);
+                let complete_summary = format!("run {} completed with {:?}", run.id, outcome);
+                progress(&complete_summary);
+                write_run_progress_best_effort(&app.paths, task_id, run, Some(node.node_type), ProgressStage::Completed, complete_summary.clone());
+                append_run_event_best_effort(
+                    &app.paths,
+                    task_id,
+                    &run.id,
+                    "run_completed",
+                    run.updated_at.clone(),
+                    run_event_data(
+                        &ExecutionContext::for_run(task_id, &run.id)
+                            .with_round(round.id.clone())
+                            .with_node(node.node_id.clone())
+                            .with_attempt(node.attempt_id.clone()),
+                        Some(ProgressStage::Completed),
+                        Some(run.status),
+                        Some(complete_summary),
+                        None,
+                    ),
+                );
                 validate_round_state(round)?;
                 validate_run_state(run)?;
                 persist_runtime_state(app, task_id, run, round, &node)?;
