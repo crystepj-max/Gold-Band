@@ -7,6 +7,7 @@ pub struct TaskState {
     pub version: String,
     pub id: String,
     pub title: Option<String>,
+    pub description: Option<String>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -71,8 +72,15 @@ impl TaskState {
             version: VERSION.to_string(),
             id: id.into(),
             title: None,
+            description: None,
         }
     }
+}
+
+pub fn validate_task_state(state: &TaskState) -> Result<()> {
+    ensure!(state.version == VERSION, "unsupported task state version");
+    ensure!(!state.id.trim().is_empty(), "task id cannot be empty");
+    Ok(())
 }
 
 pub fn validate_run_state(state: &RunState) -> Result<()> {

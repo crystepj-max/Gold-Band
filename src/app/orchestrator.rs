@@ -11,6 +11,7 @@ use crate::storage::{read_json, write_json};
 
 use super::ids::{next_attempt_id, next_run_id, now_rfc3339_like};
 use super::node_executor::{execute_ai_node, execute_exec_node, re_evaluate_attempt};
+use super::profile_resolver::{resolve_profile_for_node, resolve_workflow_profiles};
 use super::state_access::{current_attempt_state, load_run_workflow, persist_runtime_state};
 use super::state_factory::create_node_state;
 use super::transition_context::{feedback_summary_from_previous_node, find_latest_artifact_path, find_latest_worker_ref_for_transition};
@@ -22,6 +23,9 @@ pub(crate) fn run_start(app: &App, task_id: &str, workflow_override: Option<&Utf
         .unwrap_or_else(|| app.paths.workflow_file(task_id));
     let workflow: WorkflowDsl = read_json(&workflow_path)?;
     let validated = validate_workflow(workflow.clone())?;
+    let resolved_profiles = resolve_workflow_profiles(&app.paths, &validated.raw)?;
+    write_json(&app.paths.task_workflow_resolved_file(task_id), &validated.raw)?;
+    write_json(&app.paths.task_provenance_file(task_id), &resolved_profiles)?;
 
     let run_id = next_run_id(&app.paths.runs_dir(task_id))?;
     let round_id = "round-001".to_string();
@@ -61,7 +65,13 @@ pub(crate) fn run_start(app: &App, task_id: &str, workflow_override: Option<&Utf
     validate_round_state(&round)?;
     write_json(&app.paths.round_file(task_id, &run_id, &round_id), &round)?;
 
-    let node = create_node_state(&run_id, &round_id, &validated.raw.entry, &attempt_id, validated.get_node(&validated.raw.entry).expect("validated entry exists"));
+    let entry_node = validated.get_node(&validated.raw.entry).expect("validated entry exists");
+    let entry_profile = match entry_node {
+        crate::dsl::NodeDsl::Worker(worker) => worker.profile.as_deref().and_then(|name| resolve_profile_for_node(&resolved_profiles, name)),
+        crate::dsl::NodeDsl::Verify(verify) => verify.profile.as_deref().and_then(|name| resolve_profile_for_node(&resolved_profiles, name)),
+        crate::dsl::NodeDsl::Exec(_) => None,
+    };
+    let node = create_node_state(&run_id, &round_id, &validated.raw.entry, &attempt_id, entry_node, entry_profile, &app.config.default_provider);
     let ctx = ExecutionContext::for_run(task_id, &run.id)
         .with_round(round.id.clone())
         .with_node(node.node_id.clone())
@@ -78,13 +88,14 @@ pub(crate) fn run_start(app: &App, task_id: &str, workflow_override: Option<&Utf
         run_event_data(&ctx, Some(ProgressStage::Starting), Some(run.status), Some(summary), None),
     );
     write_progress_hint(&app.paths, task_id, &run.id, Some(app.paths.raw_stream_file(task_id, &run.id, &round.id, &node.node_id, &node.attempt_id).as_path()));
-    drive_from_node(app, task_id, &validated, &mut run, &mut round, node)?;
+    drive_from_node(app, task_id, &validated, &resolved_profiles, &mut run, &mut round, node)?;
     Ok(run)
 }
 
 pub(crate) fn run_continue(app: &App, task_id: &str, run_id: &str) -> Result<RunState> {
     let workflow = load_run_workflow(app, task_id, run_id)?;
     let validated = validate_workflow(workflow)?;
+    let resolved_profiles = resolve_workflow_profiles(&app.paths, &validated.raw)?;
     let mut run = app.run_status(task_id, run_id)?;
     let current = current_attempt_state(app, task_id, &run)?;
     let (mut round, mut node) = current;
@@ -132,18 +143,25 @@ pub(crate) fn run_continue(app: &App, task_id: &str, run_id: &str) -> Result<Run
         _ => bail!("current attempt is not continuable"),
     }
 
-    drive_from_node(app, task_id, &validated, &mut run, &mut round, node)?;
+    drive_from_node(app, task_id, &validated, &resolved_profiles, &mut run, &mut round, node)?;
     Ok(run)
 }
 
 pub(crate) fn run_retry(app: &App, task_id: &str, run_id: &str) -> Result<RunState> {
     let workflow = load_run_workflow(app, task_id, run_id)?;
     let validated = validate_workflow(workflow)?;
+    let resolved_profiles = resolve_workflow_profiles(&app.paths, &validated.raw)?;
     let mut run = app.run_status(task_id, run_id)?;
     let (mut round, node) = current_attempt_state(app, task_id, &run)?;
     let node_id = node.node_id.clone();
     let attempt_id = next_attempt_id(&app.paths.node_dir(task_id, run_id, &round.id, &node_id))?;
-    let fresh = create_node_state(run_id, &round.id, &node_id, &attempt_id, validated.get_node(&node_id).expect("validated node exists"));
+    let fresh_node = validated.get_node(&node_id).expect("validated node exists");
+    let fresh_profile = match fresh_node {
+        crate::dsl::NodeDsl::Worker(worker) => worker.profile.as_deref().and_then(|name| resolve_profile_for_node(&resolved_profiles, name)),
+        crate::dsl::NodeDsl::Verify(verify) => verify.profile.as_deref().and_then(|name| resolve_profile_for_node(&resolved_profiles, name)),
+        crate::dsl::NodeDsl::Exec(_) => None,
+    };
+    let fresh = create_node_state(run_id, &round.id, &node_id, &attempt_id, fresh_node, fresh_profile, &app.config.default_provider);
     let ctx = ExecutionContext::for_run(task_id, &run.id)
         .with_round(round.id.clone())
         .with_node(node_id.clone())
@@ -158,7 +176,7 @@ pub(crate) fn run_retry(app: &App, task_id: &str, run_id: &str) -> Result<RunSta
         run.updated_at.clone(),
         run_event_data(&ctx, Some(ProgressStage::Starting), Some(run.status), Some(summary), None),
     );
-    drive_from_node(app, task_id, &validated, &mut run, &mut round, fresh)?;
+    drive_from_node(app, task_id, &validated, &resolved_profiles, &mut run, &mut round, fresh)?;
     Ok(run)
 }
 
@@ -166,6 +184,7 @@ pub(crate) fn drive_from_node(
     app: &App,
     task_id: &str,
     workflow: &ValidatedWorkflow,
+    resolved_profiles: &super::profile_resolver::ResolvedWorkflowMetadata,
     run: &mut RunState,
     round: &mut RoundState,
     mut node: NodeState,
@@ -255,7 +274,12 @@ pub(crate) fn drive_from_node(
                     .and_then(|worker_ref| worker_ref.continue_ref);
                 feedback_summary = feedback_summary_from_previous_node(app, task_id, &run.id, &round.id, &node)?;
                 verify_result_path = None;
-                node = create_node_state(&run.id, &round.id, &node_id, &next_attempt_id, next_node_dsl);
+                let next_profile = match next_node_dsl {
+                    crate::dsl::NodeDsl::Worker(worker) => worker.profile.as_deref().and_then(|name| resolve_profile_for_node(resolved_profiles, name)),
+                    crate::dsl::NodeDsl::Verify(verify) => verify.profile.as_deref().and_then(|name| resolve_profile_for_node(resolved_profiles, name)),
+                    crate::dsl::NodeDsl::Exec(_) => None,
+                };
+                node = create_node_state(&run.id, &round.id, &node_id, &next_attempt_id, next_node_dsl, next_profile, &app.config.default_provider);
                 run.current_node = Some(node_id.clone());
                 run.current_attempt = Some(next_attempt_id.clone());
                 run.status = RunStatus::Running;
@@ -314,7 +338,12 @@ pub(crate) fn drive_from_node(
                 feedback_summary = feedback_summary_from_previous_node(app, task_id, &run.id, &format!("round-{:03}", next_round_index - 1), &node)?;
                 continue_ref = None;
                 session_mode = SessionMode::New;
-                node = create_node_state(&run.id, &round.id, &workflow.raw.entry, &next_attempt_id, next_node_dsl);
+                let next_profile = match next_node_dsl {
+                    crate::dsl::NodeDsl::Worker(worker) => worker.profile.as_deref().and_then(|name| resolve_profile_for_node(resolved_profiles, name)),
+                    crate::dsl::NodeDsl::Verify(verify) => verify.profile.as_deref().and_then(|name| resolve_profile_for_node(resolved_profiles, name)),
+                    crate::dsl::NodeDsl::Exec(_) => None,
+                };
+                node = create_node_state(&run.id, &round.id, &workflow.raw.entry, &next_attempt_id, next_node_dsl, next_profile, &app.config.default_provider);
                 run.current_round = Some(round.id.clone());
                 run.current_node = Some(node.node_id.clone());
                 run.current_attempt = Some(next_attempt_id.clone());

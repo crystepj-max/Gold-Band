@@ -17,6 +17,39 @@ impl GoldBandPaths {
         Self { repo_root, runtime_root }
     }
 
+    pub fn repo_presets_dir(&self) -> Utf8PathBuf {
+        self.runtime_root.join("presets")
+    }
+
+    pub fn repo_profiles_dir(&self) -> Utf8PathBuf {
+        self.repo_presets_dir().join("profiles")
+    }
+
+    pub fn repo_profile_file(&self, profile_name: &str) -> Utf8PathBuf {
+        self.repo_profiles_dir().join(format!("{profile_name}.md"))
+    }
+
+    pub fn user_gold_band_dir(&self) -> Utf8PathBuf {
+        let home = std::env::var("HOME")
+            .ok()
+            .filter(|value| !value.trim().is_empty())
+            .or_else(|| std::env::var("USERPROFILE").ok().filter(|value| !value.trim().is_empty()))
+            .unwrap_or_else(|| ".".to_string());
+        Utf8PathBuf::from(home).join(".gold-band")
+    }
+
+    pub fn user_presets_dir(&self) -> Utf8PathBuf {
+        self.user_gold_band_dir().join("presets")
+    }
+
+    pub fn user_profiles_dir(&self) -> Utf8PathBuf {
+        self.user_presets_dir().join("profiles")
+    }
+
+    pub fn user_profile_file(&self, profile_name: &str) -> Utf8PathBuf {
+        self.user_profiles_dir().join(format!("{profile_name}.md"))
+    }
+
     pub fn logs_dir(&self) -> Utf8PathBuf {
         self.runtime_root.join("logs")
     }
@@ -43,6 +76,14 @@ impl GoldBandPaths {
 
     pub fn workflow_file(&self, task_id: &str) -> Utf8PathBuf {
         self.task_dir(task_id).join("authoring/workflow.json")
+    }
+
+    pub fn task_workflow_resolved_file(&self, task_id: &str) -> Utf8PathBuf {
+        self.task_dir(task_id).join("authoring/workflow.resolved.json")
+    }
+
+    pub fn task_provenance_file(&self, task_id: &str) -> Utf8PathBuf {
+        self.task_dir(task_id).join("authoring/provenance.json")
     }
 
     pub fn runs_dir(&self, task_id: &str) -> Utf8PathBuf {

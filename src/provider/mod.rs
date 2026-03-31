@@ -1,5 +1,5 @@
 pub use crate::domain::SessionRef;
-use crate::domain::{InvocationKind, SessionMode};
+use crate::domain::{InvocationKind, SessionMode, DEFAULT_PROVIDER};
 use crate::observability::append_raw_stream_best_effort;
 use crate::storage::ensure_parent_dir;
 use anyhow::{anyhow, bail, ensure, Result};
@@ -44,6 +44,10 @@ pub struct WorkerInvocation {
     pub session_mode: SessionMode,
     pub continue_ref: Option<serde_json::Value>,
     pub stream_mode: StreamMode,
+    #[serde(default)]
+    pub log_prompts: bool,
+    #[serde(default)]
+    pub log_provider_command: bool,
     pub feedback_summary: Option<String>,
     pub verify_result_path: Option<Utf8PathBuf>,
     pub attachments_dir: Option<Utf8PathBuf>,
@@ -165,6 +169,19 @@ impl ProviderAdapter for ClaudeCodeProvider {
             }
         }
 
+        if req.log_provider_command {
+            debug!(cwd = %req.workspace_dir, argv = ?provider_command_summary(&command), "provider command summary");
+        }
+        log_prompt_bundle(
+            &prompt,
+            req.invocation_kind,
+            req.profile.as_deref(),
+            req.primary_artifact.as_deref(),
+            req.feedback_summary.is_some(),
+            req.cold_artifacts.len(),
+            req.cold_attachments.len(),
+            req.log_prompts,
+        );
         command.stdout(Stdio::piped());
         command.stderr(Stdio::piped());
         let raw_stream_path = matches!(req.stream_mode, StreamMode::Raw).then(|| req.attempt_dir.join("raw.stream.jsonl"));
@@ -348,6 +365,71 @@ fn render_prompt_bundle(req: &WorkerInvocation) -> Result<PromptBundle> {
     })
 }
 
+fn provider_command_summary(command: &Command) -> Vec<String> {
+    let mut argv = Vec::new();
+    argv.push(command.get_program().to_string_lossy().to_string());
+    let mut skip_next_prompt = false;
+    for arg in command.get_args() {
+        let arg = arg.to_string_lossy().to_string();
+        if skip_next_prompt {
+            argv.push("<prompt-redacted>".to_string());
+            skip_next_prompt = false;
+            continue;
+        }
+        if arg == "-p" {
+            argv.push(arg);
+            skip_next_prompt = true;
+            continue;
+        }
+        argv.push(arg);
+    }
+    argv
+}
+
+fn log_prompt_bundle(
+    prompt: &PromptBundle,
+    invocation_kind: InvocationKind,
+    profile: Option<&str>,
+    primary_artifact: Option<&str>,
+    has_feedback: bool,
+    cold_artifacts: usize,
+    cold_attachments: usize,
+    log_prompts: bool,
+) {
+    debug!(
+        invocation_kind = ?invocation_kind,
+        profile = ?profile,
+        primary_artifact = ?primary_artifact,
+        system_prompt_len = prompt.system_prompt.len(),
+        user_prompt_len = prompt.user_prompt.len(),
+        has_feedback,
+        cold_artifacts,
+        cold_attachments,
+        "provider prompt bundle summary"
+    );
+    if log_prompts {
+        debug!(system_prompt = %prompt.system_prompt, user_prompt = %prompt.user_prompt, "provider prompt bundle content");
+    }
+}
+
+pub fn provider_capabilities(provider_id: &str) -> Result<ProviderCapabilities> {
+    match provider_id {
+        DEFAULT_PROVIDER => Ok(ClaudeCodeProvider.describe_provider().capabilities),
+        _ => bail!("unsupported provider: {provider_id}"),
+    }
+}
+
+pub fn supports_continue_session(provider_id: &str) -> Result<bool> {
+    Ok(provider_capabilities(provider_id)?.supports_continue_session)
+}
+
+pub fn provider_from_id(provider_id: &str) -> Result<Box<dyn ProviderAdapter>> {
+    match provider_id {
+        DEFAULT_PROVIDER => Ok(Box::new(ClaudeCodeProvider)),
+        _ => bail!("unsupported provider: {provider_id}"),
+    }
+}
+
 pub fn default_provider() -> Box<dyn ProviderAdapter> {
-    Box::new(ClaudeCodeProvider)
+    provider_from_id(DEFAULT_PROVIDER).expect("default provider must be supported")
 }

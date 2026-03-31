@@ -11,13 +11,13 @@ use tracing_subscriber::layer::SubscriberExt;
 use tracing_subscriber::util::SubscriberInitExt;
 use tracing_subscriber::{fmt, EnvFilter, Layer};
 
+use crate::config::RuntimeConfig;
 use crate::domain::{NodeType, PauseReason, RunStatus, VERSION};
 use crate::inspect::render_run_status;
 use crate::runtime::RunState;
 use crate::storage::{append_jsonl, ensure_parent_dir, write_json, GoldBandPaths};
 
 const PROGRESS_TARGET: &str = "gold_band.progress";
-const LOG_RETENTION_DAYS: u64 = 7;
 static TRACE_ID: OnceLock<String> = OnceLock::new();
 static TRACING_INITIALIZED: AtomicBool = AtomicBool::new(false);
 
@@ -131,9 +131,9 @@ pub struct RunEventData {
     pub pause_reason: Option<PauseReason>,
 }
 
-pub fn init_tracing(paths: &GoldBandPaths) {
+pub fn init_tracing(paths: &GoldBandPaths, config: &RuntimeConfig) {
     let _ = TRACE_ID.get_or_init(trace_id_seed);
-    cleanup_old_logs(paths);
+    cleanup_old_logs(paths, config.log_retention_days);
     if TRACING_INITIALIZED.swap(true, Ordering::SeqCst) {
         return;
     }
@@ -149,7 +149,7 @@ pub fn init_tracing(paths: &GoldBandPaths) {
     let stderr_writer = BoxMakeWriter::new(std::io::stderr);
 
     let progress_filter = EnvFilter::new(format!("{PROGRESS_TARGET}=info"));
-    let debug_filter = EnvFilter::from_default_env().add_directive("gold_band=debug".parse().expect("valid directive"));
+    let debug_filter = EnvFilter::new(format!("gold_band={}", config.log_level.as_directive()));
 
     let file_layer = fmt::layer()
         .with_ansi(false)
@@ -254,12 +254,12 @@ pub fn run_event_data(
     }
 }
 
-fn cleanup_old_logs(paths: &GoldBandPaths) {
+fn cleanup_old_logs(paths: &GoldBandPaths, retention_days: u64) {
     let Ok(entries) = fs::read_dir(paths.logs_dir().as_std_path()) else {
         return;
     };
     let now = std::time::SystemTime::now();
-    let max_age = std::time::Duration::from_secs(LOG_RETENTION_DAYS * 24 * 60 * 60);
+    let max_age = std::time::Duration::from_secs(retention_days * 24 * 60 * 60);
     for entry in entries.flatten() {
         let Ok(metadata) = entry.metadata() else {
             continue;

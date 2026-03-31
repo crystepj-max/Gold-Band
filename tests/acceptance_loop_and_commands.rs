@@ -83,6 +83,9 @@ fn acceptance_loop_creates_new_round_and_commands_work() {
     let task_id = "task-001";
 
     std::fs::create_dir_all(repo_root.join(".gold-band/tasks/task-001/authoring").as_std_path()).unwrap();
+    std::fs::create_dir_all(repo_root.join(".gold-band/presets/profiles").as_std_path()).unwrap();
+    std::fs::write(repo_root.join(".gold-band/presets/profiles/developer.md").as_std_path(), "developer profile").unwrap();
+    std::fs::write(repo_root.join(".gold-band/presets/profiles/verifier.md").as_std_path(), "verifier profile").unwrap();
     std::fs::write(repo_root.join(".gold-band/tasks/task-001/authoring/requirement.md").as_std_path(), "Implement feature").unwrap();
     std::fs::write(
         repo_root.join(".gold-band/tasks/task-001/authoring/workflow.json").as_std_path(),

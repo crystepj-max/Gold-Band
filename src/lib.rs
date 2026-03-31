@@ -1,6 +1,9 @@
 pub mod app;
 pub mod artifacts;
 pub mod cli;
+pub mod command;
+pub mod config;
+pub mod console;
 pub mod control;
 pub mod domain;
 pub mod dsl;

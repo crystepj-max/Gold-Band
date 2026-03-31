@@ -1,10 +1,12 @@
 use crate::domain::{AcceptanceFailurePolicy, NodeType, SessionMode, DEFAULT_PROVIDER};
+use crate::provider::supports_continue_session;
 use anyhow::{anyhow, bail, ensure, Result};
 use indexmap::IndexMap;
 use serde::{Deserialize, Serialize};
 use std::collections::HashSet;
 
 pub const END_NODE: &str = "$end";
+const RESERVED_NODE_IDS: &[&str] = &["worker", "exec", "verify", END_NODE];
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct WorkflowDsl {
@@ -113,6 +115,8 @@ pub fn validate_workflow(workflow: WorkflowDsl) -> Result<ValidatedWorkflow> {
     ensure!(!workflow.id.trim().is_empty(), "workflow id cannot be empty");
     ensure!(!workflow.entry.trim().is_empty(), "workflow entry cannot be empty");
     ensure!(!workflow.nodes.is_empty(), "workflow must contain at least one node");
+    ensure!(workflow.control.max_repair_loops > 0, "max_repair_loops must be a positive integer");
+    ensure!(workflow.control.max_acceptance_loops > 0, "max_acceptance_loops must be a positive integer");
 
     let mut nodes_by_id = IndexMap::new();
     let mut seen_ids = HashSet::new();
@@ -122,6 +126,24 @@ pub fn validate_workflow(workflow: WorkflowDsl) -> Result<ValidatedWorkflow> {
         let id = node.id();
         ensure!(!id.trim().is_empty(), "node id cannot be empty");
         ensure!(seen_ids.insert(id.to_string()), "duplicate node id: {id}");
+        ensure!(
+            !RESERVED_NODE_IDS.contains(&id),
+            "node id `{id}` is reserved and cannot be used"
+        );
+
+        match node {
+            NodeDsl::Worker(worker) => {
+                if let Some(profile) = &worker.profile {
+                    ensure!(!profile.trim().is_empty(), "worker node `{id}` profile cannot be blank");
+                }
+            }
+            NodeDsl::Verify(verify) => {
+                if let Some(profile) = &verify.profile {
+                    ensure!(!profile.trim().is_empty(), "verify node `{id}` profile cannot be blank");
+                }
+            }
+            NodeDsl::Exec(_) => {}
+        }
 
         if let NodeDsl::Verify(_) = node {
             ensure!(verify_node_id.is_none(), "workflow can contain at most one verify node");
@@ -132,17 +154,29 @@ pub fn validate_workflow(workflow: WorkflowDsl) -> Result<ValidatedWorkflow> {
     }
 
     ensure!(nodes_by_id.contains_key(&workflow.entry), "entry node not found: {}", workflow.entry);
+    ensure!(
+        verify_node_id.is_some() || matches!(workflow.control.on_acceptance_failure, AcceptanceFailurePolicy::Stop),
+        "acceptance failure policy requires a verify node"
+    );
 
     for edge in &workflow.edges {
         ensure!(nodes_by_id.contains_key(&edge.from), "edge source not found: {}", edge.from);
         ensure!(edge.to == END_NODE || nodes_by_id.contains_key(&edge.to), "edge target not found: {}", edge.to);
+        ensure!(
+            !(edge.to == END_NODE && edge.on == EdgeOutcome::Invalid),
+            "edge `{}` cannot target `$end` on invalid",
+            edge.from
+        );
 
         if matches!(edge.session, Some(SessionMode::Continue)) {
-            let source = nodes_by_id
-                .get(&edge.from)
-                .ok_or_else(|| anyhow!("edge source not found: {}", edge.from))?;
-            let provider = source.provider().unwrap_or(DEFAULT_PROVIDER);
-            ensure!(provider == DEFAULT_PROVIDER, "session=continue currently only supports provider `{DEFAULT_PROVIDER}`");
+            let target = nodes_by_id
+                .get(&edge.to)
+                .ok_or_else(|| anyhow!("edge target not found: {}", edge.to))?;
+            let provider = target.provider().unwrap_or(DEFAULT_PROVIDER);
+            ensure!(
+                supports_continue_session(provider)?,
+                "session=continue currently only supports provider `{DEFAULT_PROVIDER}`"
+            );
         }
     }
 

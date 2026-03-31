@@ -71,6 +71,8 @@ fn run_start_executes_entry_worker_and_persists_outputs() {
     let task_id = "task-001";
 
     std::fs::create_dir_all(repo_root.join(".gold-band/tasks/task-001/authoring").as_std_path()).unwrap();
+    std::fs::create_dir_all(repo_root.join(".gold-band/presets/profiles").as_std_path()).unwrap();
+    std::fs::write(repo_root.join(".gold-band/presets/profiles/developer.md").as_std_path(), "developer profile").unwrap();
     std::fs::write(
         repo_root.join(".gold-band/tasks/task-001/authoring/requirement.md").as_std_path(),
         "Implement feature",

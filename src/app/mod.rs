@@ -1,46 +1,273 @@
 mod ids;
 mod node_executor;
 mod orchestrator;
+mod profile_resolver;
 mod state_access;
 mod state_factory;
 mod transition_context;
 
 use crate::artifacts::{validate_exec_plan, validate_exec_result, validate_verify_result, ExecPlanArtifact, ExecResultArtifact, VerifyResultArtifact};
+use crate::config::RuntimeConfig;
 use crate::control::{decide_next_step, ControlDecision};
-use crate::domain::{NodeOutcome, RunOutcome, RunStatus};
-use crate::dsl::{validate_workflow, WorkflowDsl};
-use crate::provider::{default_provider, ProviderAdapter};
-use crate::runtime::{validate_node_state, validate_round_state, validate_run_state, validate_worker_ref_state, NodeState, RoundState, RunState, TaskState, WorkerRefState};
+use crate::domain::{PauseReason, RunStatus};
+use crate::domain::{NodeOutcome, RunOutcome};
+use crate::dsl::{validate_workflow, EdgeOutcome, WorkflowDsl};
+use crate::provider::{provider_from_id, ProviderAdapter};
+use crate::runtime::{
+    validate_node_state, validate_round_state, validate_run_state, validate_task_state, validate_worker_ref_state, NodeState,
+    RoundState, RunState, TaskState, WorkerRefState,
+};
 use crate::storage::{read_json, write_json, GoldBandPaths};
+use serde::de::DeserializeOwned;
 use anyhow::{anyhow, bail, Result};
 use camino::{Utf8Path, Utf8PathBuf};
 use std::fs;
 
 use self::ids::now_rfc3339_like;
 use self::orchestrator::{run_continue as orchestrator_run_continue, run_retry as orchestrator_run_retry, run_start as orchestrator_run_start};
+use self::profile_resolver::resolve_workflow_profiles;
+
+#[derive(Debug, Clone, serde::Serialize)]
+pub struct TaskSummary {
+    pub task: TaskState,
+    pub workflow_exists: bool,
+    pub workflow_valid: bool,
+    pub workflow_error: Option<String>,
+    pub latest_run: Option<RunState>,
+    pub resumable_run_id: Option<String>,
+    pub suggested_run_id: Option<String>,
+}
+
+#[derive(Debug, Clone, serde::Serialize)]
+pub struct NodeEdgeSummary {
+    pub to: String,
+    pub on: EdgeOutcome,
+}
+
+#[derive(Debug, Clone, serde::Serialize)]
+pub struct NodeRuntimeSummary {
+    pub latest_attempt: Option<NodeState>,
+    pub attempts: Vec<NodeState>,
+    pub outgoing_edges: Vec<NodeEdgeSummary>,
+}
 
 pub struct App {
     pub paths: GoldBandPaths,
+    pub config: RuntimeConfig,
     provider: Box<dyn ProviderAdapter>,
 }
 
 impl App {
     pub fn new(repo_root: Utf8PathBuf) -> Self {
+        Self::with_config(repo_root, RuntimeConfig::default())
+    }
+
+    pub fn with_config(repo_root: Utf8PathBuf, config: RuntimeConfig) -> Self {
+        let provider = provider_from_id(&config.default_provider).expect("configured default provider must be supported");
         Self {
             paths: GoldBandPaths::new(repo_root),
-            provider: default_provider(),
+            config,
+            provider,
         }
     }
 
     pub fn with_provider(repo_root: Utf8PathBuf, provider: Box<dyn ProviderAdapter>) -> Self {
+        Self::with_provider_config(repo_root, RuntimeConfig::default(), provider)
+    }
+
+    pub fn with_provider_config(repo_root: Utf8PathBuf, config: RuntimeConfig, provider: Box<dyn ProviderAdapter>) -> Self {
         Self {
             paths: GoldBandPaths::new(repo_root),
+            config,
             provider,
         }
     }
 
     pub fn task_show(&self, task_id: &str) -> Result<TaskState> {
-        read_json(&self.paths.task_file(task_id))
+        let task: TaskState = read_json(&self.paths.task_file(task_id))?;
+        validate_task_state(&task)?;
+        Ok(task)
+    }
+
+    pub fn task_list(&self) -> Result<Vec<TaskState>> {
+        let mut tasks: Vec<TaskState> = self.read_json_dir_sorted(&self.paths.tasks_dir())?;
+        for task in &tasks {
+            validate_task_state(task)?;
+        }
+        tasks.sort_by(|left, right| left.id.cmp(&right.id));
+        Ok(tasks)
+    }
+
+    pub fn task_summaries(&self) -> Result<Vec<TaskSummary>> {
+        let mut summaries = self
+            .task_list()?
+            .into_iter()
+            .map(|task| self.task_summary(&task.id))
+            .collect::<Result<Vec<_>>>()?;
+        summaries.sort_by(|left, right| left.task.id.cmp(&right.task.id));
+        Ok(summaries)
+    }
+
+    pub fn task_summary(&self, task_id: &str) -> Result<TaskSummary> {
+        let task = self.task_show(task_id)?;
+        let workflow_exists = self.paths.workflow_file(task_id).exists();
+        let workflow_error = self.workflow_validation_error(task_id)?;
+        let workflow_valid = workflow_exists && workflow_error.is_none();
+        let latest_run = self.latest_run(task_id)?;
+        let resumable_run_id = self.find_resumable_run_id(task_id)?;
+        let suggested_run_id = resumable_run_id.clone().or_else(|| latest_run.as_ref().map(|run| run.id.clone()));
+        Ok(TaskSummary {
+            task,
+            workflow_exists,
+            workflow_valid,
+            workflow_error,
+            latest_run,
+            resumable_run_id,
+            suggested_run_id,
+        })
+    }
+
+    pub fn run_list(&self, task_id: &str) -> Result<Vec<RunState>> {
+        self.read_json_dir_sorted(&self.paths.runs_dir(task_id))
+    }
+
+    pub fn latest_run(&self, task_id: &str) -> Result<Option<RunState>> {
+        Ok(self.run_list(task_id)?.into_iter().last())
+    }
+
+    pub fn round_list(&self, task_id: &str, run_id: &str) -> Result<Vec<RoundState>> {
+        self.read_json_dir_sorted_by_file(&self.paths.run_dir(task_id, run_id).join("rounds"), "round.json")
+    }
+
+    pub fn node_list(&self, task_id: &str, run_id: &str, round_id: &str) -> Result<Vec<NodeState>> {
+        let nodes_dir = self.paths.round_dir(task_id, run_id, round_id).join("nodes");
+        let mut nodes = Vec::new();
+        if !nodes_dir.exists() {
+            return Ok(nodes);
+        }
+
+        let mut node_dirs = fs::read_dir(nodes_dir.as_std_path())?
+            .filter_map(|entry| entry.ok())
+            .map(|entry| entry.path())
+            .collect::<Vec<_>>();
+        node_dirs.sort();
+
+        for node_dir in node_dirs {
+            if !node_dir.is_dir() {
+                continue;
+            }
+            let mut attempt_dirs = fs::read_dir(&node_dir)?
+                .filter_map(|entry| entry.ok())
+                .map(|entry| entry.path())
+                .collect::<Vec<_>>();
+            attempt_dirs.sort();
+            if let Some(first_attempt_dir) = attempt_dirs.into_iter().find(|path| path.is_dir()) {
+                let node_file = first_attempt_dir.join("node.json");
+                if node_file.exists() {
+                    let utf8 = Utf8PathBuf::from_path_buf(node_file).map_err(|_| anyhow!("path is not valid UTF-8"))?;
+                    let node: NodeState = read_json(&utf8)?;
+                    validate_node_state(&node)?;
+                    nodes.push(node);
+                }
+            }
+        }
+        Ok(nodes)
+    }
+
+    pub fn attempt_list(&self, task_id: &str, run_id: &str, round_id: &str, node_id: &str) -> Result<Vec<NodeState>> {
+        let mut attempts: Vec<NodeState> = self.read_json_dir_sorted_by_file(&self.paths.node_dir(task_id, run_id, round_id, node_id), "node.json")?;
+        for attempt in &attempts {
+            validate_node_state(attempt)?;
+        }
+        attempts.sort_by(|left, right| left.attempt_id.cmp(&right.attempt_id));
+        Ok(attempts)
+    }
+
+    pub fn attachment_list(&self, task_id: &str, run_id: &str, round_id: &str, node_id: &str, attempt_id: &str) -> Result<Vec<String>> {
+        let dir = self.paths.attachments_dir(task_id, run_id, round_id, node_id, attempt_id);
+        if !dir.exists() {
+            return Ok(Vec::new());
+        }
+
+        let mut names = fs::read_dir(dir.as_std_path())?
+            .filter_map(|entry| entry.ok())
+            .filter_map(|entry| entry.file_name().to_str().map(ToOwned::to_owned))
+            .collect::<Vec<_>>();
+        names.sort();
+        Ok(names)
+    }
+
+    pub fn attachment_show(&self, task_id: &str, run_id: &str, round_id: &str, node_id: &str, attempt_id: &str, name: &str) -> Result<String> {
+        let path = self.paths.attachments_dir(task_id, run_id, round_id, node_id, attempt_id).join(name);
+        self.artifact_show_path(path.as_path())
+    }
+
+    pub fn run_progress(&self, task_id: &str, run_id: &str) -> Result<Option<serde_json::Value>> {
+        self.read_optional_json_value(&self.paths.run_progress_file(task_id, run_id))
+    }
+
+    pub fn run_events(&self, task_id: &str, run_id: &str) -> Result<Option<String>> {
+        self.read_optional_text(&self.paths.run_events_file(task_id, run_id))
+    }
+
+    pub fn attempt_progress_events(&self, task_id: &str, run_id: &str, round_id: &str, node_id: &str, attempt_id: &str) -> Result<Option<String>> {
+        self.read_optional_text(&self.paths.progress_events_file(task_id, run_id, round_id, node_id, attempt_id))
+    }
+
+    pub fn attempt_raw_stream(&self, task_id: &str, run_id: &str, round_id: &str, node_id: &str, attempt_id: &str) -> Result<Option<String>> {
+        self.read_optional_text(&self.paths.raw_stream_file(task_id, run_id, round_id, node_id, attempt_id))
+    }
+
+    pub fn workflow_snapshot_show(&self, task_id: &str, run_id: &str) -> Result<Option<String>> {
+        self.read_optional_text(&self.paths.workflow_snapshot_file(task_id, run_id))
+    }
+
+    pub fn worker_ref_show(&self, task_id: &str, run_id: &str, round_id: &str, node_id: &str, attempt_id: &str) -> Result<Option<String>> {
+        let path = self.paths.worker_ref_file(task_id, run_id, round_id, node_id, attempt_id);
+        if !path.exists() {
+            return Ok(None);
+        }
+        let worker_ref: WorkerRefState = read_json(&path)?;
+        validate_worker_ref_state(&worker_ref)?;
+        Ok(Some(serde_json::to_string_pretty(&worker_ref)?))
+    }
+
+    pub fn runtime_log_show(&self) -> Result<Option<String>> {
+        self.read_optional_text(&self.paths.runtime_log_file())
+    }
+
+    pub fn provider_output(&self, task_id: &str, run_id: &str, round_id: &str, node_id: &str, attempt_id: &str) -> Result<Option<String>> {
+        if let Some(progress) = self.attempt_progress_events(task_id, run_id, round_id, node_id, attempt_id)? {
+            return Ok(Some(progress));
+        }
+        self.attempt_raw_stream(task_id, run_id, round_id, node_id, attempt_id)
+    }
+
+    pub fn current_attempt_selection(&self, task_id: &str, run_id: &str) -> Result<Option<(String, String, String)>> {
+        let run = self.run_status(task_id, run_id)?;
+        match (run.current_round, run.current_node, run.current_attempt) {
+            (Some(round_id), Some(node_id), Some(attempt_id)) => Ok(Some((round_id, node_id, attempt_id))),
+            _ => Ok(None),
+        }
+    }
+
+    pub fn node_runtime_summary(&self, task_id: &str, run_id: &str, round_id: &str, workflow: &WorkflowDsl, node_id: &str) -> Result<NodeRuntimeSummary> {
+        let attempts = self.attempt_list(task_id, run_id, round_id, node_id)?;
+        let latest_attempt = attempts.last().cloned();
+        let outgoing_edges = workflow
+            .edges
+            .iter()
+            .filter(|edge| edge.from == node_id)
+            .map(|edge| NodeEdgeSummary {
+                to: edge.to.clone(),
+                on: edge.on,
+            })
+            .collect::<Vec<_>>();
+        Ok(NodeRuntimeSummary {
+            latest_attempt,
+            attempts,
+            outgoing_edges,
+        })
     }
 
     pub fn artifact_show_path(&self, path: &Utf8Path) -> Result<String> {
@@ -155,4 +382,99 @@ impl App {
         Ok(())
     }
 
+    fn read_json_dir_sorted<T: DeserializeOwned>(&self, dir: &Utf8Path) -> Result<Vec<T>> {
+        if !dir.exists() {
+            return Ok(Vec::new());
+        }
+        let mut paths = fs::read_dir(dir.as_std_path())?
+            .filter_map(|entry| entry.ok())
+            .map(|entry| entry.path())
+            .collect::<Vec<_>>();
+        paths.sort();
+
+        let mut items = Vec::new();
+        for path in paths {
+            if path.is_dir() {
+                let file = path.join("task.json");
+                let run_file = path.join("run.json");
+                if file.exists() {
+                    let utf8 = Utf8PathBuf::from_path_buf(file).map_err(|_| anyhow!("path is not valid UTF-8"))?;
+                    items.push(read_json(&utf8)?);
+                } else if run_file.exists() {
+                    let utf8 = Utf8PathBuf::from_path_buf(run_file).map_err(|_| anyhow!("path is not valid UTF-8"))?;
+                    items.push(read_json(&utf8)?);
+                }
+            }
+        }
+        Ok(items)
+    }
+
+    fn read_json_dir_sorted_by_file<T: DeserializeOwned>(&self, dir: &Utf8Path, file_name: &str) -> Result<Vec<T>> {
+        if !dir.exists() {
+            return Ok(Vec::new());
+        }
+
+        let mut paths = fs::read_dir(dir.as_std_path())?
+            .filter_map(|entry| entry.ok())
+            .map(|entry| entry.path())
+            .collect::<Vec<_>>();
+        paths.sort();
+
+        let mut items = Vec::new();
+        for path in paths {
+            if path.is_dir() {
+                let file = path.join(file_name);
+                if file.exists() {
+                    let utf8 = Utf8PathBuf::from_path_buf(file).map_err(|_| anyhow!("path is not valid UTF-8"))?;
+                    items.push(read_json(&utf8)?);
+                }
+            }
+        }
+        Ok(items)
+    }
+
+    fn read_optional_text(&self, path: &Utf8Path) -> Result<Option<String>> {
+        if !path.exists() {
+            return Ok(None);
+        }
+        Ok(Some(fs::read_to_string(path)?))
+    }
+
+    fn read_optional_json_value(&self, path: &Utf8Path) -> Result<Option<serde_json::Value>> {
+        if !path.exists() {
+            return Ok(None);
+        }
+        Ok(Some(read_json(path)?))
+    }
+
+    fn workflow_validation_error(&self, task_id: &str) -> Result<Option<String>> {
+        let path = self.paths.workflow_file(task_id);
+        if !path.exists() {
+            return Ok(Some("missing authoring/workflow.json".to_string()));
+        }
+
+        let workflow: WorkflowDsl = match read_json(&path) {
+            Ok(workflow) => workflow,
+            Err(err) => return Ok(Some(err.to_string())),
+        };
+
+        let validated = match validate_workflow(workflow.clone()) {
+            Ok(validated) => validated,
+            Err(err) => return Ok(Some(err.to_string())),
+        };
+
+        match resolve_workflow_profiles(&self.paths, &validated.raw) {
+            Ok(_) => Ok(None),
+            Err(err) => Ok(Some(err.to_string())),
+        }
+    }
+
+    fn find_resumable_run_id(&self, task_id: &str) -> Result<Option<String>> {
+        for run in self.run_list(task_id)?.into_iter().rev() {
+            if run.status == RunStatus::Paused && matches!(run.pause_reason, Some(PauseReason::ProcessInterrupted)) {
+                return Ok(Some(run.id));
+            }
+        }
+        Ok(None)
+    }
 }

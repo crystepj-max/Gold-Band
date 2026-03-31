@@ -14,7 +14,9 @@ use crate::runtime::{validate_node_state, validate_worker_ref_state, NodeState, 
 use crate::storage::{read_json, write_json};
 
 use super::ids::now_rfc3339_like;
-use super::transition_context::{find_latest_artifact_path, find_latest_worker_primary_artifact};
+use super::transition_context::{
+    find_latest_artifact_path, find_verify_attachment_paths, find_verify_exec_result_path, find_verify_worker_primary_artifact,
+};
 use super::App;
 
 pub(crate) fn execute_ai_node(
@@ -32,7 +34,7 @@ pub(crate) fn execute_ai_node(
     verify_result_path: Option<&Utf8Path>,
 ) -> Result<NodeState> {
     let node_dsl = workflow.get_node(node_id).expect("validated node exists");
-    let (profile, primary_artifact, task_instruction, invocation_kind, cold_artifacts) = match node_dsl {
+    let (profile, primary_artifact, task_instruction, invocation_kind, cold_artifacts, cold_attachments) = match node_dsl {
         NodeDsl::Worker(worker) => {
             let kind = if verify_result_path.is_some() {
                 InvocationKind::WorkerRepairVerify
@@ -41,28 +43,33 @@ pub(crate) fn execute_ai_node(
             } else {
                 InvocationKind::WorkerGeneric
             };
-            (worker.profile.clone(), worker.primary_artifact.clone(), worker.goal.clone(), kind, Vec::new())
+            (worker.profile.clone(), worker.primary_artifact.clone(), worker.goal.clone(), kind, Vec::new(), Vec::new())
         }
         NodeDsl::Verify(verify) => {
             let mut artifacts = Vec::new();
-            if let Some(path) = find_latest_artifact_path(app, task_id, run_id, round_id, node_id, "exec-result")? {
+            if let Some(path) = find_verify_exec_result_path(app, task_id, run_id, round_id, workflow, node_id)? {
                 artifacts.push(ColdFileRef {
                     name: Some("exec-result".to_string()),
                     path,
                 });
             }
-            if let Some(path) = find_latest_worker_primary_artifact(app, task_id, run_id, round_id, workflow)? {
+            if let Some(path) = find_verify_worker_primary_artifact(app, task_id, run_id, round_id, workflow, node_id)? {
                 artifacts.push(ColdFileRef {
                     name: Some("worker-primary-artifact".to_string()),
                     path,
                 });
             }
+            let cold_attachments = find_verify_attachment_paths(app, task_id, run_id, round_id, workflow, node_id)?
+                .into_iter()
+                .map(|path| ColdFileRef { name: None, path })
+                .collect::<Vec<_>>();
             (
                 verify.profile.clone(),
                 Some("verify-result".to_string()),
                 Some("Evaluate whether the requirement is satisfied based only on the provided evidence and produce a verify-result.".to_string()),
                 InvocationKind::VerifyAcceptance,
                 artifacts,
+                cold_attachments,
             )
         }
         NodeDsl::Exec(_) => bail!("execute_ai_node cannot run exec nodes"),
@@ -80,11 +87,14 @@ pub(crate) fn execute_ai_node(
         session_mode,
         continue_ref,
         stream_mode: StreamMode::Raw,
+        log_prompts: app.config.log_prompts,
+        log_provider_command: app.config.log_provider_command,
         feedback_summary,
         verify_result_path: verify_result_path.map(ToOwned::to_owned),
-        attachments_dir: Some(app.paths.attachments_dir(task_id, run_id, round_id, node_id, attempt_id)),
+        attachments_dir: matches!(node_dsl, NodeDsl::Worker(_))
+            .then(|| app.paths.attachments_dir(task_id, run_id, round_id, node_id, attempt_id)),
         cold_artifacts,
-        cold_attachments: Vec::new(),
+        cold_attachments,
     };
 
     progress(&format!("calling provider for {}/{}/{}", round_id, node_id, attempt_id));

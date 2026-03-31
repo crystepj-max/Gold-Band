@@ -1,10 +1,19 @@
+use crate::config::ResolvedProfileRef;
 use crate::domain::{ResolvedConfig, RunStatus, VERSION};
 use crate::dsl::NodeDsl;
 use crate::runtime::NodeState;
 
 use super::ids::now_rfc3339_like;
 
-pub(crate) fn create_node_state(run_id: &str, round_id: &str, node_id: &str, attempt_id: &str, node_dsl: &NodeDsl) -> NodeState {
+pub(crate) fn create_node_state(
+    run_id: &str,
+    round_id: &str,
+    node_id: &str,
+    attempt_id: &str,
+    node_dsl: &NodeDsl,
+    resolved_profile: Option<ResolvedProfileRef>,
+    default_provider: &str,
+) -> NodeState {
     NodeState {
         version: VERSION.to_string(),
         node_id: node_id.to_string(),
@@ -16,20 +25,24 @@ pub(crate) fn create_node_state(run_id: &str, round_id: &str, node_id: &str, att
         outcome: None,
         started_at: now_rfc3339_like(),
         finished_at: None,
-        resolved_config: resolved_config_for_node(node_dsl),
+        resolved_config: resolved_config_for_node(node_dsl, resolved_profile, default_provider),
     }
 }
 
-pub(crate) fn resolved_config_for_node(node: &NodeDsl) -> ResolvedConfig {
+pub(crate) fn resolved_config_for_node(node: &NodeDsl, resolved_profile: Option<ResolvedProfileRef>, default_provider: &str) -> ResolvedConfig {
     let mut config = ResolvedConfig::new();
     match node {
         NodeDsl::Worker(worker) => {
             config.insert(
                 "provider".to_string(),
-                serde_json::Value::String(worker.provider.clone().unwrap_or_else(|| "claude-code".to_string())),
+                serde_json::Value::String(worker.provider.clone().unwrap_or_else(|| default_provider.to_string())),
             );
             if let Some(profile) = &worker.profile {
                 config.insert("profile".to_string(), serde_json::Value::String(profile.clone()));
+            }
+            if let Some(profile) = resolved_profile.as_ref() {
+                config.insert("profileSource".to_string(), serde_json::to_value(&profile.source).expect("serialize profile source"));
+                config.insert("profilePath".to_string(), serde_json::Value::String(profile.path.clone()));
             }
             if let Some(primary_artifact) = &worker.primary_artifact {
                 config.insert("primaryArtifact".to_string(), serde_json::Value::String(primary_artifact.clone()));
@@ -42,10 +55,14 @@ pub(crate) fn resolved_config_for_node(node: &NodeDsl) -> ResolvedConfig {
         NodeDsl::Verify(verify) => {
             config.insert(
                 "provider".to_string(),
-                serde_json::Value::String(verify.provider.clone().unwrap_or_else(|| "claude-code".to_string())),
+                serde_json::Value::String(verify.provider.clone().unwrap_or_else(|| default_provider.to_string())),
             );
             if let Some(profile) = &verify.profile {
                 config.insert("profile".to_string(), serde_json::Value::String(profile.clone()));
+            }
+            if let Some(profile) = resolved_profile.as_ref() {
+                config.insert("profileSource".to_string(), serde_json::to_value(&profile.source).expect("serialize profile source"));
+                config.insert("profilePath".to_string(), serde_json::Value::String(profile.path.clone()));
             }
             config.insert("primaryArtifact".to_string(), serde_json::Value::String("verify-result".to_string()));
             config.insert("evidenceScope".to_string(), serde_json::Value::String("current-round".to_string()));

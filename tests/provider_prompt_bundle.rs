@@ -16,6 +16,8 @@ fn worker_invocation_can_be_serialized_with_context_indexes() {
         session_mode: SessionMode::New,
         continue_ref: None,
         stream_mode: StreamMode::None,
+        log_prompts: false,
+        log_provider_command: false,
         feedback_summary: None,
         verify_result_path: None,
         attachments_dir: Some(Utf8PathBuf::from("/repo/.gold-band/.../attachments")),
