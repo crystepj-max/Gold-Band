@@ -23,7 +23,17 @@
   "outcome": null,
   "trigger": "initial",
   "repairLoopsUsed": 0,
-  "startedAt": "2026-03-20T10:30:10Z"
+  "startedAt": "2026-03-20T10:30:10Z",
+  "trace": [
+    {
+      "sequence": 1,
+      "nodeId": "plan",
+      "attemptId": "attempt-001",
+      "fromNodeId": null,
+      "edgeOutcome": null,
+      "enteredAt": "2026-03-20T10:30:10Z"
+    }
+  ]
 }
 ```
 
@@ -39,6 +49,7 @@
 - `trigger`
 - `repairLoopsUsed`
 - `startedAt`
+- `trace`
 
 ---
 
@@ -82,6 +93,20 @@
 - `worker.failure` / `worker.invalid` 不计入
 - `verify.failure` / `verify.invalid` 不计入
 
+### `trace`
+- 类型：array
+- 含义：当前 round 真实进入过的 node/attempt 序列，用于 Round 详情页展示实际执行路径。
+
+每个 trace step 包含：
+- `sequence`：本 round 内的递增序号，从 1 开始。
+- `nodeId`：进入的真实 workflow node id。
+- `attemptId`：该次进入对应的 attempt id。
+- `fromNodeId`：从哪个 node 转入；entry 节点为 null。
+- `edgeOutcome`：触发转移的 outcome，如 `success | failure | invalid | retry | null`。
+- `enteredAt`：进入该 node/attempt 的时间。
+
+兼容规则：旧 `round.json` 可以缺少 `trace`，runtime 反序列化时按空数组处理；桌面端旧数据 fallback 会按 node state 的 `startedAt/attemptId` 推断路径。
+
 ---
 
 ## 5. runtime 校验规则
@@ -93,6 +118,7 @@
 - `outcome` 不在合法枚举内且不为 null
 - `trigger` 不在合法枚举内
 - `repairLoopsUsed` 不是非负整数
+- `trace` 中任一 step 的 `sequence` 不是正整数，或 `nodeId` / `attemptId` 为空
 - `status = running` 但 `outcome != null`
 - `status = paused` 但 `outcome != null`
 - `status = completed` 但 `outcome = null`

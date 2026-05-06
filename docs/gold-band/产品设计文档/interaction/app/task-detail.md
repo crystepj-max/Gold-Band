@@ -1,130 +1,55 @@
-# 任务编排：任务详情页
+# 任务编排：任务详情页（已并入任务工作流页）
 
-## 1. 一句话定义
-任务详情页是单个 task 的入口页，用于查看完整 requirement、任务状态、最近运行摘要，并进入该 task 的工作流页面。
+## 1. 当前结论
 
----
+任务详情页不再作为桌面端任务编排 MVP 的独立页面出现。
 
-## 2. 页面入口
-进入方式：
-- 在任务列表页双击任务
-- 在任务列表页点击“进入任务”
-- 从工作流页或 round 详情页面包屑点击任务名
-
-页面面包屑：
-
-```text
-任务列表 > 任务01
-```
-
----
-
-## 3. 页面结构
-
-```text
-┌──────────────────────────────────────────────────────────────┐
-│ 面包屑：任务列表 > 任务01                                      │
-│ 标题：任务01                                                   │
-│ 操作：进入工作流 / 新建 run / 继续最近 run / 查看产物             │
-├──────────────────────────────────────────────────────────────┤
-│ Requirement 摘要与完整内容                                     │
-├──────────────────────────────────────────────────────────────┤
-│ 当前状态                                                       │
-│ workflow 校验 / active run / resumable run / 最近 outcome       │
-├──────────────────────────────────────────────────────────────┤
-│ 最近运行                                                       │
-│ run id | round 数 | 状态 | outcome | 更新时间 | 操作             │
-└──────────────────────────────────────────────────────────────┘
-```
-
----
-
-## 4. 顶部任务上下文
-展示：
-- task id
-- task title
+原任务详情页承担的内容已经并入 [任务工作流页](task-workflow.md)：
+- task id / title
+- requirement 摘要
 - 当前状态
 - workflow 校验状态
-- 最近 run
-- artifact 总数
-
-主要操作：
-- 进入工作流
-- 新建 run
-- 继续最近 run
-- 查看产物
-
-如果 task 的 workflow invalid 或 missing：
-- “进入工作流”可进入只读诊断视图。
-- “新建 run”不可用，并说明原因。
+- active run / resumable run
+- 新建 run / 继续运行 / 停止运行入口
 
 ---
 
-## 5. Requirement 区域
-Requirement 是任务详情页的主内容之一。
+## 2. 调整原因
 
-展示规则：
-- 默认展示摘要和关键目标。
-- 支持展开完整 requirement。
-- 不在此页面编辑 requirement；编辑应由 authoring 工具或后续专用能力承载。
-
-建议分块：
-- 目标
-- 约束
-- 验收标准
-- 相关文件或附件
-
----
-
-## 6. 当前状态区
-展示当前 task 的可执行状态：
-- workflow valid / invalid / missing
-- active run
-- resumable run
-- latest outcome
-- 最近失败原因
-- 是否存在未查看 artifacts
-
-状态来源应以 canonical state 和索引为准，日志只作为补充说明。
-
----
-
-## 7. 最近运行区
-展示该 task 下最近 runs。
-
-字段：
-- run id
-- status
-- outcome
-- round 数量
-- 当前 round
-- startedAt / updatedAt
-- artifacts 数量
-- 操作
-
-操作：
-- 打开工作流
-- 恢复运行
-- 查看 artifacts
-- 查看失败详情
-
----
-
-## 8. 进入工作流
-点击“进入工作流”后进入任务工作流页。
-
-页面层级变为：
+任务编排功能区采用多级递进设计，但主路径应保持清晰：
 
 ```text
-任务列表 > 任务01 > 工作流
+任务列表 -> 任务工作流 -> Round 详情
 ```
 
-工作流页负责展示：
-- 原始 workflow 全貌图
-- run -> round 执行列表
+如果在任务列表和工作流之间保留独立任务详情页，用户需要多一次跳转才能看到 workflow 全貌和 run -> round 执行历史，和当前桌面端核心目标不一致。
 
 ---
 
-## 9. 一句话总结
+## 3. 当前页面归属
 
-> 任务详情页承接任务列表和工作流页：先让用户确认 requirement 与任务状态，再进入 workflow / run / round 的执行视图。
+| 原任务详情能力 | 当前归属 |
+|---|---|
+| requirement 摘要 | 任务工作流页顶部 task context |
+| 完整 requirement 查看 | 任务工作流页后续增强入口 |
+| 当前状态 | 任务列表行、Task Preview、任务工作流页指标条 |
+| 最近 run | 任务工作流页 run -> round 列表 |
+| 新建 run / 继续 run | 任务工作流页顶部操作 |
+| 查看失败详情 | Round 详情页 |
+
+---
+
+## 4. MVP 实现说明
+
+`web/src/pages/TaskDetailPage.tsx` 和 `get_task_detail` 可暂时保留用于历史对比或后续 authoring 能力，但主导航状态机不再进入 `task-detail`。
+
+当前 MVP 主页面为：
+- `web/src/pages/TaskListPage.tsx`
+- `web/src/pages/WorkflowPage.tsx`
+- `web/src/pages/RoundDetailPage.tsx`
+
+---
+
+## 5. 一句话总结
+
+> 任务详情页已经合并到任务工作流页，用户从任务列表直接进入 workflow 视角，再下钻到 Round 详情。

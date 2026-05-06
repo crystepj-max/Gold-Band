@@ -1,12 +1,12 @@
 {
   "permissions": {
     "allow": [
-      "Bash(curl -L \"https://lh3.googleusercontent.com/aida/ADBb0uik4i6GpGnYBCvbnndbEQWLY1Su-Uy4Rj1eo22szJMZNt6o-dv_JJWdSsGvCXfsfoncECyG-h0oQfjkZwsgnqGpxkmgSKZaSgo764IfXUVOCG08vz92J-NQTCeYtlHwPe3jum3vnU3jH5TvmZD3LeN6PZzd8STX5MMJQAnPwLrHmqZvmFMb5kF42V2a6TmknZFNvJhOtfVpPAcw07718XknUvtX9nP_lEQJrlBlb4Y_hsCWTJ7Cd-j4j3U\" -o \"d:/Projects/code/ai/Gold Band/docs/gold-band/前端重构计划/task-picker-native.png\")",
-      "Bash(curl -L \"https://lh3.googleusercontent.com/aida/ADBb0uiHY5a3G6oyEE7qjCYci4IgJADQU4CPhQmMS9w7SxcBZtThx71G2yKySGKOJ-DIICMXe8QoqqL_9c5p3Vh8QJ4kw9u-xfssvdy2ZAY2zdhRUgnPkjlfEfbp94cjuKu3o9KByvvz2Y6NR30eCuv0zBWZK8wYLsvw3eRTBT_W6BWcx1xWUVmcHM-DyRGvk_gEpTv6CGxhJ-hE6KGXbxCPg__KFq1iS4u4EO2-ndw-8v1mdFauI_cvlBzmVQ\" -o \"d:/Projects/code/ai/Gold Band/docs/gold-band/前端重构计划/task-picker-native-refined.png\")",
-      "Bash(curl -L \"https://lh3.googleusercontent.com/aida/ADBb0uiBTCk3Xn0Sachdjobpmpg-fR1Z-RUpRsexUfeKkr2MOeUTA252DvEmNNMAy0JNa4kiz9PYPet8d7bkgQctg7D3_BZClQaV4B9nfR-o1qb5nVZ8XLsDVRsMO5rwxTR6ybtqJvtwQlqHH8ECeSACu014hcF8IEycgpD3AeRaZrZ4Jzv3VdkmsOVEnHOzMjtZjcCsbrmFHMO7Vc-hu5kZwZ8os0a-mm4TXVAX5CbSYNemfMjE6RFVo7aswuM\" -o \"d:/Projects/code/ai/Gold Band/docs/gold-band/前端重构计划/workspace-refined.png\")",
-      "Bash(curl -L \"https://contribution.usercontent.google.com/download?c=CgthaWRhX2NvZGVmeBJ7Eh1hcHBfY29tcGFuaW9uX2dlbmVyYXRlZF9maWxlcxpaCiVodG1sX2VkOWRkYWUyYzFkMDQ2OGI5NjkyZTllMmFiYTZjMzZkEgsSBxDuncT0oB0YAZIBIwoKcHJvamVjdF9pZBIVQhMzNzQwODQ0NzM1NDAxNDgyMTE0&filename=&opi=96797242\" -o \"d:/Projects/code/ai/Gold Band/docs/gold-band/前端重构计划/task-picker-native.html\")",
-      "Bash(curl -L \"https://contribution.usercontent.google.com/download?c=CgthaWRhX2NvZGVmeBJ7Eh1hcHBfY29tcGFuaW9uX2dlbmVyYXRlZF9maWxlcxpaCiVodG1sXzk0OGFlNzRmOGE3YTQ4ZWJiMzQ3NmQ4YmIwYjVhMzhhEgsSBxDuncT0oB0YAZIBIwoKcHJvamVjdF9pZBIVQhMzNzQwODQ0NzM1NDAxNDgyMTE0&filename=&opi=96797242\" -o \"d:/Projects/code/ai/Gold Band/docs/gold-band/前端重构计划/task-picker-native-refined.html\")",
-      "Bash(curl -L \"https://contribution.usercontent.google.com/download?c=CgthaWRhX2NvZGVmeBJ7Eh1hcHBfY29tcGFuaW9uX2dlbmVyYXRlZF9maWxlcxpaCiVodG1sXzg3NWFjZWVlNjMzMTQzNGI5ZTJlMWFkMzI1N2MwYWFmEgsSBxDuncT0oB0YAZIBIwoKcHJvamVjdF9pZBIVQhMzNzQwODQ0NzM1NDAxNDgyMTE0&filename=&opi=96797242\" -o \"d:/Projects/code/ai/Gold Band/docs/gold-band/前端重构计划/workspace-refined.html\")",
+      "Bash(curl -L \"https://lh3.googleusercontent.com/aida/ADBb0uik4i6GpGnYBCvbnndbEQWLY1Su-Uy4Rj1eo22szJMZNt6o-dv_JJWdSsGvCXfsfoncECyG-h0oQfjkZwsgnqGpxkmgSKZaSgo764IfXUVOCG08vz92J-NQTCeYtlHwPe3jum3vnU3jH5TvmZD3LeN6PZzd8STX5MMJQAnPwLrHmqZvmFMb5kF42V2a6TmknZFNvJhOtfVpPAcw07718XknUvtX9nP_lEQJrlBlb4Y_hsCWTJ7Cd-j4j3U\" -o \"d:/Projects/code/ai/Gold-Band/docs/gold-band/前端重构计划/task-picker-native.png\")",
+      "Bash(curl -L \"https://lh3.googleusercontent.com/aida/ADBb0uiHY5a3G6oyEE7qjCYci4IgJADQU4CPhQmMS9w7SxcBZtThx71G2yKySGKOJ-DIICMXe8QoqqL_9c5p3Vh8QJ4kw9u-xfssvdy2ZAY2zdhRUgnPkjlfEfbp94cjuKu3o9KByvvz2Y6NR30eCuv0zBWZK8wYLsvw3eRTBT_W6BWcx1xWUVmcHM-DyRGvk_gEpTv6CGxhJ-hE6KGXbxCPg__KFq1iS4u4EO2-ndw-8v1mdFauI_cvlBzmVQ\" -o \"d:/Projects/code/ai/Gold-Band/docs/gold-band/前端重构计划/task-picker-native-refined.png\")",
+      "Bash(curl -L \"https://lh3.googleusercontent.com/aida/ADBb0uiBTCk3Xn0Sachdjobpmpg-fR1Z-RUpRsexUfeKkr2MOeUTA252DvEmNNMAy0JNa4kiz9PYPet8d7bkgQctg7D3_BZClQaV4B9nfR-o1qb5nVZ8XLsDVRsMO5rwxTR6ybtqJvtwQlqHH8ECeSACu014hcF8IEycgpD3AeRaZrZ4Jzv3VdkmsOVEnHOzMjtZjcCsbrmFHMO7Vc-hu5kZwZ8os0a-mm4TXVAX5CbSYNemfMjE6RFVo7aswuM\" -o \"d:/Projects/code/ai/Gold-Band/docs/gold-band/前端重构计划/workspace-refined.png\")",
+      "Bash(curl -L \"https://contribution.usercontent.google.com/download?c=CgthaWRhX2NvZGVmeBJ7Eh1hcHBfY29tcGFuaW9uX2dlbmVyYXRlZF9maWxlcxpaCiVodG1sX2VkOWRkYWUyYzFkMDQ2OGI5NjkyZTllMmFiYTZjMzZkEgsSBxDuncT0oB0YAZIBIwoKcHJvamVjdF9pZBIVQhMzNzQwODQ0NzM1NDAxNDgyMTE0&filename=&opi=96797242\" -o \"d:/Projects/code/ai/Gold-Band/docs/gold-band/前端重构计划/task-picker-native.html\")",
+      "Bash(curl -L \"https://contribution.usercontent.google.com/download?c=CgthaWRhX2NvZGVmeBJ7Eh1hcHBfY29tcGFuaW9uX2dlbmVyYXRlZF9maWxlcxpaCiVodG1sXzk0OGFlNzRmOGE3YTQ4ZWJiMzQ3NmQ4YmIwYjVhMzhhEgsSBxDuncT0oB0YAZIBIwoKcHJvamVjdF9pZBIVQhMzNzQwODQ0NzM1NDAxNDgyMTE0&filename=&opi=96797242\" -o \"d:/Projects/code/ai/Gold-Band/docs/gold-band/前端重构计划/task-picker-native-refined.html\")",
+      "Bash(curl -L \"https://contribution.usercontent.google.com/download?c=CgthaWRhX2NvZGVmeBJ7Eh1hcHBfY29tcGFuaW9uX2dlbmVyYXRlZF9maWxlcxpaCiVodG1sXzg3NWFjZWVlNjMzMTQzNGI5ZTJlMWFkMzI1N2MwYWFmEgsSBxDuncT0oB0YAZIBIwoKcHJvamVjdF9pZBIVQhMzNzQwODQ0NzM1NDAxNDgyMTE0&filename=&opi=96797242\" -o \"d:/Projects/code/ai/Gold-Band/docs/gold-band/前端重构计划/workspace-refined.html\")",
       "Bash(cargo test *)",
       "Bash(npm --version)",
       "Bash(pnpm --version)",
@@ -21,10 +21,29 @@
       "Bash(node -e \"fetch\\('http://127.0.0.1:1420/'\\).then\\(async r=>{console.log\\(r.status\\); console.log\\(\\(await r.text\\(\\)\\).slice\\(0,80\\)\\);}\\).catch\\(e=>{console.error\\(e.message\\); process.exit\\(1\\);}\\)\")",
       "Bash(cargo run *)",
       "WebFetch(domain:contribution.usercontent.google.com)",
-      "mcp__stitch__update_design_system"
+      "mcp__stitch__update_design_system",
+      "Bash(cargo fmt *)",
+      "Bash(node -e *)",
+      "Bash(rustfmt \"src/app/mod.rs\" \"src/config/mod.rs\" \"src-tauri/src/main.rs\" \"src-tauri/src/state.rs\" \"src-tauri/src/commands.rs\" \"src-tauri/src/view_models.rs\")",
+      "Bash(rustfmt --edition 2024 \"src/app/mod.rs\" \"src/config/mod.rs\" \"src-tauri/src/main.rs\" \"src-tauri/src/state.rs\" \"src-tauri/src/commands.rs\" \"src-tauri/src/view_models.rs\")",
+      "Bash(agent-browser open *)",
+      "Bash(agent-browser wait *)",
+      "Bash(agent-browser screenshot *)",
+      "Read(//d/Projects/code/ai/rs-graph-llm/**)",
+      "Read(//d/Projects/code/ai/agno/**)",
+      "Bash(pwsh -NoProfile -Command \"Get-ChildItem -Force '.external' | Select-Object Name,Mode; Get-ChildItem -Force '.external/agno' -ErrorAction SilentlyContinue | Select-Object -First 20 Name,Mode; Get-ChildItem -Force '.external/rs-graph-llm' -ErrorAction SilentlyContinue | Select-Object -First 20 Name,Mode\")",
+      "Read(//d/Projects/code/ai/Gold-Band/.external/agno/**)",
+      "Read(//d/Projects/code/ai/Gold-Band/.external/agno/libs/agno/**)",
+      "Read(//d/Projects/code/ai/agno/libs/agno/**)",
+      "Read(//d/Projects/code/ai/Gold-Band/.external/rs-graph-llm/**)",
+      "Read(//d/Projects/code/ai/Gold-Band/.external/rs-graph-llm/graph-flow/**)",
+      "Read(//d/Projects/code/ai/rs-graph-llm/graph-flow/**)",
+      "Read(//d/Applications/Rust/cargo/registry/src/rsproxy.cn-e3de039b2554c837/**)",
+      "Bash(curl -sSf http://127.0.0.1:1420)",
+      "Bash(agent-browser snapshot *)"
     ],
     "additionalDirectories": [
-      "D:\\Projects\\code\\ai\\Gold Band\\.web_bak\\docs\\gold-band\\前端重构计划\\前端重构计划"
+      "D:\\Projects\\code\\ai\\Gold-Band\\.web_bak\\docs\\gold-band\\前端重构计划\\前端重构计划"
     ]
   }
 }

@@ -7,9 +7,8 @@
 
 ## 2. 页面入口
 进入方式：
-- 从任务列表点击某个任务
-- 从任务详情点击“工作流”
-- 从 round 详情面包屑返回“工作流”
+- 从任务列表双击某个任务或点击“进入任务”
+- 从 round 详情面包屑返回“工作流列表”
 
 页面面包屑：
 
@@ -121,6 +120,8 @@ Run 行操作：
 - Stop
 - 查看 run artifacts
 
+Run 行只作为分组与操作入口，不打开独立 run 详情页。
+
 ### 6.3 Round 行
 Round 行展示：
 - round id
@@ -138,7 +139,7 @@ Round 行展示：
 页面层级变为：
 
 ```text
-任务列表 > 任务01 > 工作流 > run01 > round01
+任务列表 > 任务01 > 工作流列表 > run01 > round01
 ```
 
 ---
@@ -165,6 +166,28 @@ Round 行展示：
 
 ---
 
-## 8. 一句话总结
+## 8. Tauri 2.x MVP 对应实现
+
+MVP 中任务工作流页由 Tauri command `get_workflow` 提供 view model，前端页面位于 `web/src/pages/WorkflowPage.tsx`。
+
+当前实现规则：
+- 原始 workflow 图读取 task authoring workflow，并以真实节点-边画布展示；节点为 UML 风格卡片，边以箭头和 label 表达 success/failure/invalid 等分支。
+- 原始 workflow 图在任务工作流页保持只读，不提供右键操作或节点编辑能力；用户只通过缩放和平移查看全貌。
+- 页面布局对齐原型：顶部保留 Workflow 模块条与页面操作，中部展示 task 稳定指标条，上半区展示原始 workflow 全貌图，下半区展示 run / round execution history。
+- run / round 历史按 run 分组，最新 run 优先。
+- run 行只作为分组与操作行，点击 round 进入 round 详情页。
+- 停止 run 通过明确确认框触发 `kill_run`，并使用危险色按钮。
+- workflow 设计状态与 run/round 执行状态分离显示，执行终局不从日志推断。
+- 2026-05-03 起页面使用 Tailwind CSS v4 + shadcn/ui Tabs、Card、Table、Button、Badge、Scroll Area 等现成组件重构；Workflow 模块条、task 指标条、图视图和 run/round 分组历史行为不变。
+- 2026-05-04 起 run / round execution history 的每个 run 分组表格使用同一套固定比例列宽，避免不同 run 卡片因内容长度不同导致 ID、Status、Outcome、Trigger、Loops、Current Node、Artifacts、Action 列错位。
+- 2026-05-05 起工作流页必须展示 `workflow.json.control` 的全局控制信息，包括 `max_repair_loops`、`max_acceptance_loops`、`on_acceptance_failure`，并在 UI 中分别显示为最大修复循环、最大验收循环、验收失败策略。
+- 2026-05-05 验收修正：`workflow.json.control` 不再使用独立卡片展示，而是放入“原始 workflow 全貌图 / 工作流蓝图”卡片内的紧凑规则条；规则条位于画布上方，不覆盖节点与边。画布不应因节点较少而自动放大到占满整屏，需要限制 fitView 最大缩放，并保持中等高度、节点间距与阅读留白。
+- 2026-05-05 起 run / round execution history 使用一个统一宽度的历史表格容器，支持状态筛选、run 分组分页和 run id 排序；表格只保留一个横向滚动区域，列宽按最大行宽统一展示。
+- 2026-05-05 验收修正：run / round execution history 的 Action 列必须稳定可见；Run 行无可执行动作时显示占位，Round 行使用明确“查看 / Open”按钮进入 Round 详情，不使用弱化箭头作为唯一入口。
+- 2026-05-05 起页面可见 UI 文案走桌面端 i18n，中文模式除 AI、Java、JSON、workflow.json、真实 id 和日志原文等技术词外均显示中文，英文模式均显示英文。
+
+---
+
+## 9. 一句话总结
 
 > 任务工作流页上半区看“原始 workflow 设计”，下半区看“这个 workflow 在每次 run / round 中实际跑成了什么样”。

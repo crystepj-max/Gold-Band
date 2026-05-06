@@ -1,4 +1,4 @@
-use anyhow::{anyhow, bail, Result};
+use anyhow::{Result, anyhow, bail};
 use serde::Serialize;
 
 use crate::config::{ProfileSource, ResolvedProfileRef};
@@ -11,7 +11,10 @@ pub struct ResolvedWorkflowMetadata {
     pub profiles: Vec<ResolvedProfileRef>,
 }
 
-pub(crate) fn resolve_workflow_profiles(paths: &GoldBandPaths, workflow: &WorkflowDsl) -> Result<ResolvedWorkflowMetadata> {
+pub(crate) fn resolve_workflow_profiles(
+    paths: &GoldBandPaths,
+    workflow: &WorkflowDsl,
+) -> Result<ResolvedWorkflowMetadata> {
     let mut profiles = Vec::new();
     for node in &workflow.nodes {
         let profile = match node {
@@ -25,7 +28,9 @@ pub(crate) fn resolve_workflow_profiles(paths: &GoldBandPaths, workflow: &Workfl
                 bail!("node `{}` has empty profile", node.id());
             }
             let resolved = resolve_profile(paths, trimmed)?;
-            if profiles.iter().all(|existing: &ResolvedProfileRef| existing.name != resolved.name || existing.path != resolved.path) {
+            if profiles.iter().all(|existing: &ResolvedProfileRef| {
+                existing.name != resolved.name || existing.path != resolved.path
+            }) {
                 profiles.push(resolved);
             }
         }
@@ -33,7 +38,10 @@ pub(crate) fn resolve_workflow_profiles(paths: &GoldBandPaths, workflow: &Workfl
     Ok(ResolvedWorkflowMetadata { profiles })
 }
 
-pub(crate) fn resolve_profile(paths: &GoldBandPaths, profile_name: &str) -> Result<ResolvedProfileRef> {
+pub(crate) fn resolve_profile(
+    paths: &GoldBandPaths,
+    profile_name: &str,
+) -> Result<ResolvedProfileRef> {
     let project_path = paths.repo_profile_file(profile_name);
     if project_path.exists() {
         return Ok(ResolvedProfileRef {
@@ -52,10 +60,20 @@ pub(crate) fn resolve_profile(paths: &GoldBandPaths, profile_name: &str) -> Resu
         });
     }
 
-    Err(anyhow!("profile `{profile_name}` not found in {} or {}", project_path, user_path))
+    Err(anyhow!(
+        "profile `{profile_name}` not found in {} or {}",
+        project_path,
+        user_path
+    ))
 }
 
-pub(crate) fn resolve_profile_for_node(metadata: &ResolvedWorkflowMetadata, profile_name: &str) -> Option<ResolvedProfileRef> {
-    metadata.profiles.iter().find(|profile| profile.name == profile_name).cloned()
+pub(crate) fn resolve_profile_for_node(
+    metadata: &ResolvedWorkflowMetadata,
+    profile_name: &str,
+) -> Option<ResolvedProfileRef> {
+    metadata
+        .profiles
+        .iter()
+        .find(|profile| profile.name == profile_name)
+        .cloned()
 }
-

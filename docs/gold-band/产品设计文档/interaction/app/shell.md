@@ -37,7 +37,16 @@
 - 点击 logo 返回当前 workspace 的默认入口。
 - 当前 MVP 中默认返回“任务编排 / 任务列表”。
 
-### 3.2 一级菜单
+### 3.2 Workspace 选择与记忆
+左侧 Logo 下方显示当前 workspace 路径，并作为“切换工作空间”入口。
+
+规则：
+- 桌面端启动时优先恢复用户上次选择的 workspace。
+- 若无用户记忆，则从当前进程目录向上查找包含 `.gold-band/` 的项目根目录，避免 Tauri dev 从 `src-tauri/` 启动时误读子目录。
+- 用户可通过原生目录选择器打开新的 workspace；选择后立即刷新任务编排页面栈。
+- 最近使用 workspace 写入用户级本地偏好，不属于 task / run / round canonical state。
+
+### 3.3 一级菜单
 当前菜单：
 
 ```text
@@ -52,7 +61,7 @@
 - 占位功能可显示 disabled 或 coming soon 状态。
 - 不在一级菜单中放 run、round、node 等任务内部对象。
 
-### 3.3 Settings 入口
+### 3.4 Settings 入口
 位于左下角。
 
 行为：
@@ -93,9 +102,10 @@ round 详情
 
 行为：
 - 点击“任务列表”返回任务列表页。
-- 点击“任务01”返回任务详情页。
-- 点击“工作流”返回任务工作流页。
+- “任务01”仅作为当前任务上下文标签，不可点击，不显示 hover 底线。
+- 点击“工作流”返回任务工作流页；当“工作流”为当前页时只表示当前位置。
 - 当前页最后一项不可点击或仅表示当前位置。
+- 可点击上级项默认无下划线，鼠标悬浮或键盘 focus 时使用文字提亮与 primary 底边线作为可选中反馈；当前页使用更短的金色渐变底线表示当前位置；不可点击项不显示底线，只显示文本状态。
 
 ---
 
@@ -130,6 +140,19 @@ round 详情
 
 ---
 
-## 7. 一句话总结
+## 7. Tauri 2.x MVP 对应实现
+
+MVP 中应用壳由 `web/src/components/Shell.tsx` 实现：
+- 左侧固定展示 Gold Band、workspace 路径/切换入口、任务编排、知识库占位、模型管理占位、设置。
+- 右侧由 React 状态维护任务编排页面栈，面包屑只在右侧显示。
+- 工作空间选择页由 `web/src/pages/WorkspaceSelectPage.tsx` 实现，展示原生选择按钮和最近 workspace 列表。
+- Tauri commands `choose_workspace` / `select_recent_workspace` 负责切换 workspace，并将最近列表写入用户级配置。
+- Tauri window 默认尺寸为 1280x800，最小尺寸为 1040x680。
+- 应用壳不提供命令输入、slash command、terminal input 或 chat input。
+- 2026-05-03 起应用壳使用 Tailwind CSS v4 + shadcn/ui Button、Tooltip、Separator 等现成组件重构；侧边栏 IA、workspace 切换入口和右侧页面栈行为不变。
+
+---
+
+## 8. 一句话总结
 
 > 应用壳只解决“我在哪个一级功能里”，任务内部的递进浏览全部发生在右侧功能区。

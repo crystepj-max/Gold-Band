@@ -38,6 +38,7 @@ Gold Band 桌面客户端是面向本地项目的 AI workflow 编排与观测工
 - 任务编排
 - 设置中的主题切换
 - 设置中的语言选择
+- 工作空间选择、切换与最近 workspace 记忆
 
 以下一级功能仅占位：
 - 知识库
@@ -50,16 +51,17 @@ Gold Band 桌面客户端是面向本地项目的 AI workflow 编排与观测工
 
 ```text
 任务列表
-  -> 任务详情
-    -> 工作流列表
-      -> run
-        -> round
+  -> 任务工作流
+    -> Round 详情
 ```
 
-每一级页面顶部都显示面包屑导航：
+任务详情不再作为独立页面出现，它的 requirement 摘要、当前状态与运行入口合并到任务工作流页顶部。run 也不再作为独立详情页出现，而是任务工作流页中的分组行；round 是唯一的执行详情下钻页。
+
+页面顶部显示面包屑导航：
 
 ```text
-任务列表 > 任务01 > 工作流 > run01 > round01
+任务列表 > 任务01 > 工作流
+任务列表 > 任务01 > 工作流列表 > run01 > round01
 ```
 
 用户点击面包屑中的任意层级，可返回对应上级页面。
@@ -69,7 +71,7 @@ Gold Band 桌面客户端是面向本地项目的 AI workflow 编排与观测工
 ## 4. 页面文档
 - [应用壳与一级导航](shell.md)
 - [任务列表页](task-list.md)
-- [任务详情页](task-detail.md)
+- [任务详情页（已并入任务工作流页）](task-detail.md)
 - [任务工作流页](task-workflow.md)
 - [Round 详情页](round-detail.md)
 - [设置页](settings.md)
@@ -80,7 +82,7 @@ Gold Band 桌面客户端是面向本地项目的 AI workflow 编排与观测工
 
 ### 5.1 一级功能与业务页面分离
 - 左侧一级菜单只切换功能模块。
-- 任务列表、任务详情、工作流、run、round 都属于右侧任务编排功能区内部页面。
+- 任务列表、任务工作流、round 详情都属于右侧任务编排功能区内部页面。
 - 不应把 workflow DAG 直接放在应用首页。
 
 ### 5.2 桌面端使用直接操作
@@ -118,6 +120,89 @@ UI 不应根据日志直接推断 workflow 终局，终局状态以 canonical st
 
 ---
 
-## 6. 一句话总结
+## 6. Tauri 2.x MVP 实现说明
 
-> 桌面端的基础模型是“左侧一级功能导航 + 右侧递进式任务编排页面栈”，任务从列表进入工作流，再进入 run / round / node / artifact 的下钻视图。
+桌面端 MVP 使用 Tauri 2.x + Vite + React + TypeScript 实现：
+- Tauri 后端位于 `src-tauri/`，通过 path dependency 复用 Rust core 的 `App`、runtime、storage 与 config。
+- 前端位于 `web/`，只负责桌面应用壳、页面栈、图形展示与直接操作。
+- 前后端通过 Tauri commands 交换 view model，终局状态仍以 canonical state 为准。
+- 桌面端 workspace 不依赖 Tauri 进程启动目录：启动时恢复用户记忆，或向上查找 `.gold-band/` 作为项目根；用户可通过原生目录选择器切换 workspace。
+- 启动命令为 `npm run dev`，构建命令为 `npm run build`。
+
+MVP 范围：
+- 实现任务列表、任务工作流、Round 详情和设置页；任务详情并入任务工作流页，run 详情并入工作流页 run 分组。
+- 知识库、模型管理保持一级导航占位。
+- 不提供 command bar、slash command、terminal input 或 chat input。
+
+---
+
+## 7. 2026-05-02 原型对齐记录
+
+本轮前端实现按 `interaction/app/原型` 对齐桌面客户端：
+- 应用壳保持左侧一级功能导航，右侧承载所有任务编排页面栈。
+- 任务列表恢复原型中的“表格 + Task Preview”行为，单击预览、双击或按钮直接进入任务工作流。
+- 工作流页恢复顶部模块条、task 指标条、原始 workflow 图与 execution history 两段式布局。
+- Round 详情页恢复左上实际工作图、左下全局信息流、右侧 Detail Viewer 的三块工作台。
+- 设置页恢复 segmented theme 与语言选择，并保持用户级本地偏好语义。
+- 浏览器调试环境下启用仅前端可见的 mock view model fallback，便于用 Vite/浏览器检查原型布局；Tauri 环境仍通过 commands 读取真实 canonical state。
+- 默认桌面偏好改为 dark，避免 `system` 在浅色系统上破坏暗色原型的一致性；用户仍可在设置页显式选择 Light/System。
+
+---
+
+## 8. 2026-05-03 Tailwind/shadcn 重构记录
+
+本轮桌面端前端从自定义全局 CSS 一次性迁移到 Tailwind CSS v4 + `shadcn@latest`：
+- 基础控件优先采用 shadcn/ui 生成组件，包括 Button、Badge、Card、Table、Tabs、Select、Alert、Tooltip、Dropdown Menu、Scroll Area、Skeleton 等。
+- Gold Band 暖金深色视觉语义沉淀为 Tailwind/shadcn token，保留 Light / Dark / System 主题偏好。
+- 一级功能侧边栏 + 右侧递进式任务编排页面栈保持不变，未引入 command bar、terminal input 或 chat input。
+- API/view model/runtime 操作合约保持不变，重构只替换视觉实现和组件组合方式。
+- 状态色从全局 `.tone-*` class 改为显式语义映射，避免 Tailwind 动态 class 漏编译。
+- 任务列表页继续使用 shadcn/ui 表格和按钮，但改为固定比例列宽、局部刷新进度反馈，并移除含义不清的更多菜单入口。
+
+---
+
+## 9. 2026-05-06 任务编排首页视觉修正记录
+
+本轮基于桌面端截图反馈收敛任务编排首页视觉层级：
+- 保持左侧一级功能导航 + 右侧递进式任务编排页面栈不变，未引入 command bar、terminal input 或 chat input。
+- 首页 summary cards 从整卡状态色改为中性卡片表面 + 小面积状态强调，降低暖金色块和描边密度。
+- 任务列表主区域缩小间距，表格继续使用 shadcn/ui Table、固定列宽和内部横向滚动，避免页面级横向溢出。
+- Task Preview 改为固定 header + 内部 ScrollArea 的安全布局；执行统计在窄栏内单列展示，长 run id、中文/英文标签和按钮文案必须在卡片内换行或截断。
+- 顶部 ModuleBar 与 action group 增加换行和最小宽度保护，避免按钮组在窄宽度下撑破内容区。
+
+---
+
+## 10. 2026-05-06 Task Preview Sheet 交互记录
+
+本轮将任务列表预览从固定右栏改为 shadcn/ui Sheet 右侧抽屉：
+- 首页主区域回到高密度任务列表，Task Preview 不再占用固定右栏宽度。
+- 单击任务行打开右侧 Task Preview Sheet；抽屉已打开时单击另一任务行直接切换内容。
+- Task Preview Sheet 使用非模态交互，不用遮罩阻塞列表；单击非任务区域、Escape 或关闭按钮收回。
+- 抽屉内部继续保持固定 header + 内部滚动正文，执行统计、长 run id 和操作按钮必须在抽屉内安全换行或截断。
+
+---
+
+## 9. 2026-05-04 工作流图视图记录
+
+本轮桌面端工作流展示从卡片列表升级为真实节点-边图：
+- 任务工作流页的原始 workflow 图使用只读画布，展示 authoring workflow 的节点、边、分支标签与 UML 风格节点卡片。
+- Round 详情页的实际工作图使用可交互画布，支持缩放、平移、节点选中、双击详情和右键节点菜单。
+- 图布局使用 `dagre` 基于有向边自动排布，节点渲染使用 React/Tailwind/shadcn 组合，状态色仍来自 canonical state 的 status/outcome。
+- 当前实现只改变图形表达方式，不改变 Tauri command、view model 或 runtime state 契约。
+
+---
+
+## 10. 2026-05-03 三页 IA 收敛记录
+
+本轮桌面端任务编排主导航收敛为三页：
+- 任务列表：展示 requirement 摘要、当前状态和 Task Preview，双击或按钮进入任务工作流。
+- 任务工作流：承载 task context、原始 workflow 全貌图，以及按 run -> round 展开的执行历史；run 只作为分组行，不再打开独立详情页。
+- Round 详情：保持左上实际工作图、左下全局信息流、右侧 Detail Viewer；日志、会话、artifact、attachment 都在右侧查看。
+
+任务详情页面合并到任务工作流页顶部上下文，run 详情页面合并到工作流页的 run 分组与 Round 详情上下文。
+
+---
+
+## 11. 一句话总结
+
+> 桌面端的基础模型是“左侧一级功能导航 + 右侧递进式任务编排页面栈”，任务从列表进入工作流，再进入 Round 详情查看节点、日志、会话、artifact 与 attachment。

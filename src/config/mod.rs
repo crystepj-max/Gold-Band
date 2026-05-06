@@ -1,6 +1,6 @@
 use std::str::FromStr;
 
-use anyhow::{anyhow, Result};
+use anyhow::{Result, anyhow};
 use serde::{Deserialize, Serialize};
 
 #[derive(Debug, Clone, Copy, Serialize, Deserialize)]
@@ -69,6 +69,46 @@ impl FromStr for ConsoleThemeName {
     }
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "kebab-case")]
+pub enum DesktopThemePreference {
+    Light,
+    Dark,
+    System,
+}
+
+impl FromStr for DesktopThemePreference {
+    type Err = anyhow::Error;
+
+    fn from_str(value: &str) -> Result<Self> {
+        match value {
+            "light" => Ok(Self::Light),
+            "dark" => Ok(Self::Dark),
+            "system" => Ok(Self::System),
+            _ => Err(anyhow!("unsupported desktop theme: {value}")),
+        }
+    }
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "kebab-case")]
+pub enum DesktopLanguage {
+    ZhCn,
+    En,
+}
+
+impl FromStr for DesktopLanguage {
+    type Err = anyhow::Error;
+
+    fn from_str(value: &str) -> Result<Self> {
+        match value {
+            "zh-cn" => Ok(Self::ZhCn),
+            "en" => Ok(Self::En),
+            _ => Err(anyhow!("unsupported desktop language: {value}")),
+        }
+    }
+}
+
 #[derive(Debug, Clone, Default, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct UserConfig {
@@ -78,6 +118,11 @@ pub struct UserConfig {
     pub log_provider_command: Option<bool>,
     pub log_retention_days: Option<u64>,
     pub console_theme: Option<ConsoleThemeName>,
+    pub desktop_theme: Option<DesktopThemePreference>,
+    pub desktop_language: Option<DesktopLanguage>,
+    pub desktop_workspace: Option<String>,
+    #[serde(default)]
+    pub recent_desktop_workspaces: Vec<String>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -88,6 +133,8 @@ pub struct RuntimeConfig {
     pub log_provider_command: bool,
     pub log_retention_days: u64,
     pub console_theme: ConsoleThemeName,
+    pub desktop_theme: DesktopThemePreference,
+    pub desktop_language: DesktopLanguage,
 }
 
 impl Default for RuntimeConfig {
@@ -99,6 +146,8 @@ impl Default for RuntimeConfig {
             log_provider_command: true,
             log_retention_days: 7,
             console_theme: ConsoleThemeName::GoldBand,
+            desktop_theme: DesktopThemePreference::System,
+            desktop_language: DesktopLanguage::ZhCn,
         }
     }
 }
@@ -123,39 +172,103 @@ impl RuntimeConfig {
         if let Some(console_theme) = user_config.console_theme {
             self.console_theme = console_theme;
         }
+        if let Some(desktop_theme) = user_config.desktop_theme {
+            self.desktop_theme = desktop_theme;
+        }
+        if let Some(desktop_language) = user_config.desktop_language {
+            self.desktop_language = desktop_language;
+        }
         self
     }
 }
 
 #[cfg(test)]
 mod tests {
-    use super::{ConsoleThemeName, RuntimeConfig, RuntimeLogLevel, UserConfig};
+    use super::{
+        ConsoleThemeName, DesktopLanguage, DesktopThemePreference, RuntimeConfig, RuntimeLogLevel,
+        UserConfig,
+    };
     use std::str::FromStr;
 
     #[test]
     fn parses_console_theme_names() {
-        assert!(matches!(ConsoleThemeName::from_str("gold-band").unwrap(), ConsoleThemeName::GoldBand));
-        assert!(matches!(ConsoleThemeName::from_str("nord").unwrap(), ConsoleThemeName::Nord));
-        assert!(matches!(ConsoleThemeName::from_str("dracula").unwrap(), ConsoleThemeName::Dracula));
-        assert!(matches!(ConsoleThemeName::from_str("cyber").unwrap(), ConsoleThemeName::Cyber));
-        assert!(matches!(ConsoleThemeName::from_str("onyx").unwrap(), ConsoleThemeName::Onyx));
-        assert!(matches!(ConsoleThemeName::from_str("mist").unwrap(), ConsoleThemeName::Mist));
-        assert!(matches!(ConsoleThemeName::from_str("high-contrast").unwrap(), ConsoleThemeName::HighContrast));
+        assert!(matches!(
+            ConsoleThemeName::from_str("gold-band").unwrap(),
+            ConsoleThemeName::GoldBand
+        ));
+        assert!(matches!(
+            ConsoleThemeName::from_str("nord").unwrap(),
+            ConsoleThemeName::Nord
+        ));
+        assert!(matches!(
+            ConsoleThemeName::from_str("dracula").unwrap(),
+            ConsoleThemeName::Dracula
+        ));
+        assert!(matches!(
+            ConsoleThemeName::from_str("cyber").unwrap(),
+            ConsoleThemeName::Cyber
+        ));
+        assert!(matches!(
+            ConsoleThemeName::from_str("onyx").unwrap(),
+            ConsoleThemeName::Onyx
+        ));
+        assert!(matches!(
+            ConsoleThemeName::from_str("mist").unwrap(),
+            ConsoleThemeName::Mist
+        ));
+        assert!(matches!(
+            ConsoleThemeName::from_str("high-contrast").unwrap(),
+            ConsoleThemeName::HighContrast
+        ));
+    }
+
+    #[test]
+    fn parses_desktop_preferences() {
+        assert!(matches!(
+            DesktopThemePreference::from_str("light").unwrap(),
+            DesktopThemePreference::Light
+        ));
+        assert!(matches!(
+            DesktopThemePreference::from_str("dark").unwrap(),
+            DesktopThemePreference::Dark
+        ));
+        assert!(matches!(
+            DesktopThemePreference::from_str("system").unwrap(),
+            DesktopThemePreference::System
+        ));
+        assert!(matches!(
+            DesktopLanguage::from_str("zh-cn").unwrap(),
+            DesktopLanguage::ZhCn
+        ));
+        assert!(matches!(
+            DesktopLanguage::from_str("en").unwrap(),
+            DesktopLanguage::En
+        ));
     }
 
     #[test]
     fn defaults_console_theme_to_gold_band() {
-        assert!(matches!(RuntimeConfig::default().console_theme, ConsoleThemeName::GoldBand));
+        let config = RuntimeConfig::default();
+        assert!(matches!(config.console_theme, ConsoleThemeName::GoldBand));
+        assert!(matches!(
+            config.desktop_theme,
+            DesktopThemePreference::System
+        ));
+        assert!(matches!(config.desktop_language, DesktopLanguage::ZhCn));
     }
 
     #[test]
     fn user_config_overrides_default_values() {
         let config = RuntimeConfig::default().apply_user_config(&UserConfig {
             console_theme: Some(ConsoleThemeName::Nord),
+            desktop_theme: Some(DesktopThemePreference::Dark),
+            desktop_language: Some(DesktopLanguage::En),
             log_level: Some(RuntimeLogLevel::Trace),
             ..UserConfig::default()
         });
         assert_eq!(config.console_theme, ConsoleThemeName::Nord);
+        assert_eq!(config.desktop_theme, DesktopThemePreference::Dark);
+        assert_eq!(config.desktop_language, DesktopLanguage::En);
         assert!(matches!(config.log_level, RuntimeLogLevel::Trace));
     }
 
@@ -163,6 +276,8 @@ mod tests {
     fn empty_user_config_keeps_defaults() {
         let config = RuntimeConfig::default().apply_user_config(&UserConfig::default());
         assert_eq!(config.console_theme, ConsoleThemeName::GoldBand);
+        assert_eq!(config.desktop_theme, DesktopThemePreference::System);
+        assert_eq!(config.desktop_language, DesktopLanguage::ZhCn);
         assert!(matches!(config.log_level, RuntimeLogLevel::Debug));
     }
 }

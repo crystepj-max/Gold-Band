@@ -38,6 +38,18 @@ pub struct RoundState {
     pub trigger: RoundTrigger,
     pub repair_loops_used: u32,
     pub started_at: String,
+    #[serde(default)]
+    pub trace: Vec<RoundTraceStep>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct RoundTraceStep {
+    pub sequence: u32,
+    pub node_id: String,
+    pub attempt_id: String,
+    pub from_node_id: Option<String>,
+    pub edge_outcome: Option<String>,
+    pub entered_at: String,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -98,6 +110,11 @@ pub fn validate_round_state(state: &RoundState) -> Result<()> {
     ensure!(state.index > 0, "round index must be positive");
     ensure!(!(state.status != RunStatus::Completed && state.outcome.is_some()), "non-completed round cannot have outcome");
     ensure!(!(state.status == RunStatus::Completed && state.outcome.is_none()), "completed round must have outcome");
+    for step in &state.trace {
+        ensure!(step.sequence > 0, "round trace sequence must be positive");
+        ensure!(!step.node_id.trim().is_empty(), "round trace node id cannot be empty");
+        ensure!(!step.attempt_id.trim().is_empty(), "round trace attempt id cannot be empty");
+    }
     Ok(())
 }
 

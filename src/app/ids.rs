@@ -21,7 +21,11 @@ pub(crate) fn next_run_id(runs_dir: &Utf8Path) -> Result<String> {
 
 pub(crate) fn next_attempt_id(node_dir: &Utf8Path) -> Result<String> {
     let next = latest_attempt_id(node_dir)?
-        .and_then(|value| value.strip_prefix("attempt-").and_then(|v| v.parse::<u32>().ok()))
+        .and_then(|value| {
+            value
+                .strip_prefix("attempt-")
+                .and_then(|v| v.parse::<u32>().ok())
+        })
         .unwrap_or(0)
         + 1;
     Ok(format!("attempt-{next:03}"))

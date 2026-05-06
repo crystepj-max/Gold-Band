@@ -1,0 +1,218 @@
+@import "tailwindcss";
+@import "tw-animate-css";
+
+@custom-variant dark (&:is(.dark *));
+
+@theme inline {
+  --font-sans: Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+  --font-mono: "JetBrains Mono", "SFMono-Regular", Consolas, monospace;
+  --color-background: var(--background);
+  --color-foreground: var(--foreground);
+  --color-card: var(--card);
+  --color-card-foreground: var(--card-foreground);
+  --color-popover: var(--popover);
+  --color-popover-foreground: var(--popover-foreground);
+  --color-primary: var(--primary);
+  --color-primary-foreground: var(--primary-foreground);
+  --color-secondary: var(--secondary);
+  --color-secondary-foreground: var(--secondary-foreground);
+  --color-muted: var(--muted);
+  --color-muted-foreground: var(--muted-foreground);
+  --color-accent: var(--accent);
+  --color-accent-foreground: var(--accent-foreground);
+  --color-destructive: var(--destructive);
+  --color-border: var(--border);
+  --color-input: var(--input);
+  --color-ring: var(--ring);
+  --color-sidebar: var(--sidebar);
+  --color-sidebar-foreground: var(--sidebar-foreground);
+  --color-sidebar-primary: var(--sidebar-primary);
+  --color-sidebar-primary-foreground: var(--sidebar-primary-foreground);
+  --color-sidebar-accent: var(--sidebar-accent);
+  --color-sidebar-accent-foreground: var(--sidebar-accent-foreground);
+  --color-sidebar-border: var(--sidebar-border);
+  --color-sidebar-ring: var(--sidebar-ring);
+  --color-gold-workspace: var(--gold-workspace);
+  --color-gold-surface-low: var(--gold-surface-low);
+  --color-gold-surface-high: var(--gold-surface-high);
+  --color-gold-line-soft: var(--gold-line-soft);
+  --color-gold-running: var(--gold-running);
+  --color-gold-success: var(--gold-success);
+  --color-gold-warning: var(--gold-warning);
+  --color-gold-danger: var(--gold-danger);
+  --radius-sm: calc(var(--radius) - 4px);
+  --radius-md: calc(var(--radius) - 2px);
+  --radius-lg: var(--radius);
+  --radius-xl: calc(var(--radius) + 4px);
+}
+
+:root {
+  color-scheme: dark;
+  --background: #080808;
+  --foreground: #f3f0e8;
+  --card: #171717;
+  --card-foreground: #f3f0e8;
+  --popover: #171717;
+  --popover-foreground: #f3f0e8;
+  --primary: #f59e0b;
+  --primary-foreground: #090704;
+  --secondary: #202020;
+  --secondary-foreground: #f3f0e8;
+  --muted: #101010;
+  --muted-foreground: #8d8982;
+  --accent: rgba(245, 158, 11, 0.13);
+  --accent-foreground: #ffc174;
+  --destructive: #ff5f63;
+  --border: #2b2b2b;
+  --input: #2b2b2b;
+  --ring: #f59e0b;
+  --sidebar: #060606;
+  --sidebar-foreground: #f3f0e8;
+  --sidebar-primary: #f59e0b;
+  --sidebar-primary-foreground: #090704;
+  --sidebar-accent: rgba(245, 158, 11, 0.13);
+  --sidebar-accent-foreground: #ffc174;
+  --sidebar-border: #2b2b2b;
+  --sidebar-ring: #f59e0b;
+  --gold-workspace: #0b0b0b;
+  --gold-surface-low: #101010;
+  --gold-surface-high: #202020;
+  --gold-line-soft: rgba(255, 255, 255, 0.07);
+  --gold-running: #5aa2ff;
+  --gold-success: #35d07f;
+  --gold-warning: #ff9f43;
+  --gold-danger: #ff5f63;
+  --radius: 0.625rem;
+}
+
+:root[data-theme='light'] {
+  color-scheme: light;
+  --background: #f5efe3;
+  --foreground: #201d18;
+  --card: #ffffff;
+  --card-foreground: #201d18;
+  --popover: #ffffff;
+  --popover-foreground: #201d18;
+  --primary: #b87506;
+  --primary-foreground: #fff9ef;
+  --secondary: #eee5d7;
+  --secondary-foreground: #201d18;
+  --muted: #fffaf2;
+  --muted-foreground: #756b5b;
+  --accent: rgba(184, 117, 6, 0.12);
+  --accent-foreground: #8a5600;
+  --destructive: #c83e43;
+  --border: #ded2c1;
+  --input: #ded2c1;
+  --ring: #b87506;
+  --sidebar: #fff9ef;
+  --sidebar-foreground: #201d18;
+  --sidebar-primary: #b87506;
+  --sidebar-primary-foreground: #fff9ef;
+  --sidebar-accent: rgba(184, 117, 6, 0.12);
+  --sidebar-accent-foreground: #8a5600;
+  --sidebar-border: #ded2c1;
+  --sidebar-ring: #b87506;
+  --gold-workspace: #f7f0e4;
+  --gold-surface-low: #fffaf2;
+  --gold-surface-high: #eee5d7;
+  --gold-line-soft: rgba(49, 39, 26, 0.11);
+  --gold-running: #2563eb;
+  --gold-success: #15803d;
+  --gold-warning: #c2410c;
+  --gold-danger: #dc2626;
+}
+
+@layer base {
+  * {
+    @apply border-border outline-ring/50;
+  }
+
+  html {
+    @apply bg-background text-foreground antialiased;
+    font-synthesis: none;
+    text-rendering: optimizeLegibility;
+  }
+
+  body {
+    @apply m-0 min-h-[680px] min-w-[1040px] overflow-hidden bg-background font-sans text-foreground;
+  }
+
+  button,
+  select {
+    font: inherit;
+  }
+
+  pre {
+    @apply m-0 whitespace-pre-wrap break-words text-inherit;
+  }
+
+  ::selection {
+    @apply bg-primary/30 text-foreground;
+  }
+}
+
+.workflow-graph {
+  --xy-edge-stroke-default: var(--muted-foreground);
+  --xy-edge-stroke-selected-default: var(--primary);
+  --xy-connectionline-stroke-default: var(--primary);
+  --xy-minimap-background-color-default: var(--card);
+  --xy-controls-button-background-color-default: var(--card);
+  --xy-controls-button-background-color-hover-default: var(--accent);
+  --xy-controls-button-color-default: var(--muted-foreground);
+  --xy-controls-button-color-hover-default: var(--accent-foreground);
+  --xy-controls-button-border-color-default: var(--border);
+  --xy-background-color-default: transparent;
+}
+
+.workflow-graph .react-flow__pane,
+.workflow-graph .react-flow__renderer,
+.workflow-graph .react-flow__zoompane {
+  touch-action: none;
+}
+
+.workflow-graph .react-flow__pane {
+  cursor: grab;
+}
+
+.workflow-graph .react-flow__pane:active {
+  cursor: grabbing;
+}
+
+.workflow-graph .react-flow__node {
+  font-family: var(--font-sans);
+}
+
+.workflow-graph .react-flow__edge-textbg {
+  stroke: var(--border);
+}
+
+.workflow-graph .react-flow__controls {
+  overflow: hidden;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-lg);
+  background: var(--card);
+  box-shadow: 0 1px 2px rgb(0 0 0 / 0.2);
+}
+
+.workflow-graph .react-flow__controls-button {
+  width: 32px;
+  height: 32px;
+  border: 0;
+  border-bottom: 1px solid var(--border);
+  background: var(--card);
+  color: var(--muted-foreground);
+}
+
+.workflow-graph .react-flow__controls-button:hover {
+  background: var(--accent);
+  color: var(--accent-foreground);
+}
+
+.workflow-graph .react-flow__controls-button:last-child {
+  border-bottom-width: 0;
+}
+
+.workflow-graph .react-flow__controls-button svg {
+  fill: currentColor;
+}

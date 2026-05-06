@@ -51,6 +51,28 @@
 - 复杂 doctor/test matrix
 - 高级调度 / 多 run 并发 orchestration
 
+### 桌面端 MVP 增量
+- 使用 Tauri 2.x + Vite + React + TypeScript 生成桌面端应用。
+- `src-tauri/` 作为桌面后端，通过 path dependency 复用 Rust core 的 `App`、runtime、storage 与 config。
+- `web/` 作为桌面前端，实现左侧一级功能导航 + 右侧递进式任务编排页面栈。
+- 前端通过 Tauri commands 读取 task/run/round/node/artifact view model，所有终局状态仍来自 canonical state。
+- MVP 实现任务列表、任务工作流、Round 详情和设置页；任务详情并入任务工作流页，run 详情并入工作流页 run 分组；知识库、模型管理仅作为一级导航占位。
+- 2026-05-02：前端已按 `docs/gold-band/产品设计文档/interaction/app/原型` 对齐应用壳、任务列表 Task Preview、工作流 execution history、Round 三块工作台和设置页本地偏好控件。
+- 2026-05-02：补充浏览器调试 mock view model fallback；非 Tauri 浏览器环境使用 mock 数据，Tauri 环境继续使用真实 commands，方便后续用 Vite/浏览器验证布局。
+- 2026-05-03：桌面端新增 workspace 选择、最近 workspace 记忆与默认项目根解析；Tauri dev 即使从 `src-tauri/` 启动，也会向上识别包含 `.gold-band/` 的项目根。
+- 2026-05-03：任务列表改为固定比例列宽，避免右侧 Task Preview 同屏时横向溢出；刷新改为保留数据的局部进度反馈，首次加载使用骨架屏；未实现动作以显式禁用按钮展示，避免含义不清的更多菜单。
+- 2026-05-06：任务列表刷新反馈区分手动与后台来源：自动轮询只静默更新数据，不触发表格顶部品牌色进度条或刷新按钮高亮，避免首页运行态每秒刷新造成黄色闪烁。
+- 2026-05-03：桌面端 UI 从自定义全局 CSS 一次性迁移到 Tailwind CSS v4 + `shadcn@latest`；基础控件优先使用 shadcn/ui 生成组件，Gold Band 暖金深色语义沉淀为 token，API/view model/runtime 行为保持不变。
+- 2026-05-03：桌面端任务编排 IA 收敛为任务列表、任务工作流、Round 详情三页；任务详情并入工作流页 task context，run 详情并入 workflow run 分组。
+- 2026-05-03：Round 详情节点选择修复为前端 camelCase 状态、Tauri command snake_case selection 入参的显式转换；运行态自动刷新改为只看结构化 run/round/node 状态，避免历史 events 文本触发持续轮询和错误条闪烁。
+- 2026-05-04：工作流 execution history 的 run 分组表格改为固定比例列宽，确保多个 run 卡片之间以及 run/round 行之间列边界稳定对齐。
+- 2026-05-05：修复测试问题清单中的桌面端工作流与 Round 详情问题：工作流页展示 `workflow.json.control`，任务列表和工作流历史支持分页/排序/统一横向滚动，Round 详情使用 `round.json.trace` 展示真实执行路径，并将左下区域改为 Requirement / Log / Artifact / Attachment 动态 Tabs。
+- 2026-05-05：桌面端国际化改为前后端协同：前端使用 `i18next + react-i18next` 翻译可见 UI，Tauri 后端提供轻量 translator 处理后端生成的标题、summary card fallback 与缺失内容提示，同时 VM 保留稳定 key/status 供前端翻译。
+- 2026-05-05：补充验收修正：工作流 control 信息移入蓝图画板，面包屑等导航标签接入 i18n，任务列表分页布局改为响应式，execution history Action 列保持可见，Round 详情小窗口改为滚动而非裁切；面包屑当前页改为短金色渐变底线，可点击上级项 hover/focus 改为文字提亮与 primary 底边线反馈，任务 ID 作为不可点击上下文标签不显示 hover 底线。
+- 2026-05-06：任务编排首页视觉层级收敛，summary cards 改为中性表面 + 小面积状态强调；Task Preview 改为固定 header + 内部滚动正文，执行统计窄栏单列展示，修复底部统计贴边/超出卡片的问题。
+- 2026-05-06：任务列表 Task Preview 从固定右栏改为 shadcn/ui Sheet 右侧抽屉，初始不打开；单击任务行滑出，单击其他任务行直接切换内容，单击非任务区域、Escape 或关闭按钮收回。
+- 启动：`npm run dev`；构建：`npm run build`。
+
 ---
 
 ## Rust 模块拆分

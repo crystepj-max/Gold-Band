@@ -29,43 +29,90 @@ pub(crate) fn create_node_state(
     }
 }
 
-pub(crate) fn resolved_config_for_node(node: &NodeDsl, resolved_profile: Option<ResolvedProfileRef>, default_provider: &str) -> ResolvedConfig {
+pub(crate) fn resolved_config_for_node(
+    node: &NodeDsl,
+    resolved_profile: Option<ResolvedProfileRef>,
+    default_provider: &str,
+) -> ResolvedConfig {
     let mut config = ResolvedConfig::new();
     match node {
         NodeDsl::Worker(worker) => {
             config.insert(
                 "provider".to_string(),
-                serde_json::Value::String(worker.provider.clone().unwrap_or_else(|| default_provider.to_string())),
+                serde_json::Value::String(
+                    worker
+                        .provider
+                        .clone()
+                        .unwrap_or_else(|| default_provider.to_string()),
+                ),
             );
             if let Some(profile) = &worker.profile {
-                config.insert("profile".to_string(), serde_json::Value::String(profile.clone()));
+                config.insert(
+                    "profile".to_string(),
+                    serde_json::Value::String(profile.clone()),
+                );
             }
             if let Some(profile) = resolved_profile.as_ref() {
-                config.insert("profileSource".to_string(), serde_json::to_value(&profile.source).expect("serialize profile source"));
-                config.insert("profilePath".to_string(), serde_json::Value::String(profile.path.clone()));
+                config.insert(
+                    "profileSource".to_string(),
+                    serde_json::to_value(&profile.source).expect("serialize profile source"),
+                );
+                config.insert(
+                    "profilePath".to_string(),
+                    serde_json::Value::String(profile.path.clone()),
+                );
             }
             if let Some(primary_artifact) = &worker.primary_artifact {
-                config.insert("primaryArtifact".to_string(), serde_json::Value::String(primary_artifact.clone()));
+                config.insert(
+                    "primaryArtifact".to_string(),
+                    serde_json::Value::String(primary_artifact.clone()),
+                );
             }
-            config.insert("sessionMode".to_string(), serde_json::Value::String("new".to_string()));
+            config.insert(
+                "sessionMode".to_string(),
+                serde_json::Value::String("new".to_string()),
+            );
         }
         NodeDsl::Exec(exec) => {
-            config.insert("planFrom".to_string(), serde_json::Value::String(exec.plan_from.clone()));
+            config.insert(
+                "planFrom".to_string(),
+                serde_json::Value::String(exec.plan_from.clone()),
+            );
         }
         NodeDsl::Verify(verify) => {
             config.insert(
                 "provider".to_string(),
-                serde_json::Value::String(verify.provider.clone().unwrap_or_else(|| default_provider.to_string())),
+                serde_json::Value::String(
+                    verify
+                        .provider
+                        .clone()
+                        .unwrap_or_else(|| default_provider.to_string()),
+                ),
             );
             if let Some(profile) = &verify.profile {
-                config.insert("profile".to_string(), serde_json::Value::String(profile.clone()));
+                config.insert(
+                    "profile".to_string(),
+                    serde_json::Value::String(profile.clone()),
+                );
             }
             if let Some(profile) = resolved_profile.as_ref() {
-                config.insert("profileSource".to_string(), serde_json::to_value(&profile.source).expect("serialize profile source"));
-                config.insert("profilePath".to_string(), serde_json::Value::String(profile.path.clone()));
+                config.insert(
+                    "profileSource".to_string(),
+                    serde_json::to_value(&profile.source).expect("serialize profile source"),
+                );
+                config.insert(
+                    "profilePath".to_string(),
+                    serde_json::Value::String(profile.path.clone()),
+                );
             }
-            config.insert("primaryArtifact".to_string(), serde_json::Value::String("verify-result".to_string()));
-            config.insert("evidenceScope".to_string(), serde_json::Value::String("current-round".to_string()));
+            config.insert(
+                "primaryArtifact".to_string(),
+                serde_json::Value::String("verify-result".to_string()),
+            );
+            config.insert(
+                "evidenceScope".to_string(),
+                serde_json::Value::String("current-round".to_string()),
+            );
         }
     }
     config

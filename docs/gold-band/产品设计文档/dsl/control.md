@@ -93,9 +93,9 @@ runtime 可以做校验，但不应靠大量隐式推导替用户补语义。
   "id": "implement-feature",
   "entry": "dev",
   "control": {
-    "maxRepairLoops": 3,
-    "maxAcceptanceLoops": 2,
-    "onAcceptanceFailure": "auto_loop"
+    "max_repair_loops": 3,
+    "max_acceptance_loops": 2,
+    "on_acceptance_failure": "auto-loop"
   },
   "nodes": [],
   "edges": []
@@ -106,7 +106,7 @@ runtime 可以做校验，但不应靠大量隐式推导替用户补语义。
 
 ## 5. 全局控制配置
 
-## 5.1 `control.maxRepairLoops`
+## 5.1 `control.max_repair_loops`
 - 类型：number
 - 含义：单个 round 内，小循环允许的最大次数
 - 适用场景：`exec.failure -> worker` 或 `exec.invalid -> worker`
@@ -134,7 +134,7 @@ runtime 可以做校验，但不应靠大量隐式推导替用户补语义。
 - `verify.failure`：不计入 repair loop
 - `verify.invalid`：不计入 repair loop
 
-## 5.2 `control.maxAcceptanceLoops`
+## 5.2 `control.max_acceptance_loops`
 - 类型：number
 - 含义：单个 run 内，大循环允许的最大次数
 - 适用场景：`verify.failure -> worker`
@@ -159,15 +159,16 @@ runtime 可以做校验，但不应靠大量隐式推导替用户补语义。
 - `verify.failure + stop`：不计入 acceptance loop
 - `verify.invalid`：不计入 acceptance loop
 
-## 5.3 `control.onAcceptanceFailure`
+## 5.3 `control.on_acceptance_failure`
 - 类型：string
-- 枚举：`auto_loop | stop`
+- 枚举：`auto-loop | stop`
 
 ### 语义
 - `auto_loop`：自动进入下一轮，并回到 `workflow.entry`
 - `stop`：直接失败结束
 
 补充规则：
+- 桌面端工作流页必须把该 `control` 对象作为全局控制信息展示，字段显示名分别为最大修复循环、最大验收循环、验收失败策略。
 - 新一轮不会改写 task 的原始 requirement
 - 下一轮 `worker` 应直接消费原始 requirement 与最新 `verify-result`
 
@@ -370,9 +371,9 @@ runtime 至少应给出 warning 或 error：
   "id": "dev-test-verify",
   "entry": "dev",
   "control": {
-    "maxRepairLoops": 3,
-    "maxAcceptanceLoops": 2,
-    "onAcceptanceFailure": "auto_loop"
+    "max_repair_loops": 3,
+    "max_acceptance_loops": 2,
+    "on_acceptance_failure": "auto-loop"
   },
   "nodes": [
     {

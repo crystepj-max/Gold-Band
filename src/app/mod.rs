@@ -6,26 +6,37 @@ mod state_access;
 mod state_factory;
 mod transition_context;
 
-use crate::artifacts::{validate_exec_plan, validate_exec_result, validate_verify_result, ExecPlanArtifact, ExecResultArtifact, VerifyResultArtifact};
-use crate::config::{RuntimeConfig, UserConfig, ConsoleThemeName};
-use crate::control::{decide_next_step, ControlDecision};
-use crate::domain::{PauseReason, RunStatus};
-use crate::domain::{NodeOutcome, RunOutcome};
-use crate::dsl::{validate_workflow, EdgeOutcome, WorkflowDsl};
-use crate::provider::{provider_capabilities, provider_from_id, DoctorResult, ProviderAdapter, ProviderCapabilities, ProviderInfo};
-use crate::runtime::{
-    validate_node_state, validate_round_state, validate_run_state, validate_task_state, validate_worker_ref_state, NodeState,
-    RoundState, RunState, TaskState, WorkerRefState,
+use crate::artifacts::{
+    ExecPlanArtifact, ExecResultArtifact, VerifyResultArtifact, validate_exec_plan,
+    validate_exec_result, validate_verify_result,
 };
-use crate::storage::{read_json, write_json, GoldBandPaths};
-use serde::de::DeserializeOwned;
-use anyhow::{anyhow, bail, Result};
+use crate::config::{
+    ConsoleThemeName, DesktopLanguage, DesktopThemePreference, RuntimeConfig, UserConfig,
+};
+use crate::control::{ControlDecision, decide_next_step};
+use crate::domain::{NodeOutcome, RunOutcome};
+use crate::domain::{PauseReason, RunStatus};
+use crate::dsl::{EdgeOutcome, WorkflowDsl, validate_workflow};
+use crate::provider::{
+    DoctorResult, ProviderAdapter, ProviderCapabilities, ProviderInfo, provider_capabilities,
+    provider_from_id,
+};
+use crate::runtime::{
+    NodeState, RoundState, RunState, TaskState, WorkerRefState, validate_node_state,
+    validate_round_state, validate_run_state, validate_task_state, validate_worker_ref_state,
+};
+use crate::storage::{GoldBandPaths, read_json, write_json};
+use anyhow::{Result, anyhow, bail};
 use camino::{Utf8Path, Utf8PathBuf};
+use serde::de::DeserializeOwned;
 use std::fs;
 use std::io::{Read, Seek, SeekFrom};
 
 use self::ids::now_rfc3339_like;
-use self::orchestrator::{run_continue as orchestrator_run_continue, run_retry as orchestrator_run_retry, run_start as orchestrator_run_start};
+use self::orchestrator::{
+    run_continue as orchestrator_run_continue, run_retry as orchestrator_run_retry,
+    run_start as orchestrator_run_start,
+};
 use self::profile_resolver::resolve_workflow_profiles;
 
 fn tail_text(text: &str, limit: usize) -> String {
@@ -98,6 +109,42 @@ impl App {
         Ok(config)
     }
 
+    pub fn set_user_desktop_theme(&self, theme: DesktopThemePreference) -> Result<UserConfig> {
+        let mut config = self.load_user_config()?;
+        config.desktop_theme = Some(theme);
+        self.save_user_config(&config)?;
+        Ok(config)
+    }
+
+    pub fn set_user_desktop_language(&self, language: DesktopLanguage) -> Result<UserConfig> {
+        let mut config = self.load_user_config()?;
+        config.desktop_language = Some(language);
+        self.save_user_config(&config)?;
+        Ok(config)
+    }
+
+    pub fn set_user_desktop_preferences(
+        &self,
+        theme: DesktopThemePreference,
+        language: DesktopLanguage,
+    ) -> Result<UserConfig> {
+        let mut config = self.load_user_config()?;
+        config.desktop_theme = Some(theme);
+        config.desktop_language = Some(language);
+        self.save_user_config(&config)?;
+        Ok(config)
+    }
+
+    pub fn set_user_desktop_workspace(&self, workspace: &str) -> Result<UserConfig> {
+        let mut config = self.load_user_config()?;
+        config.desktop_workspace = Some(workspace.to_string());
+        config.recent_desktop_workspaces.retain(|item| item != workspace);
+        config.recent_desktop_workspaces.insert(0, workspace.to_string());
+        config.recent_desktop_workspaces.truncate(8);
+        self.save_user_config(&config)?;
+        Ok(config)
+    }
+
     pub fn provider_info(&self) -> ProviderInfo {
         self.provider.describe_provider()
     }
@@ -111,7 +158,8 @@ impl App {
     }
 
     pub fn with_config(repo_root: Utf8PathBuf, config: RuntimeConfig) -> Self {
-        let provider = provider_from_id(&config.default_provider).expect("configured default provider must be supported");
+        let provider = provider_from_id(&config.default_provider)
+            .expect("configured default provider must be supported");
         Self {
             paths: GoldBandPaths::new(repo_root),
             config,
@@ -123,7 +171,11 @@ impl App {
         Self::with_provider_config(repo_root, RuntimeConfig::default(), provider)
     }
 
-    pub fn with_provider_config(repo_root: Utf8PathBuf, config: RuntimeConfig, provider: Box<dyn ProviderAdapter>) -> Self {
+    pub fn with_provider_config(
+        repo_root: Utf8PathBuf,
+        config: RuntimeConfig,
+        provider: Box<dyn ProviderAdapter>,
+    ) -> Self {
         Self {
             paths: GoldBandPaths::new(repo_root),
             config,
@@ -184,11 +236,17 @@ impl App {
     }
 
     pub fn round_list(&self, task_id: &str, run_id: &str) -> Result<Vec<RoundState>> {
-        self.read_json_dir_sorted_by_file(&self.paths.run_dir(task_id, run_id).join("rounds"), "round.json")
+        self.read_json_dir_sorted_by_file(
+            &self.paths.run_dir(task_id, run_id).join("rounds"),
+            "round.json",
+        )
     }
 
     pub fn node_list(&self, task_id: &str, run_id: &str, round_id: &str) -> Result<Vec<NodeState>> {
-        let nodes_dir = self.paths.round_dir(task_id, run_id, round_id).join("nodes");
+        let nodes_dir = self
+            .paths
+            .round_dir(task_id, run_id, round_id)
+            .join("nodes");
         let mut nodes = Vec::new();
         if !nodes_dir.exists() {
             return Ok(nodes);
@@ -209,10 +267,11 @@ impl App {
                 .map(|entry| entry.path())
                 .collect::<Vec<_>>();
             attempt_dirs.sort();
-            if let Some(first_attempt_dir) = attempt_dirs.into_iter().find(|path| path.is_dir()) {
-                let node_file = first_attempt_dir.join("node.json");
+            if let Some(latest_attempt_dir) = attempt_dirs.into_iter().rev().find(|path| path.is_dir()) {
+                let node_file = latest_attempt_dir.join("node.json");
                 if node_file.exists() {
-                    let utf8 = Utf8PathBuf::from_path_buf(node_file).map_err(|_| anyhow!("path is not valid UTF-8"))?;
+                    let utf8 = Utf8PathBuf::from_path_buf(node_file)
+                        .map_err(|_| anyhow!("path is not valid UTF-8"))?;
                     let node: NodeState = read_json(&utf8)?;
                     validate_node_state(&node)?;
                     nodes.push(node);
@@ -222,8 +281,17 @@ impl App {
         Ok(nodes)
     }
 
-    pub fn attempt_list(&self, task_id: &str, run_id: &str, round_id: &str, node_id: &str) -> Result<Vec<NodeState>> {
-        let mut attempts: Vec<NodeState> = self.read_json_dir_sorted_by_file(&self.paths.node_dir(task_id, run_id, round_id, node_id), "node.json")?;
+    pub fn attempt_list(
+        &self,
+        task_id: &str,
+        run_id: &str,
+        round_id: &str,
+        node_id: &str,
+    ) -> Result<Vec<NodeState>> {
+        let mut attempts: Vec<NodeState> = self.read_json_dir_sorted_by_file(
+            &self.paths.node_dir(task_id, run_id, round_id, node_id),
+            "node.json",
+        )?;
         for attempt in &attempts {
             validate_node_state(attempt)?;
         }
@@ -231,8 +299,17 @@ impl App {
         Ok(attempts)
     }
 
-    pub fn attachment_list(&self, task_id: &str, run_id: &str, round_id: &str, node_id: &str, attempt_id: &str) -> Result<Vec<String>> {
-        let dir = self.paths.attachments_dir(task_id, run_id, round_id, node_id, attempt_id);
+    pub fn attachment_list(
+        &self,
+        task_id: &str,
+        run_id: &str,
+        round_id: &str,
+        node_id: &str,
+        attempt_id: &str,
+    ) -> Result<Vec<String>> {
+        let dir = self
+            .paths
+            .attachments_dir(task_id, run_id, round_id, node_id, attempt_id);
         if !dir.exists() {
             return Ok(Vec::new());
         }
@@ -245,8 +322,19 @@ impl App {
         Ok(names)
     }
 
-    pub fn attachment_show(&self, task_id: &str, run_id: &str, round_id: &str, node_id: &str, attempt_id: &str, name: &str) -> Result<String> {
-        let path = self.paths.attachments_dir(task_id, run_id, round_id, node_id, attempt_id).join(name);
+    pub fn attachment_show(
+        &self,
+        task_id: &str,
+        run_id: &str,
+        round_id: &str,
+        node_id: &str,
+        attempt_id: &str,
+        name: &str,
+    ) -> Result<String> {
+        let path = self
+            .paths
+            .attachments_dir(task_id, run_id, round_id, node_id, attempt_id)
+            .join(name);
         self.artifact_show_path(path.as_path())
     }
 
@@ -258,20 +346,51 @@ impl App {
         self.read_optional_text(&self.paths.run_events_file(task_id, run_id))
     }
 
-    pub fn attempt_progress_events(&self, task_id: &str, run_id: &str, round_id: &str, node_id: &str, attempt_id: &str) -> Result<Option<String>> {
-        self.read_optional_text(&self.paths.progress_events_file(task_id, run_id, round_id, node_id, attempt_id))
+    pub fn attempt_progress_events(
+        &self,
+        task_id: &str,
+        run_id: &str,
+        round_id: &str,
+        node_id: &str,
+        attempt_id: &str,
+    ) -> Result<Option<String>> {
+        self.read_optional_text(
+            &self
+                .paths
+                .progress_events_file(task_id, run_id, round_id, node_id, attempt_id),
+        )
     }
 
-    pub fn attempt_raw_stream(&self, task_id: &str, run_id: &str, round_id: &str, node_id: &str, attempt_id: &str) -> Result<Option<String>> {
-        self.read_optional_text(&self.paths.raw_stream_file(task_id, run_id, round_id, node_id, attempt_id))
+    pub fn attempt_raw_stream(
+        &self,
+        task_id: &str,
+        run_id: &str,
+        round_id: &str,
+        node_id: &str,
+        attempt_id: &str,
+    ) -> Result<Option<String>> {
+        self.read_optional_text(
+            &self
+                .paths
+                .raw_stream_file(task_id, run_id, round_id, node_id, attempt_id),
+        )
     }
 
     pub fn workflow_snapshot_show(&self, task_id: &str, run_id: &str) -> Result<Option<String>> {
         self.read_optional_text(&self.paths.workflow_snapshot_file(task_id, run_id))
     }
 
-    pub fn worker_ref_show(&self, task_id: &str, run_id: &str, round_id: &str, node_id: &str, attempt_id: &str) -> Result<Option<String>> {
-        let path = self.paths.worker_ref_file(task_id, run_id, round_id, node_id, attempt_id);
+    pub fn worker_ref_show(
+        &self,
+        task_id: &str,
+        run_id: &str,
+        round_id: &str,
+        node_id: &str,
+        attempt_id: &str,
+    ) -> Result<Option<String>> {
+        let path = self
+            .paths
+            .worker_ref_file(task_id, run_id, round_id, node_id, attempt_id);
         if !path.exists() {
             return Ok(None);
         }
@@ -309,7 +428,10 @@ impl App {
             position -= read_len as u64;
             file.seek(SeekFrom::Start(position))?;
             file.read_exact(&mut buffer[..read_len])?;
-            newline_count += buffer[..read_len].iter().filter(|&&byte| byte == b'\n').count();
+            newline_count += buffer[..read_len]
+                .iter()
+                .filter(|&&byte| byte == b'\n')
+                .count();
             chunks.push(buffer[..read_len].to_vec());
         }
 
@@ -321,42 +443,111 @@ impl App {
         Ok(Some(lines[start..].join("\n")))
     }
 
-    pub fn attempt_log(&self, task_id: &str, run_id: &str, round_id: &str, node_id: &str, attempt_id: &str, source: LogSource) -> Result<Option<String>> {
+    pub fn attempt_log(
+        &self,
+        task_id: &str,
+        run_id: &str,
+        round_id: &str,
+        node_id: &str,
+        attempt_id: &str,
+        source: LogSource,
+    ) -> Result<Option<String>> {
         match source {
-            LogSource::ProgressEvents => self.attempt_progress_events(task_id, run_id, round_id, node_id, attempt_id),
-            LogSource::RawStream => self.attempt_raw_stream(task_id, run_id, round_id, node_id, attempt_id),
+            LogSource::ProgressEvents => {
+                self.attempt_progress_events(task_id, run_id, round_id, node_id, attempt_id)
+            }
+            LogSource::RawStream => {
+                self.attempt_raw_stream(task_id, run_id, round_id, node_id, attempt_id)
+            }
         }
     }
 
-    pub fn attempt_log_exists(&self, task_id: &str, run_id: &str, round_id: &str, node_id: &str, attempt_id: &str, source: LogSource) -> bool {
+    pub fn attempt_log_exists(
+        &self,
+        task_id: &str,
+        run_id: &str,
+        round_id: &str,
+        node_id: &str,
+        attempt_id: &str,
+        source: LogSource,
+    ) -> bool {
         match source {
-            LogSource::ProgressEvents => self.paths.progress_events_file(task_id, run_id, round_id, node_id, attempt_id).exists(),
-            LogSource::RawStream => self.paths.raw_stream_file(task_id, run_id, round_id, node_id, attempt_id).exists(),
+            LogSource::ProgressEvents => self
+                .paths
+                .progress_events_file(task_id, run_id, round_id, node_id, attempt_id)
+                .exists(),
+            LogSource::RawStream => self
+                .paths
+                .raw_stream_file(task_id, run_id, round_id, node_id, attempt_id)
+                .exists(),
         }
     }
 
-    pub fn attempt_log_tail(&self, task_id: &str, run_id: &str, round_id: &str, node_id: &str, attempt_id: &str, source: LogSource, limit: usize) -> Result<Option<String>> {
+    pub fn attempt_log_tail(
+        &self,
+        task_id: &str,
+        run_id: &str,
+        round_id: &str,
+        node_id: &str,
+        attempt_id: &str,
+        source: LogSource,
+        limit: usize,
+    ) -> Result<Option<String>> {
         Ok(self
             .attempt_log(task_id, run_id, round_id, node_id, attempt_id, source)?
             .map(|content| tail_text(&content, limit)))
     }
 
-    pub fn provider_output(&self, task_id: &str, run_id: &str, round_id: &str, node_id: &str, attempt_id: &str) -> Result<Option<String>> {
-        if let Some(progress) = self.attempt_log(task_id, run_id, round_id, node_id, attempt_id, LogSource::ProgressEvents)? {
+    pub fn provider_output(
+        &self,
+        task_id: &str,
+        run_id: &str,
+        round_id: &str,
+        node_id: &str,
+        attempt_id: &str,
+    ) -> Result<Option<String>> {
+        if let Some(progress) = self.attempt_log(
+            task_id,
+            run_id,
+            round_id,
+            node_id,
+            attempt_id,
+            LogSource::ProgressEvents,
+        )? {
             return Ok(Some(progress));
         }
-        self.attempt_log(task_id, run_id, round_id, node_id, attempt_id, LogSource::RawStream)
+        self.attempt_log(
+            task_id,
+            run_id,
+            round_id,
+            node_id,
+            attempt_id,
+            LogSource::RawStream,
+        )
     }
 
-    pub fn current_attempt_selection(&self, task_id: &str, run_id: &str) -> Result<Option<(String, String, String)>> {
+    pub fn current_attempt_selection(
+        &self,
+        task_id: &str,
+        run_id: &str,
+    ) -> Result<Option<(String, String, String)>> {
         let run = self.run_status(task_id, run_id)?;
         match (run.current_round, run.current_node, run.current_attempt) {
-            (Some(round_id), Some(node_id), Some(attempt_id)) => Ok(Some((round_id, node_id, attempt_id))),
+            (Some(round_id), Some(node_id), Some(attempt_id)) => {
+                Ok(Some((round_id, node_id, attempt_id)))
+            }
             _ => Ok(None),
         }
     }
 
-    pub fn node_runtime_summary(&self, task_id: &str, run_id: &str, round_id: &str, workflow: &WorkflowDsl, node_id: &str) -> Result<NodeRuntimeSummary> {
+    pub fn node_runtime_summary(
+        &self,
+        task_id: &str,
+        run_id: &str,
+        round_id: &str,
+        workflow: &WorkflowDsl,
+        node_id: &str,
+    ) -> Result<NodeRuntimeSummary> {
         let attempts = self.attempt_list(task_id, run_id, round_id, node_id)?;
         let latest_attempt = attempts.last().cloned();
         let outgoing_edges = workflow
@@ -379,13 +570,32 @@ impl App {
         Ok(fs::read_to_string(path)?)
     }
 
-    pub fn artifact_show(&self, task_id: &str, run_id: &str, round_id: &str, node_id: &str, attempt_id: &str, name: &str) -> Result<String> {
-        let path = self.paths.artifact_file(task_id, run_id, round_id, node_id, attempt_id, name);
+    pub fn artifact_show(
+        &self,
+        task_id: &str,
+        run_id: &str,
+        round_id: &str,
+        node_id: &str,
+        attempt_id: &str,
+        name: &str,
+    ) -> Result<String> {
+        let path = self
+            .paths
+            .artifact_file(task_id, run_id, round_id, node_id, attempt_id, name);
         self.artifact_show_path(&path)
     }
 
-    pub fn artifact_list(&self, task_id: &str, run_id: &str, round_id: &str, node_id: &str, attempt_id: &str) -> Result<Vec<String>> {
-        let dir = self.paths.artifacts_dir(task_id, run_id, round_id, node_id, attempt_id);
+    pub fn artifact_list(
+        &self,
+        task_id: &str,
+        run_id: &str,
+        round_id: &str,
+        node_id: &str,
+        attempt_id: &str,
+    ) -> Result<Vec<String>> {
+        let dir = self
+            .paths
+            .artifacts_dir(task_id, run_id, round_id, node_id, attempt_id);
         if !dir.exists() {
             return Ok(Vec::new());
         }
@@ -414,14 +624,17 @@ impl App {
         write_json(&self.paths.run_file(task_id, run_id), &run)?;
 
         if let Some(round_id) = &run.current_round {
-            let mut round: RoundState = read_json(&self.paths.round_file(task_id, run_id, round_id))?;
+            let mut round: RoundState =
+                read_json(&self.paths.round_file(task_id, run_id, round_id))?;
             round.status = RunStatus::Completed;
             round.outcome = Some(RunOutcome::Killed);
             validate_round_state(&round)?;
             write_json(&self.paths.round_file(task_id, run_id, round_id), &round)?;
 
             if let (Some(node_id), Some(attempt_id)) = (&run.current_node, &run.current_attempt) {
-                let node_path = self.paths.node_file(task_id, run_id, round_id, node_id, attempt_id);
+                let node_path = self
+                    .paths
+                    .node_file(task_id, run_id, round_id, node_id, attempt_id);
                 if node_path.exists() {
                     let mut node: NodeState = read_json(&node_path)?;
                     node.status = RunStatus::Completed;
@@ -436,8 +649,19 @@ impl App {
         Ok(run)
     }
 
-    pub fn run_open_session(&self, task_id: &str, run_id: &str, round_id: &str, node_id: &str, attempt_id: &str) -> Result<String> {
-        let worker_ref: WorkerRefState = read_json(&self.paths.worker_ref_file(task_id, run_id, round_id, node_id, attempt_id))?;
+    pub fn run_open_session(
+        &self,
+        task_id: &str,
+        run_id: &str,
+        round_id: &str,
+        node_id: &str,
+        attempt_id: &str,
+    ) -> Result<String> {
+        let worker_ref: WorkerRefState = read_json(
+            &self
+                .paths
+                .worker_ref_file(task_id, run_id, round_id, node_id, attempt_id),
+        )?;
         validate_worker_ref_state(&worker_ref)?;
         if !worker_ref.supports_open_session {
             bail!("provider does not support open-session");
@@ -466,11 +690,21 @@ impl App {
         orchestrator_run_retry(self, task_id, run_id)
     }
 
-    pub fn run_start(&self, task_id: &str, workflow_override: Option<&Utf8Path>) -> Result<RunState> {
+    pub fn run_start(
+        &self,
+        task_id: &str,
+        workflow_override: Option<&Utf8Path>,
+    ) -> Result<RunState> {
         orchestrator_run_start(self, task_id, workflow_override)
     }
 
-    pub fn decide(&self, workflow: WorkflowDsl, run: &RunState, round: &RoundState, node: &NodeState) -> Result<ControlDecision> {
+    pub fn decide(
+        &self,
+        workflow: WorkflowDsl,
+        run: &RunState,
+        round: &RoundState,
+        node: &NodeState,
+    ) -> Result<ControlDecision> {
         let validated = validate_workflow(workflow)?;
         Ok(decide_next_step(&validated, run, round, node))
     }
@@ -503,10 +737,12 @@ impl App {
                 let file = path.join("task.json");
                 let run_file = path.join("run.json");
                 if file.exists() {
-                    let utf8 = Utf8PathBuf::from_path_buf(file).map_err(|_| anyhow!("path is not valid UTF-8"))?;
+                    let utf8 = Utf8PathBuf::from_path_buf(file)
+                        .map_err(|_| anyhow!("path is not valid UTF-8"))?;
                     items.push(read_json(&utf8)?);
                 } else if run_file.exists() {
-                    let utf8 = Utf8PathBuf::from_path_buf(run_file).map_err(|_| anyhow!("path is not valid UTF-8"))?;
+                    let utf8 = Utf8PathBuf::from_path_buf(run_file)
+                        .map_err(|_| anyhow!("path is not valid UTF-8"))?;
                     items.push(read_json(&utf8)?);
                 }
             }
@@ -514,7 +750,11 @@ impl App {
         Ok(items)
     }
 
-    fn read_json_dir_sorted_by_file<T: DeserializeOwned>(&self, dir: &Utf8Path, file_name: &str) -> Result<Vec<T>> {
+    fn read_json_dir_sorted_by_file<T: DeserializeOwned>(
+        &self,
+        dir: &Utf8Path,
+        file_name: &str,
+    ) -> Result<Vec<T>> {
         if !dir.exists() {
             return Ok(Vec::new());
         }
@@ -530,7 +770,8 @@ impl App {
             if path.is_dir() {
                 let file = path.join(file_name);
                 if file.exists() {
-                    let utf8 = Utf8PathBuf::from_path_buf(file).map_err(|_| anyhow!("path is not valid UTF-8"))?;
+                    let utf8 = Utf8PathBuf::from_path_buf(file)
+                        .map_err(|_| anyhow!("path is not valid UTF-8"))?;
                     items.push(read_json(&utf8)?);
                 }
             }
@@ -576,21 +817,23 @@ impl App {
 
     pub fn find_active_or_resumable_run_id(&self, task_id: &str) -> Result<Option<String>> {
         let runs = self.run_list(task_id)?;
-        if let Some(run) = runs
-            .iter()
-            .rev()
-            .find(|run| run.status == RunStatus::Running && self.paths.run_progress_file(task_id, &run.id).exists())
-        {
-            return Ok(Some(run.id.clone()));
-        }
-        if let Some(run) = runs.iter().rev().find(|run| run.status == RunStatus::Running) {
+        if let Some(run) = runs.iter().rev().find(|run| {
+            run.status == RunStatus::Running
+                && self.paths.run_progress_file(task_id, &run.id).exists()
+        }) {
             return Ok(Some(run.id.clone()));
         }
         if let Some(run) = runs
             .iter()
             .rev()
-            .find(|run| run.status == RunStatus::Paused && matches!(run.pause_reason, Some(PauseReason::ProcessInterrupted)))
+            .find(|run| run.status == RunStatus::Running)
         {
+            return Ok(Some(run.id.clone()));
+        }
+        if let Some(run) = runs.iter().rev().find(|run| {
+            run.status == RunStatus::Paused
+                && matches!(run.pause_reason, Some(PauseReason::ProcessInterrupted))
+        }) {
             return Ok(Some(run.id.clone()));
         }
         Ok(runs.into_iter().last().map(|run| run.id))
@@ -598,7 +841,9 @@ impl App {
 
     fn find_resumable_run_id(&self, task_id: &str) -> Result<Option<String>> {
         for run in self.run_list(task_id)?.into_iter().rev() {
-            if run.status == RunStatus::Paused && matches!(run.pause_reason, Some(PauseReason::ProcessInterrupted)) {
+            if run.status == RunStatus::Paused
+                && matches!(run.pause_reason, Some(PauseReason::ProcessInterrupted))
+            {
                 return Ok(Some(run.id));
             }
         }
@@ -620,7 +865,10 @@ mod tests {
         std::fs::create_dir_all(repo_root.join(".gold-band/logs").as_std_path()).unwrap();
         std::fs::write(
             repo_root.join(".gold-band/logs/runtime.log").as_std_path(),
-            (1..=1000).map(|n| format!("line-{n}")).collect::<Vec<_>>().join("\n"),
+            (1..=1000)
+                .map(|n| format!("line-{n}"))
+                .collect::<Vec<_>>()
+                .join("\n"),
         )
         .unwrap();
 
@@ -631,8 +879,12 @@ mod tests {
 
     #[test]
     fn user_console_theme_is_persisted() {
-        static HOME_ENV_LOCK: std::sync::OnceLock<std::sync::Mutex<()>> = std::sync::OnceLock::new();
-        let _home_guard = HOME_ENV_LOCK.get_or_init(|| std::sync::Mutex::new(())).lock().unwrap();
+        static HOME_ENV_LOCK: std::sync::OnceLock<std::sync::Mutex<()>> =
+            std::sync::OnceLock::new();
+        let _home_guard = HOME_ENV_LOCK
+            .get_or_init(|| std::sync::Mutex::new(()))
+            .lock()
+            .unwrap();
         let temp = tempdir().unwrap();
         let repo_root = Utf8PathBuf::from_path_buf(temp.path().to_path_buf()).unwrap();
         let home_dir = repo_root.join("fake-home");

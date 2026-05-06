@@ -83,6 +83,20 @@
 
 ---
 
-## 7. 一句话总结
+## 7. Tauri 2.x MVP 对应实现
+
+MVP 中设置页由 `web/src/pages/SettingsPage.tsx` 实现，通过 Tauri command `save_desktop_preferences` 保存用户偏好。
+
+当前实现规则：
+- 主题字段保存为 `desktopTheme`，支持 `light`、`dark`、`system`。
+- 语言字段保存为 `desktopLanguage`，支持 `zh-cn`、`en`。
+- 主题使用 segmented control，语言使用下拉选择，选择后立即调用 `save_desktop_preferences` 保存并预览。
+- 首次启动默认主题为 `dark`，以匹配当前 desktop dark 原型；用户显式选择 `system` 后再跟随操作系统主题。
+- 设置属于用户级桌面偏好，不写入 task / run / round canonical state。
+- 2026-05-03 起设置页使用 Tailwind CSS v4 + shadcn/ui Card、Button、Select、Badge 等现成组件重构；主题和语言选择后立即保存并预览的行为不变。
+
+---
+
+## 8. 一句话总结
 
 > 当前设置页只解决“我想用什么主题和语言”，不承载任务编排、provider 配置或 workflow 编辑能力。

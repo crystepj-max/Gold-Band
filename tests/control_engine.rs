@@ -36,6 +36,7 @@ fn sample_round() -> RoundState {
         trigger: gold_band::domain::RoundTrigger::Initial,
         repair_loops_used: 0,
         started_at: "0Z".to_string(),
+        trace: Vec::new(),
     }
 }
 
