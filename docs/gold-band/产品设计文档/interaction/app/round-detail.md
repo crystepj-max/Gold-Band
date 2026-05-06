@@ -99,14 +99,16 @@ P2  表示 2 个 attachments
 ### 5.1 选中 round 时
 如果当前选中对象是 round，左下采用分 tab 信息架构：
 - `上下文`：当前 task 的 requirement 摘要、当前 round 的可读状态摘要，避免直接把完整 `round.json` 当主内容展示。
-- `运行记录`：run / round 事件、progress events、runtime log 摘要，只保留与时间线排障相关的内容。
+- `编排事件`：run / round / node lifecycle events，回答“编排器发生了什么、为什么进入下一步”。
+- `节点进度`：仅在选中 node 且存在 attempt progress events 时出现，回答“当前 node attempt 内部执行到了哪里”。
 - `产物` / `附件`：仅在选中 node 且存在对应内容时展示。
 
 内容顺序建议：
 
 ```text
 Context: Requirement -> Round Summary
-Activity: Events -> Progress Events -> Runtime Log
+Orchestration Events: Events
+Node Progress: Progress Events / Runtime Log
 ```
 
 ### 5.2 选中 node 时
@@ -121,7 +123,8 @@ Activity: Events -> Progress Events -> Runtime Log
 
 ```text
 Context: Requirement -> Round Summary -> Selected Node
-Activity: Events filtered by node -> Progress Events
+Orchestration Events: Events filtered by node
+Node Progress: Progress Events
 Artifacts
 Attachments
 ```

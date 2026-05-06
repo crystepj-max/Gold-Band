@@ -24,7 +24,7 @@ interface RoundDetailPageProps {
   onSelect: (selection: RoundSelection) => void;
 }
 
-type RoundTab = 'requirement' | 'log' | 'artifacts' | 'attachments';
+type RoundTab = 'requirement' | 'events' | 'progress' | 'artifacts' | 'attachments';
 
 export function RoundDetailPage({ vm, selection, onSelect }: RoundDetailPageProps) {
   const { t } = useTranslation();
@@ -35,11 +35,12 @@ export function RoundDetailPage({ vm, selection, onSelect }: RoundDetailPageProp
   const pinnedPanelWidth = detailOpen && detailPinned ? 'clamp(360px, 34vw, 520px)' : undefined;
   const streamGroups = useMemo(() => groupStream(vm?.stream ?? []), [vm?.stream]);
   const availableTabs = useMemo(() => {
-    const tabs: RoundTab[] = ['requirement', 'log'];
+    const tabs: RoundTab[] = ['requirement', 'events'];
+    if (selectedNodeId && streamGroups.progress.length > 0) tabs.push('progress');
     if (selectedNodeId && streamGroups.artifacts.length > 0) tabs.push('artifacts');
     if (selectedNodeId && streamGroups.attachments.length > 0) tabs.push('attachments');
     return tabs;
-  }, [selectedNodeId, streamGroups.artifacts.length, streamGroups.attachments.length]);
+  }, [selectedNodeId, streamGroups.progress.length, streamGroups.artifacts.length, streamGroups.attachments.length]);
 
   useEffect(() => {
     if (!availableTabs.includes(activeTab)) setActiveTab('requirement');
@@ -119,14 +120,16 @@ export function RoundDetailPage({ vm, selection, onSelect }: RoundDetailPageProp
                 <div className="flex flex-wrap items-center gap-3">
                   <TabsList className="h-9">
                     <TabsTrigger value="requirement" className="h-7 px-3">{t('roundDetail.contextTab')}</TabsTrigger>
-                    <TabsTrigger value="log" className="h-7 px-3">{t('roundDetail.activityTab')}</TabsTrigger>
+                    <TabsTrigger value="events" className="h-7 px-3">{t('roundDetail.eventsTab')}</TabsTrigger>
+                    {availableTabs.includes('progress') ? <TabsTrigger value="progress" className="h-7 px-3">{t('roundDetail.progressTab')}</TabsTrigger> : null}
                     {availableTabs.includes('artifacts') ? <TabsTrigger value="artifacts" className="h-7 px-3">{t('roundDetail.artifactTab', { count: streamGroups.artifacts.length })}</TabsTrigger> : null}
                     {availableTabs.includes('attachments') ? <TabsTrigger value="attachments" className="h-7 px-3">{t('roundDetail.attachmentTab', { count: streamGroups.attachments.length })}</TabsTrigger> : null}
                   </TabsList>
                   <span className="min-w-0 truncate font-mono text-xs text-muted-foreground">{selectedNodeId ? t('roundDetail.selectedNode', { node: selectedNodeId }) : t('roundDetail.roundContext')}</span>
                 </div>
                 <TabsContent value="requirement" className="m-0 min-h-0" />
-                <TabsContent value="log" className="m-0 min-h-0" />
+                <TabsContent value="events" className="m-0 min-h-0" />
+                <TabsContent value="progress" className="m-0 min-h-0" />
                 <TabsContent value="artifacts" className="m-0 min-h-0" />
                 <TabsContent value="attachments" className="m-0 min-h-0" />
               </Tabs>
@@ -213,16 +216,18 @@ function StreamItem({ item, onOpenDetail }: { item: StreamItemVm; onOpenDetail: 
 function groupStream(items: StreamItemVm[]) {
   return {
     requirement: items.filter((item) => item.kind === 'requirement' || item.kind === 'round' || item.kind === 'node'),
-    log: items.filter((item) => item.kind === 'event' || item.kind === 'log'),
+    events: items.filter((item) => item.kind === 'event'),
+    progress: items.filter((item) => item.kind === 'log'),
     artifacts: items.filter((item) => item.kind === 'artifact'),
     attachments: items.filter((item) => item.kind === 'attachment'),
   };
 }
 
 function tabItems(tab: RoundTab, groups: ReturnType<typeof groupStream>) {
+  if (tab === 'events') return groups.events;
+  if (tab === 'progress') return groups.progress;
   if (tab === 'artifacts') return groups.artifacts;
   if (tab === 'attachments') return groups.attachments;
-  if (tab === 'log') return groups.log;
   return groups.requirement;
 }
 
