@@ -12,6 +12,7 @@ import type {
   AppBootstrapVm,
   ContentVm,
   DesktopLanguage,
+  DesktopFontPreference,
   DesktopThemePreference,
   PreferencesVm,
   RoundDetailVm,
@@ -101,6 +102,6 @@ export function showWorkerRef(taskId: string, runId: string, roundId: string, no
   return command<ContentVm>('show_worker_ref', { taskId, runId, roundId, nodeId, attemptId }, { ...mockContent, title: attemptId, kind: 'worker-ref' });
 }
 
-export function saveDesktopPreferences(theme: DesktopThemePreference, language: DesktopLanguage) {
-  return command<PreferencesVm>('save_desktop_preferences', { theme, language }, { theme, language });
+export function saveDesktopPreferences(theme: DesktopThemePreference, language: DesktopLanguage, font: DesktopFontPreference) {
+  return command<PreferencesVm>('save_desktop_preferences', { theme, language, font }, { theme, language, font });
 }

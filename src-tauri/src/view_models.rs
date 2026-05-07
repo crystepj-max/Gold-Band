@@ -2,7 +2,7 @@ use std::{collections::HashMap, fs};
 
 use anyhow::Result;
 use gold_band::app::{App, TaskSummary};
-use gold_band::config::{DesktopLanguage, DesktopThemePreference};
+use gold_band::config::{DesktopFontPreference, DesktopLanguage, DesktopThemePreference};
 use gold_band::domain::{NodeOutcome, RunOutcome, RunStatus};
 use gold_band::dsl::{NodeDsl, WorkflowDsl};
 use gold_band::runtime::{NodeState, RoundState, RoundTraceStep, RunState};
@@ -16,6 +16,7 @@ use serde::{Deserialize, Serialize};
 pub struct PreferencesVm {
     pub theme: DesktopThemePreference,
     pub language: DesktopLanguage,
+    pub font: DesktopFontPreference,
 }
 
 #[derive(Debug, Clone, Serialize)]
@@ -241,15 +242,27 @@ pub enum RoundSelectionInput {
     },
 }
 
-pub fn preferences_vm(theme: DesktopThemePreference, language: DesktopLanguage) -> PreferencesVm {
-    PreferencesVm { theme, language }
+pub fn preferences_vm(
+    theme: DesktopThemePreference,
+    language: DesktopLanguage,
+    font: DesktopFontPreference,
+) -> PreferencesVm {
+    PreferencesVm {
+        theme,
+        language,
+        font,
+    }
 }
 
 pub fn bootstrap_vm(app: &App, recent_workspaces: Vec<String>) -> AppBootstrapVm {
     AppBootstrapVm {
         repo_root: app.paths.repo_root.to_string(),
         recent_workspaces,
-        preferences: preferences_vm(app.config.desktop_theme, app.config.desktop_language),
+        preferences: preferences_vm(
+            app.config.desktop_theme,
+            app.config.desktop_language,
+            app.config.desktop_font,
+        ),
     }
 }
 

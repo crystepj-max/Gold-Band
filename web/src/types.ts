@@ -1,11 +1,13 @@
 export type DesktopThemePreference = 'system' | 'light' | 'light-warm' | 'dark' | 'black';
 export type ConcreteDesktopTheme = Exclude<DesktopThemePreference, 'system'>;
 export type DesktopThemeMode = 'light' | 'dark';
+export type DesktopFontPreference = 'geist' | 'inter' | 'ibm-plex';
 export type DesktopLanguage = 'zh-cn' | 'en';
 
 export interface PreferencesVm {
   theme: DesktopThemePreference;
   language: DesktopLanguage;
+  font: DesktopFontPreference;
 }
 
 export interface AppBootstrapVm {

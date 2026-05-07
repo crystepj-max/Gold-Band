@@ -1,5 +1,5 @@
 use camino::Utf8PathBuf;
-use gold_band::config::{DesktopLanguage, DesktopThemePreference, RuntimeConfig};
+use gold_band::config::{DesktopFontPreference, DesktopLanguage, DesktopThemePreference, RuntimeConfig};
 use tauri::State;
 use tauri_plugin_dialog::DialogExt;
 
@@ -203,15 +203,16 @@ pub fn save_desktop_preferences(
     state: State<'_, DesktopState>,
     theme: DesktopThemePreference,
     language: DesktopLanguage,
+    font: DesktopFontPreference,
 ) -> CommandResult<PreferencesVm> {
     let context = state.context().map_err(command_error)?;
     let app = context.app();
     let user_config = app
-        .set_user_desktop_preferences(theme, language)
+        .set_user_desktop_preferences(theme, language, font)
         .map_err(command_error)?;
     let config = RuntimeConfig::default().apply_user_config(&user_config);
     state.update_config(config).map_err(command_error)?;
-    Ok(preferences_vm(theme, language))
+    Ok(preferences_vm(theme, language, font))
 }
 
 fn command_error(error: anyhow::Error) -> String {

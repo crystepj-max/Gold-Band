@@ -233,11 +233,11 @@ MVP 范围：
 
 ## 16. 2026-05-07 设置页主题选择器记录
 
-本轮将设置页主题选择从 segmented Light / Dark / System 升级为 `Sync with OS` 开关 + Light/Dark 分组主题预览卡：
-- `Sync with OS` 开启时保存 `desktopTheme = system`，并随操作系统浅色/深色变化自动解析主题。
+本轮将设置页主题选择从 segmented Light / Dark / System 升级为 `Sync with OS` 开关 + 条件化主题摘要 + 抽屉式主题选择：
+- `Sync with OS` 开启时保存 `desktopTheme = system`，并随操作系统浅色/深色变化自动解析到用户最近选择的对应模式主题。
 - Light 分组提供白蓝默认浅色和暖色浅色；白蓝配色成为新的浅色默认。
-- Dark 分组提供 Gold Band 暖金深色和新增终端黑主题。
-- 主题 token 继续沿用 Tailwind CSS v4 + shadcn/ui 的 semantic CSS variables，不引入 command bar、terminal input 或聊天入口。
+- Dark 分组提供石墨香槟 Gold Band 深色和新增终端黑主题。
+- 主题和字体 token 继续沿用 Tailwind CSS v4 + shadcn/ui 的 semantic CSS variables；默认字体为 Geist，并保留 Inter、IBM Plex 作为精选选项，不引入 command bar、terminal input 或聊天入口。
 
 ---
 

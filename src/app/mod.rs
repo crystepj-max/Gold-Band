@@ -11,7 +11,8 @@ use crate::artifacts::{
     validate_exec_result, validate_verify_result,
 };
 use crate::config::{
-    ConsoleThemeName, DesktopLanguage, DesktopThemePreference, RuntimeConfig, UserConfig,
+    ConsoleThemeName, DesktopFontPreference, DesktopLanguage, DesktopThemePreference, RuntimeConfig,
+    UserConfig,
 };
 use crate::control::{ControlDecision, decide_next_step};
 use crate::domain::{NodeOutcome, RunOutcome};
@@ -131,10 +132,12 @@ impl App {
         &self,
         theme: DesktopThemePreference,
         language: DesktopLanguage,
+        font: DesktopFontPreference,
     ) -> Result<UserConfig> {
         let mut config = self.load_user_config()?;
         config.desktop_theme = Some(theme);
         config.desktop_language = Some(language);
+        config.desktop_font = Some(font);
         self.save_user_config(&config)?;
         Ok(config)
     }

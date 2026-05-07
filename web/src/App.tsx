@@ -22,9 +22,10 @@ import { TaskListPage } from './pages/TaskListPage';
 import { WorkflowPage } from './pages/WorkflowPage';
 import { WorkspaceSelectPage } from './pages/WorkspaceSelectPage';
 import { pushRoute, replaceRoute, routeFromPath } from './routes';
-import { applyTheme } from './theme';
+import { applyFont, applyTheme } from './theme';
 import type {
   AppBootstrapVm,
+  DesktopFontPreference,
   DesktopLanguage,
   DesktopThemePreference,
   PreferencesVm,
@@ -36,7 +37,7 @@ import type {
   WorkflowVm,
 } from './types';
 
-const defaultPreferences: PreferencesVm = { theme: 'system', language: 'zh-cn' };
+const defaultPreferences: PreferencesVm = { theme: 'system', language: 'zh-cn', font: 'geist' };
 type RefreshMode = 'initial' | 'manual' | 'background';
 type VisibleRefreshMode = Exclude<RefreshMode, 'background'>;
 
@@ -68,6 +69,10 @@ export function App() {
     colorScheme.addEventListener('change', syncSystemTheme);
     return () => colorScheme.removeEventListener('change', syncSystemTheme);
   }, [preferences.theme]);
+
+  useEffect(() => {
+    applyFont(preferences.font);
+  }, [preferences.font]);
 
   useEffect(() => {
     void i18n.changeLanguage(i18nLanguage(preferences.language));
@@ -202,10 +207,10 @@ export function App() {
     }
   };
 
-  const onSavePreferences = async (theme: DesktopThemePreference, language: DesktopLanguage) => {
+  const onSavePreferences = async (theme: DesktopThemePreference, language: DesktopLanguage, font: DesktopFontPreference) => {
     setBusy(true);
     try {
-      const saved = await saveDesktopPreferences(theme, language);
+      const saved = await saveDesktopPreferences(theme, language, font);
       setBootstrap((current) => current ? { ...current, preferences: saved } : { repoRoot: '', recentWorkspaces: [], preferences: saved });
       setTaskList(null);
       setWorkflow(null);
