@@ -1,4 +1,3 @@
-import { useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import type { TaskPage } from '../types';
 import { breadcrumbs } from '../state/navigation';
@@ -12,7 +11,6 @@ interface BreadcrumbsProps {
 
 export function Breadcrumbs({ page, onNavigate }: BreadcrumbsProps) {
   const { t } = useTranslation();
-  const [hoveredKey, setHoveredKey] = useState<string | null>(null);
   const items = breadcrumbs(page);
   return (
     <Breadcrumb className="px-8 pt-4 font-mono text-xs">
@@ -21,7 +19,6 @@ export function Breadcrumbs({ page, onNavigate }: BreadcrumbsProps) {
           const active = index === items.length - 1;
           const itemPage = item.page;
           const interactive = itemPage && !active;
-          const selected = hoveredKey === item.key;
           const label = item.labelKey ? t(item.labelKey) : item.label;
           return (
             <BreadcrumbItem key={`${item.key}-${index}`}>
@@ -32,19 +29,14 @@ export function Breadcrumbs({ page, onNavigate }: BreadcrumbsProps) {
               ) : interactive ? (
                 <button
                   type="button"
-                  className="-mx-1 inline-flex h-6 items-center rounded-sm px-1.5 py-0 font-mono text-xs focus-visible:outline-none"
-                  onBlur={() => setHoveredKey(null)}
+                  className="group -mx-1 inline-flex h-6 items-center rounded-sm px-1.5 py-0 font-mono text-xs focus-visible:outline-none"
                   onClick={() => onNavigate(itemPage)}
-                  onFocus={() => setHoveredKey(item.key)}
-                  onMouseEnter={() => setHoveredKey(item.key)}
-                  onMouseLeave={() => setHoveredKey(null)}
                 >
                   <span
                     className={cn(
-                      'relative inline-flex rounded-sm px-0.5 pb-1 transition-colors after:absolute after:inset-x-0 after:bottom-0 after:h-px after:rounded-full',
-                      selected ? 'after:bg-primary' : 'text-muted-foreground after:bg-transparent',
+                      'relative inline-flex rounded-sm px-0.5 pb-1 text-muted-foreground transition-colors after:absolute after:inset-x-0 after:bottom-0 after:h-px after:rounded-full after:bg-transparent',
+                      'group-hover:text-foreground group-hover:after:bg-primary group-focus-visible:text-foreground group-focus-visible:after:bg-primary',
                     )}
-                    style={selected ? { WebkitTextFillColor: 'var(--foreground)' } : undefined}
                   >
                     {label}
                   </span>

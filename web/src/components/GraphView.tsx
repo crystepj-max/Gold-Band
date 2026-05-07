@@ -12,6 +12,7 @@ import {
   type Edge,
   type Node,
   type NodeProps,
+  type Viewport,
 } from '@xyflow/react';
 import type { GraphNodeVm, GraphVm } from '../types';
 import { displayStatus } from '../i18n';
@@ -58,6 +59,35 @@ export function GraphView({ graph, selectedNodeId, onNodeSelect, onNodeOpenDetai
   const mode: GraphMode = variant === 'actual' ? 'interactive' : 'readonly';
   const { nodes, edges } = useMemo(() => createLayoutedGraph(graph, selectedNodeId, mode, t), [graph, selectedNodeId, mode, t]);
   const [menu, setMenu] = useState<{ x: number; y: number; node: GraphNodeVm } | null>(null);
+  const [containerElement, setContainerElement] = useState<HTMLDivElement | null>(null);
+  const [viewportSize, setViewportSize] = useState({ width: 0, height: 0 });
+  const [viewport, setViewport] = useState<Viewport>({ x: 0, y: 0, zoom: 1 });
+  const fitViewOptions = useMemo(() => ({ padding: variant === 'workflow' ? 0.2 : 0.18, maxZoom: variant === 'workflow' ? WORKFLOW_FIT_MAX_ZOOM : ACTUAL_FIT_MAX_ZOOM }), [variant]);
+  const graphSignature = useMemo(() => `${variant}:${graph.nodes.map((node) => node.id).join('|')}:${graph.edges.map((edge) => `${edge.from}>${edge.to}`).join('|')}`, [graph.nodes, graph.edges, variant]);
+  const graphBounds = useMemo(() => boundsForNodes(nodes), [graphSignature]);
+  const centeredViewport = useMemo(() => {
+    if (viewportSize.width === 0 || viewportSize.height === 0 || !graphBounds) return null;
+    return calculateCenteredViewport(graphBounds, viewportSize, fitViewOptions.padding, fitViewOptions.maxZoom);
+  }, [fitViewOptions.maxZoom, fitViewOptions.padding, graphBounds, viewportSize.height, viewportSize.width]);
+
+  useEffect(() => {
+    if (!containerElement) return undefined;
+    const updateSize = (width: number, height: number) => {
+      const next = { width: Math.round(width), height: Math.round(height) };
+      setViewportSize((current) => (current.width === next.width && current.height === next.height ? current : next));
+    };
+    updateSize(containerElement.clientWidth, containerElement.clientHeight);
+    const observer = new ResizeObserver(([entry]) => {
+      if (!entry) return;
+      updateSize(entry.contentRect.width, entry.contentRect.height);
+    });
+    observer.observe(containerElement);
+    return () => observer.disconnect();
+  }, [containerElement]);
+
+  useEffect(() => {
+    if (centeredViewport) setViewport(centeredViewport);
+  }, [centeredViewport, graphSignature]);
 
   useEffect(() => {
     if (!menu) return undefined;
@@ -89,13 +119,13 @@ export function GraphView({ graph, selectedNodeId, onNodeSelect, onNodeOpenDetai
   }
 
   return (
-    <div className={cn('relative min-w-0 overflow-hidden rounded-xl border bg-muted/15', variant === 'workflow' ? 'h-[360px]' : 'h-full min-h-[300px]')}>
+    <div ref={setContainerElement} className={cn('relative min-w-0 overflow-hidden rounded-xl border bg-muted/15', variant === 'workflow' ? 'h-[360px]' : 'h-full min-h-0')}>
       <ReactFlow
         nodes={nodes}
         edges={edges}
         nodeTypes={nodeTypes}
-        fitView
-        fitViewOptions={{ padding: variant === 'workflow' ? 0.2 : 0.18, maxZoom: variant === 'workflow' ? WORKFLOW_FIT_MAX_ZOOM : ACTUAL_FIT_MAX_ZOOM }}
+        viewport={viewport}
+        onViewportChange={setViewport}
         minZoom={MIN_ZOOM}
         maxZoom={MAX_ZOOM}
         nodesDraggable={false}
@@ -112,7 +142,7 @@ export function GraphView({ graph, selectedNodeId, onNodeSelect, onNodeOpenDetai
         className="workflow-graph"
       >
         <Background color="var(--border)" gap={28} size={1} />
-        <Controls showInteractive={false} position="bottom-right" />
+        <Controls showInteractive={false} fitViewOptions={fitViewOptions} position="bottom-right" />
       </ReactFlow>
       <div className="pointer-events-none absolute left-4 top-4 rounded-full border bg-card/85 px-3 py-1 font-mono text-[10px] uppercase tracking-[0.18em] text-muted-foreground shadow-sm backdrop-blur">
         {mode === 'interactive' ? t('graph.executionGraph') : t('graph.workflowBlueprint')}
@@ -132,6 +162,29 @@ export function GraphView({ graph, selectedNodeId, onNodeSelect, onNodeOpenDetai
       ) : null}
     </div>
   );
+}
+
+function boundsForNodes(nodes: Node<WorkflowNodeData>[]) {
+  if (nodes.length === 0) return null;
+  const left = Math.min(...nodes.map((node) => node.position.x));
+  const top = Math.min(...nodes.map((node) => node.position.y));
+  const right = Math.max(...nodes.map((node) => node.position.x + NODE_WIDTH));
+  const bottom = Math.max(...nodes.map((node) => node.position.y + NODE_HEIGHT));
+  return { x: left, y: top, width: right - left, height: bottom - top };
+}
+
+function calculateCenteredViewport(bounds: { x: number; y: number; width: number; height: number }, viewport: { width: number; height: number }, padding: number, maxZoom: number): Viewport {
+  const availableWidth = viewport.width * Math.max(0.1, 1 - padding * 2);
+  const availableHeight = viewport.height * Math.max(0.1, 1 - padding * 2);
+  const fitZoom = Math.min(availableWidth / bounds.width, availableHeight / bounds.height);
+  const zoom = Math.min(Math.max(fitZoom, MIN_ZOOM), maxZoom, MAX_ZOOM);
+  const centerX = bounds.x + bounds.width / 2;
+  const centerY = bounds.y + bounds.height / 2;
+  return {
+    x: viewport.width / 2 - centerX * zoom,
+    y: viewport.height / 2 - centerY * zoom,
+    zoom,
+  };
 }
 
 function createLayoutedGraph(graph: GraphVm, selectedNodeId: string | null | undefined, mode: GraphMode, t: TFunction) {

@@ -1,6 +1,8 @@
-use gold_band::console::commands::{parse_console_command, suggest_console_commands, ConsoleLocalCommand, ParsedConsoleCommand};
 use gold_band::command::{Command, RunCommand};
 use gold_band::config::ConsoleThemeName;
+use gold_band::console::commands::{
+    ConsoleLocalCommand, ParsedConsoleCommand, parse_console_command, suggest_console_commands,
+};
 
 #[test]
 fn parses_run_start_command() {
@@ -58,7 +60,9 @@ fn parses_local_commands() {
         _ => panic!("unexpected cyber theme parse result"),
     }
     match theme_set_high_contrast {
-        ParsedConsoleCommand::Local(ConsoleLocalCommand::ThemeSet(ConsoleThemeName::HighContrast)) => {}
+        ParsedConsoleCommand::Local(ConsoleLocalCommand::ThemeSet(
+            ConsoleThemeName::HighContrast,
+        )) => {}
         _ => panic!("unexpected high contrast theme parse result"),
     }
     match continue_cmd {

@@ -2,8 +2,8 @@ use camino::Utf8PathBuf;
 use gold_band::app::App;
 use gold_band::domain::SessionMode;
 use gold_band::provider::{
-    DoctorResult, PrimaryArtifactPayload, ProviderAdapter, ProviderCapabilities, ProviderInfo, ProviderResultPayload, ProviderRunResult,
-    ProviderRunStatus, WorkerInvocation, SessionRef,
+    DoctorResult, PrimaryArtifactPayload, ProviderAdapter, ProviderCapabilities, ProviderInfo,
+    ProviderResultPayload, ProviderRunResult, ProviderRunStatus, SessionRef, WorkerInvocation,
 };
 use tempfile::tempdir;
 
@@ -27,7 +27,10 @@ impl ProviderAdapter for LoopingProvider {
     }
 
     fn doctor(&self) -> DoctorResult {
-        DoctorResult { available: true, reason: None }
+        DoctorResult {
+            available: true,
+            reason: None,
+        }
     }
 
     fn run_worker(&self, req: WorkerInvocation) -> anyhow::Result<ProviderRunResult> {
@@ -71,7 +74,10 @@ impl ProviderAdapter for LoopingProvider {
         Ok(())
     }
 
-    fn build_continue_command(&self, worker_ref: &gold_band::domain::SessionRef) -> anyhow::Result<Option<String>> {
+    fn build_continue_command(
+        &self,
+        worker_ref: &gold_band::domain::SessionRef,
+    ) -> anyhow::Result<Option<String>> {
         Ok(worker_ref.open_command.clone())
     }
 }
@@ -82,11 +88,34 @@ fn acceptance_loop_creates_new_round_and_commands_work() {
     let repo_root = Utf8PathBuf::from_path_buf(temp.path().to_path_buf()).unwrap();
     let task_id = "task-001";
 
-    std::fs::create_dir_all(repo_root.join(".gold-band/tasks/task-001/authoring").as_std_path()).unwrap();
+    std::fs::create_dir_all(
+        repo_root
+            .join(".gold-band/tasks/task-001/authoring")
+            .as_std_path(),
+    )
+    .unwrap();
     std::fs::create_dir_all(repo_root.join(".gold-band/presets/profiles").as_std_path()).unwrap();
-    std::fs::write(repo_root.join(".gold-band/presets/profiles/developer.md").as_std_path(), "developer profile").unwrap();
-    std::fs::write(repo_root.join(".gold-band/presets/profiles/verifier.md").as_std_path(), "verifier profile").unwrap();
-    std::fs::write(repo_root.join(".gold-band/tasks/task-001/authoring/requirement.md").as_std_path(), "Implement feature").unwrap();
+    std::fs::write(
+        repo_root
+            .join(".gold-band/presets/profiles/developer.md")
+            .as_std_path(),
+        "developer profile",
+    )
+    .unwrap();
+    std::fs::write(
+        repo_root
+            .join(".gold-band/presets/profiles/verifier.md")
+            .as_std_path(),
+        "verifier profile",
+    )
+    .unwrap();
+    std::fs::write(
+        repo_root
+            .join(".gold-band/tasks/task-001/authoring/requirement.md")
+            .as_std_path(),
+        "Implement feature",
+    )
+    .unwrap();
     std::fs::write(
         repo_root.join(".gold-band/tasks/task-001/authoring/workflow.json").as_std_path(),
         r#"{
@@ -110,21 +139,62 @@ fn acceptance_loop_creates_new_round_and_commands_work() {
         }"#,
     )
     .unwrap();
-    std::fs::write(repo_root.join(".gold-band/tasks/task-001/task.json").as_std_path(), r#"{"version":"0.1","id":"task-001"}"#).unwrap();
+    std::fs::write(
+        repo_root
+            .join(".gold-band/tasks/task-001/task.json")
+            .as_std_path(),
+        r#"{"version":"0.1","id":"task-001"}"#,
+    )
+    .unwrap();
 
     let app = App::with_provider(repo_root.clone(), Box::new(LoopingProvider::default()));
     let run = app.run_start(task_id, None).unwrap();
     assert_eq!(run.id, "run-001");
 
     let continued = app.run_status(task_id, "run-001").unwrap();
-    assert_eq!(continued.outcome, Some(gold_band::domain::RunOutcome::Success));
-    assert!(repo_root.join(".gold-band/tasks/task-001/runs/run-001/rounds/round-002").exists());
+    assert_eq!(
+        continued.outcome,
+        Some(gold_band::domain::RunOutcome::Success)
+    );
+    assert!(
+        repo_root
+            .join(".gold-band/tasks/task-001/runs/run-001/rounds/round-002")
+            .exists()
+    );
 
-    let command = app.run_open_session(task_id, "run-001", "round-002", "accept", "attempt-001").unwrap();
+    let command = app
+        .run_open_session(task_id, "run-001", "round-002", "accept", "attempt-001")
+        .unwrap();
     assert!(command.starts_with("claude -c session-"));
 
-    let artifacts = app.artifact_list(task_id, "run-001", "round-002", "accept", "attempt-001").unwrap();
-    assert!(artifacts.iter().any(|name| name == "verify-result.json"));
+    let artifacts = app
+        .artifact_list(task_id, "run-001", "round-002", "accept", "attempt-001")
+        .unwrap();
+    assert!(artifacts.iter().any(|name| name == "verify-result"));
+    assert!(
+        app.artifact_show(
+            task_id,
+            "run-001",
+            "round-002",
+            "accept",
+            "attempt-001",
+            "verify-result"
+        )
+        .unwrap()
+        .contains("accepted")
+    );
+    assert!(
+        app.artifact_show(
+            task_id,
+            "run-001",
+            "round-002",
+            "accept",
+            "attempt-001",
+            "verify-result.json"
+        )
+        .unwrap()
+        .contains("accepted")
+    );
 
     let killed = app.run_kill(task_id, "run-001").unwrap();
     assert_eq!(killed.outcome, Some(gold_band::domain::RunOutcome::Killed));

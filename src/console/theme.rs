@@ -202,35 +202,51 @@ impl ConsoleTheme {
     }
 
     pub fn header_style(self) -> Style {
-        Style::default().fg(self.color(self.palette.fg_accent)).bg(self.color(self.palette.bg_surface))
+        Style::default()
+            .fg(self.color(self.palette.fg_accent))
+            .bg(self.color(self.palette.bg_surface))
     }
 
     pub fn body_style(self) -> Style {
-        Style::default().fg(self.color(self.palette.fg_base)).bg(self.color(self.palette.bg_base))
+        Style::default()
+            .fg(self.color(self.palette.fg_base))
+            .bg(self.color(self.palette.bg_base))
     }
 
     pub fn detail_style(self) -> Style {
-        Style::default().fg(self.color(self.palette.fg_emphasis)).bg(self.color(self.palette.bg_base))
+        Style::default()
+            .fg(self.color(self.palette.fg_emphasis))
+            .bg(self.color(self.palette.bg_base))
     }
 
     pub fn input_placeholder_style(self) -> Style {
-        Style::default().fg(self.color(self.palette.fg_muted)).bg(self.color(self.palette.bg_surface))
+        Style::default()
+            .fg(self.color(self.palette.fg_muted))
+            .bg(self.color(self.palette.bg_surface))
     }
 
     pub fn input_value_style(self) -> Style {
-        Style::default().fg(self.color(self.palette.fg_accent)).bg(self.color(self.palette.bg_surface))
+        Style::default()
+            .fg(self.color(self.palette.fg_accent))
+            .bg(self.color(self.palette.bg_surface))
     }
 
     pub fn footer_style(self) -> Style {
-        Style::default().fg(self.color(self.palette.fg_muted)).bg(self.color(self.palette.bg_surface))
+        Style::default()
+            .fg(self.color(self.palette.fg_muted))
+            .bg(self.color(self.palette.bg_surface))
     }
 
     pub fn overlay_style(self) -> Style {
-        Style::default().fg(self.color(self.palette.fg_emphasis)).bg(self.color(self.palette.bg_overlay))
+        Style::default()
+            .fg(self.color(self.palette.fg_emphasis))
+            .bg(self.color(self.palette.bg_overlay))
     }
 
     pub fn focused_border_style(self) -> Style {
-        Style::default().fg(self.color(self.palette.fg_accent)).add_modifier(self.chrome.focused_border_modifier)
+        Style::default()
+            .fg(self.color(self.palette.fg_accent))
+            .add_modifier(self.chrome.focused_border_modifier)
     }
 
     pub fn unfocused_border_style(self) -> Style {
@@ -246,32 +262,69 @@ impl ConsoleTheme {
     }
 
     pub fn title_style(self) -> Style {
-        Style::default().fg(self.color(self.palette.fg_accent)).add_modifier(self.chrome.title_modifier)
+        Style::default()
+            .fg(self.color(self.palette.fg_accent))
+            .add_modifier(self.chrome.title_modifier)
     }
 
     pub fn line_style(self, kind: BodyLineKind) -> Style {
         match kind {
             BodyLineKind::Normal => self.body_style(),
-            BodyLineKind::Muted => Style::default().fg(self.color(self.palette.fg_muted)).bg(self.color(self.palette.bg_base)),
-            BodyLineKind::Success => Style::default().fg(self.color(self.palette.fg_success)).bg(self.color(self.palette.bg_base)),
-            BodyLineKind::Warning => Style::default().fg(self.color(self.palette.fg_warning)).bg(self.color(self.palette.bg_base)),
-            BodyLineKind::Error => Style::default().fg(self.color(self.palette.fg_error)).bg(self.color(self.palette.bg_base)).add_modifier(Modifier::BOLD),
+            BodyLineKind::Muted => Style::default()
+                .fg(self.color(self.palette.fg_muted))
+                .bg(self.color(self.palette.bg_base)),
+            BodyLineKind::Success => Style::default()
+                .fg(self.color(self.palette.fg_success))
+                .bg(self.color(self.palette.bg_base)),
+            BodyLineKind::Warning => Style::default()
+                .fg(self.color(self.palette.fg_warning))
+                .bg(self.color(self.palette.bg_base)),
+            BodyLineKind::Error => Style::default()
+                .fg(self.color(self.palette.fg_error))
+                .bg(self.color(self.palette.bg_base))
+                .add_modifier(Modifier::BOLD),
         }
     }
 
     pub fn span_style(self, role: BodySpanRole) -> Style {
         match role {
             BodySpanRole::Normal => self.body_style(),
-            BodySpanRole::Muted => Style::default().fg(self.color(self.palette.fg_muted)).bg(self.color(self.palette.bg_base)),
-            BodySpanRole::Accent => Style::default().fg(self.color(self.palette.fg_accent)).bg(self.color(self.palette.bg_base)).add_modifier(self.chrome.selection_modifier),
-            BodySpanRole::Success => Style::default().fg(self.color(self.palette.fg_success)).bg(self.color(self.palette.bg_base)).add_modifier(Modifier::BOLD),
-            BodySpanRole::Warning => Style::default().fg(self.color(self.palette.fg_warning)).bg(self.color(self.palette.bg_base)),
-            BodySpanRole::Error => Style::default().fg(self.color(self.palette.fg_error)).bg(self.color(self.palette.bg_base)).add_modifier(Modifier::BOLD),
-            BodySpanRole::PickerBorder => Style::default().fg(self.color(self.palette.fg_muted)).bg(self.color(self.palette.bg_base)),
-            BodySpanRole::PickerTitle => Style::default().fg(self.color(self.palette.fg_emphasis)).bg(self.color(self.palette.bg_base)).add_modifier(Modifier::BOLD),
-            BodySpanRole::PickerSelection => Style::default().fg(self.color(self.palette.fg_accent)).bg(self.color(self.palette.bg_base)).add_modifier(self.chrome.selection_modifier),
-            BodySpanRole::PickerMeta => Style::default().fg(self.color(self.palette.fg_muted)).bg(self.color(self.palette.bg_base)),
-            BodySpanRole::PickerReasonLabel => Style::default().fg(self.color(self.palette.fg_warning)).bg(self.color(self.palette.bg_base)).add_modifier(Modifier::BOLD),
+            BodySpanRole::Muted => Style::default()
+                .fg(self.color(self.palette.fg_muted))
+                .bg(self.color(self.palette.bg_base)),
+            BodySpanRole::Accent => Style::default()
+                .fg(self.color(self.palette.fg_accent))
+                .bg(self.color(self.palette.bg_base))
+                .add_modifier(self.chrome.selection_modifier),
+            BodySpanRole::Success => Style::default()
+                .fg(self.color(self.palette.fg_success))
+                .bg(self.color(self.palette.bg_base))
+                .add_modifier(Modifier::BOLD),
+            BodySpanRole::Warning => Style::default()
+                .fg(self.color(self.palette.fg_warning))
+                .bg(self.color(self.palette.bg_base)),
+            BodySpanRole::Error => Style::default()
+                .fg(self.color(self.palette.fg_error))
+                .bg(self.color(self.palette.bg_base))
+                .add_modifier(Modifier::BOLD),
+            BodySpanRole::PickerBorder => Style::default()
+                .fg(self.color(self.palette.fg_muted))
+                .bg(self.color(self.palette.bg_base)),
+            BodySpanRole::PickerTitle => Style::default()
+                .fg(self.color(self.palette.fg_emphasis))
+                .bg(self.color(self.palette.bg_base))
+                .add_modifier(Modifier::BOLD),
+            BodySpanRole::PickerSelection => Style::default()
+                .fg(self.color(self.palette.fg_accent))
+                .bg(self.color(self.palette.bg_base))
+                .add_modifier(self.chrome.selection_modifier),
+            BodySpanRole::PickerMeta => Style::default()
+                .fg(self.color(self.palette.fg_muted))
+                .bg(self.color(self.palette.bg_base)),
+            BodySpanRole::PickerReasonLabel => Style::default()
+                .fg(self.color(self.palette.fg_warning))
+                .bg(self.color(self.palette.bg_base))
+                .add_modifier(Modifier::BOLD),
         }
     }
 }
@@ -290,7 +343,8 @@ mod tests {
         let cyber = ConsoleTheme::resolve(ConsoleThemeName::Cyber, false).header_style();
         let onyx = ConsoleTheme::resolve(ConsoleThemeName::Onyx, false).header_style();
         let mist = ConsoleTheme::resolve(ConsoleThemeName::Mist, false).header_style();
-        let high_contrast = ConsoleTheme::resolve(ConsoleThemeName::HighContrast, false).header_style();
+        let high_contrast =
+            ConsoleTheme::resolve(ConsoleThemeName::HighContrast, false).header_style();
 
         assert_eq!(gold_band.fg, Some(Color::LightYellow));
         assert_eq!(nord.fg, Some(Color::Rgb(136, 192, 208)));

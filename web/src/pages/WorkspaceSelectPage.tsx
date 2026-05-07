@@ -35,15 +35,15 @@ export function WorkspaceSelectPage({ bootstrap, busy, onChooseWorkspace, onSele
         </CardContent>
       </AppCard>
 
-      <AppCard className="min-h-0 py-0">
-        <CardHeader className="border-b py-5">
+      <AppCard className="min-h-0 gap-0 py-0">
+        <CardHeader className="border-b px-5 py-3 !pb-3">
           <CardTitle>{t('common.recentWorkspaces')}</CardTitle>
           <CardDescription>最近打开过的工作空间会保存在本地用户偏好中。</CardDescription>
         </CardHeader>
         <CardContent className="min-h-0 px-0 py-0">
-          {recent.length === 0 ? <div className="p-5"><EmptyState>暂无最近工作空间</EmptyState></div> : null}
+          {recent.length === 0 ? <div className="p-3"><EmptyState>暂无最近工作空间</EmptyState></div> : null}
           <ScrollArea className="h-[calc(100vh-190px)]">
-            <div className="space-y-2 p-5">
+            <div className="space-y-2 p-3">
               {recent.map((workspace) => (
                 <Button className="h-auto w-full justify-between gap-4 p-4" variant="outline" key={workspace} onClick={() => onSelectRecentWorkspace(workspace)} disabled={busy}>
                   <span className="truncate font-mono text-xs text-muted-foreground">{workspace}</span>

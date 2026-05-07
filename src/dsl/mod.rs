@@ -1,6 +1,6 @@
-use crate::domain::{AcceptanceFailurePolicy, NodeType, SessionMode, DEFAULT_PROVIDER};
+use crate::domain::{AcceptanceFailurePolicy, DEFAULT_PROVIDER, NodeType, SessionMode};
 use crate::provider::supports_continue_session;
-use anyhow::{anyhow, bail, ensure, Result};
+use anyhow::{Result, anyhow, bail, ensure};
 use indexmap::IndexMap;
 use serde::{Deserialize, Serialize};
 use std::collections::HashSet;
@@ -111,12 +111,31 @@ impl ValidatedWorkflow {
 }
 
 pub fn validate_workflow(workflow: WorkflowDsl) -> Result<ValidatedWorkflow> {
-    ensure!(workflow.version == "0.1", "unsupported workflow version: {}", workflow.version);
-    ensure!(!workflow.id.trim().is_empty(), "workflow id cannot be empty");
-    ensure!(!workflow.entry.trim().is_empty(), "workflow entry cannot be empty");
-    ensure!(!workflow.nodes.is_empty(), "workflow must contain at least one node");
-    ensure!(workflow.control.max_repair_loops > 0, "max_repair_loops must be a positive integer");
-    ensure!(workflow.control.max_acceptance_loops > 0, "max_acceptance_loops must be a positive integer");
+    ensure!(
+        workflow.version == "0.1",
+        "unsupported workflow version: {}",
+        workflow.version
+    );
+    ensure!(
+        !workflow.id.trim().is_empty(),
+        "workflow id cannot be empty"
+    );
+    ensure!(
+        !workflow.entry.trim().is_empty(),
+        "workflow entry cannot be empty"
+    );
+    ensure!(
+        !workflow.nodes.is_empty(),
+        "workflow must contain at least one node"
+    );
+    ensure!(
+        workflow.control.max_repair_loops > 0,
+        "max_repair_loops must be a positive integer"
+    );
+    ensure!(
+        workflow.control.max_acceptance_loops > 0,
+        "max_acceptance_loops must be a positive integer"
+    );
 
     let mut nodes_by_id = IndexMap::new();
     let mut seen_ids = HashSet::new();
@@ -134,34 +153,59 @@ pub fn validate_workflow(workflow: WorkflowDsl) -> Result<ValidatedWorkflow> {
         match node {
             NodeDsl::Worker(worker) => {
                 if let Some(profile) = &worker.profile {
-                    ensure!(!profile.trim().is_empty(), "worker node `{id}` profile cannot be blank");
+                    ensure!(
+                        !profile.trim().is_empty(),
+                        "worker node `{id}` profile cannot be blank"
+                    );
                 }
             }
             NodeDsl::Verify(verify) => {
                 if let Some(profile) = &verify.profile {
-                    ensure!(!profile.trim().is_empty(), "verify node `{id}` profile cannot be blank");
+                    ensure!(
+                        !profile.trim().is_empty(),
+                        "verify node `{id}` profile cannot be blank"
+                    );
                 }
             }
             NodeDsl::Exec(_) => {}
         }
 
         if let NodeDsl::Verify(_) = node {
-            ensure!(verify_node_id.is_none(), "workflow can contain at most one verify node");
+            ensure!(
+                verify_node_id.is_none(),
+                "workflow can contain at most one verify node"
+            );
             verify_node_id = Some(id.to_string());
         }
 
         nodes_by_id.insert(id.to_string(), node.clone());
     }
 
-    ensure!(nodes_by_id.contains_key(&workflow.entry), "entry node not found: {}", workflow.entry);
     ensure!(
-        verify_node_id.is_some() || matches!(workflow.control.on_acceptance_failure, AcceptanceFailurePolicy::Stop),
+        nodes_by_id.contains_key(&workflow.entry),
+        "entry node not found: {}",
+        workflow.entry
+    );
+    ensure!(
+        verify_node_id.is_some()
+            || matches!(
+                workflow.control.on_acceptance_failure,
+                AcceptanceFailurePolicy::Stop
+            ),
         "acceptance failure policy requires a verify node"
     );
 
     for edge in &workflow.edges {
-        ensure!(nodes_by_id.contains_key(&edge.from), "edge source not found: {}", edge.from);
-        ensure!(edge.to == END_NODE || nodes_by_id.contains_key(&edge.to), "edge target not found: {}", edge.to);
+        ensure!(
+            nodes_by_id.contains_key(&edge.from),
+            "edge source not found: {}",
+            edge.from
+        );
+        ensure!(
+            edge.to == END_NODE || nodes_by_id.contains_key(&edge.to),
+            "edge target not found: {}",
+            edge.to
+        );
         ensure!(
             !(edge.to == END_NODE && edge.on == EdgeOutcome::Invalid),
             "edge `{}` cannot target `$end` on invalid",
@@ -187,9 +231,17 @@ pub fn validate_workflow(workflow: WorkflowDsl) -> Result<ValidatedWorkflow> {
                 .ok_or_else(|| anyhow!("exec planFrom not found: {}", exec.plan_from))?;
             match source {
                 NodeDsl::Worker(worker) => {
-                    ensure!(worker.primary_artifact.as_deref() == Some("exec-plan"), "exec node `{}` requires planFrom worker `{}` to declare primaryArtifact=exec-plan", exec.id, exec.plan_from);
+                    ensure!(
+                        worker.primary_artifact.as_deref() == Some("exec-plan"),
+                        "exec node `{}` requires planFrom worker `{}` to declare primaryArtifact=exec-plan",
+                        exec.id,
+                        exec.plan_from
+                    );
                 }
-                _ => bail!("exec node `{}` planFrom must point to a worker node", exec.id),
+                _ => bail!(
+                    "exec node `{}` planFrom must point to a worker node",
+                    exec.id
+                ),
             }
         }
     }

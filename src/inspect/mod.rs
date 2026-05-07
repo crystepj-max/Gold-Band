@@ -85,7 +85,6 @@ pub fn render_console_summary(app: &App) -> Result<String> {
     let task_count = app.task_list()?.len();
     Ok(format!(
         "Workspace: {}\nTasks discovered: {}\nMode: console bootstrap",
-        app.paths.repo_root,
-        task_count
+        app.paths.repo_root, task_count
     ))
 }

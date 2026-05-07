@@ -1,4 +1,4 @@
-use gold_band::dsl::{validate_workflow, WorkflowDsl};
+use gold_band::dsl::{WorkflowDsl, validate_workflow};
 
 fn parse_workflow(json: &str) -> WorkflowDsl {
     serde_json::from_str(json).expect("workflow should deserialize")

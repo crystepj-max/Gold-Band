@@ -2,7 +2,7 @@ import { useMemo, useState, type ReactNode } from 'react';
 import { useTranslation } from 'react-i18next';
 import type { TFunction } from 'i18next';
 import { ChevronDown, ChevronRight } from 'lucide-react';
-import type { RoundSummaryVm, RunGroupVm, TaskPage, WorkflowVm } from '../types';
+import type { GraphVm, RoundSummaryVm, RunGroupVm, TaskPage, WorkflowVm } from '../types';
 import { displayPolicy, displayStatus } from '../i18n';
 import { GraphView } from '../components/GraphView';
 import { StatusBadge } from '../components/StatusBadge';
@@ -16,6 +16,7 @@ import { Tabs, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Badge } from '@/components/ui/badge';
 import { cn } from '@/lib/utils';
 import { normalizeTone } from '@/lib/status';
+import { formatCurrentNode } from '@/lib/nodes';
 
 interface WorkflowPageProps {
   vm: WorkflowVm | null;
@@ -36,6 +37,7 @@ export function WorkflowPage({ vm, busy, onNavigate, onStartRun, onContinueRun, 
   const [sortDir, setSortDir] = useState<SortDir>('desc');
   const [pageIndex, setPageIndex] = useState(0);
   const [pageSize, setPageSize] = useState(5);
+  const [blueprintExpanded, setBlueprintExpanded] = useState(false);
   const [expandedRunIds, setExpandedRunIds] = useState<Set<string>>(new Set());
   const [collapsedRunIds, setCollapsedRunIds] = useState<Set<string>>(new Set());
 
@@ -76,7 +78,7 @@ export function WorkflowPage({ vm, busy, onNavigate, onStartRun, onContinueRun, 
           <PageHeader
             eyebrow={vm.task.id}
             title={vm.task.title}
-            subtitle={<>{t('workflow.requirementSummary', { summary: vm.task.requirementPreview || vm.task.description || '-' })}{activeRun?.currentNode ? <span className="ml-2 text-primary">{t('workflow.currentStatus', { node: activeRun.currentNode })}</span> : null}</>}
+            subtitle={t('workflow.requirementSummary', { summary: vm.task.requirementPreview || vm.task.description || '-' })}
             actions={<><Button variant="outline" disabled>{t('workflow.viewRequirement')}</Button>{activeRun && (activeRun.status === 'running' || activeRun.status === 'paused') ? <Button variant="destructive" disabled={busy} onClick={() => onKillRun(vm.task.id, activeRun.id)}>{t('common.stopRun')}</Button> : null}</>}
           />
           <MetricsBar>
@@ -86,21 +88,35 @@ export function WorkflowPage({ vm, busy, onNavigate, onStartRun, onContinueRun, 
             <Metric label={t('common.outcome')} value={displayStatus(t, activeRun?.outcome ?? activeRun?.status ?? vm.task.displayStatus)} />
             <Metric label={t('common.artifacts')} value={vm.task.artifactCount} />
           </MetricsBar>
-          <AppCard className="gap-0 py-0">
-            <CardHeader className="border-b px-5 py-4"><CardTitle>{t('workflow.blueprintTitle')}</CardTitle></CardHeader>
-            <CardContent className="space-y-3 p-4">
-              {vm.control ? (
-                <div className="flex flex-wrap items-center gap-2 rounded-xl border border-primary/20 bg-muted/20 p-2">
-                  <ControlPill label={t('workflow.maxRepairLoops')} value={vm.control.maxRepairLoops} />
-                  <ControlPill label={t('workflow.maxAcceptanceLoops')} value={vm.control.maxAcceptanceLoops} />
-                  <ControlPill label={t('workflow.onAcceptanceFailure')} value={displayPolicy(t, vm.control.onAcceptanceFailure)} />
-                </div>
-              ) : null}
-              <GraphView graph={vm.graph} variant="workflow" />
-            </CardContent>
+          <AppCard className="gap-0 overflow-hidden py-0">
+            <button
+              type="button"
+              className={cn(
+                'flex w-full items-center gap-3 px-4 py-3 text-left transition-colors hover:bg-muted/20 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/55',
+                blueprintExpanded && 'border-b',
+              )}
+              onClick={() => setBlueprintExpanded((value) => !value)}
+              aria-expanded={blueprintExpanded}
+              aria-label={t(blueprintExpanded ? 'workflow.collapseBlueprint' : 'workflow.expandBlueprint')}
+            >
+              {blueprintExpanded ? <ChevronDown className="h-4 w-4 shrink-0 text-muted-foreground" /> : <ChevronRight className="h-4 w-4 shrink-0 text-muted-foreground" />}
+              <span className="truncate text-base font-semibold leading-6 text-foreground">{t('workflow.blueprintTitle')}</span>
+            </button>
+            {blueprintExpanded ? (
+              <CardContent className="space-y-3 p-4">
+                {vm.control ? (
+                  <div className="flex flex-wrap items-center gap-2 rounded-xl border border-primary/20 bg-muted/20 p-2">
+                    <ControlPill label={t('workflow.maxRepairLoops')} value={vm.control.maxRepairLoops} />
+                    <ControlPill label={t('workflow.maxAcceptanceLoops')} value={vm.control.maxAcceptanceLoops} />
+                    <ControlPill label={t('workflow.onAcceptanceFailure')} value={displayPolicy(t, vm.control.onAcceptanceFailure)} />
+                  </div>
+                ) : null}
+                <GraphView graph={vm.graph} variant="workflow" />
+              </CardContent>
+            ) : null}
           </AppCard>
-          <AppCard className="py-0">
-            <CardHeader className="flex-row items-center justify-between gap-3 border-b py-5">
+          <AppCard className="gap-0 py-0">
+            <CardHeader className="flex-row items-center justify-between gap-3 border-b px-5 py-3 !pb-3">
               <CardTitle>{t('workflow.historyTitle')}</CardTitle>
               <div className="flex flex-wrap items-center gap-2 text-sm text-muted-foreground">
                 <span>{t('common.filterByStatus')}</span>
@@ -113,7 +129,7 @@ export function WorkflowPage({ vm, busy, onNavigate, onStartRun, onContinueRun, 
                 <Button variant="outline" size="sm" onClick={() => setSortDir((value) => value === 'asc' ? 'desc' : 'asc')}>{t('common.sort')} {sortDir === 'asc' ? '↑' : '↓'}</Button>
               </div>
             </CardHeader>
-            <CardContent className="px-5 py-5">
+            <CardContent className="px-4 py-4">
               {pagedRuns.length ? (
                 <div className="overflow-hidden rounded-xl border bg-card/35">
                   <div className="divide-y divide-border/80">
@@ -124,9 +140,9 @@ export function WorkflowPage({ vm, busy, onNavigate, onStartRun, onContinueRun, 
                         <RunGroupRow
                           key={group.run.id}
                           group={group}
+                          graph={vm.graph}
                           busy={busy}
                           expanded={expanded}
-                          highlighted={defaultExpanded}
                           onToggle={() => toggleRun(group.run.id, expanded)}
                           onContinue={() => onContinueRun(vm.task.id, group.run.id)}
                           onKill={() => onKillRun(vm.task.id, group.run.id)}
@@ -167,11 +183,11 @@ function ControlPill({ label, value }: { label: string; value: ReactNode }) {
   );
 }
 
-function RunGroupRow({ group, busy, expanded, highlighted, onToggle, onContinue, onKill, onOpenRound, t }: {
+function RunGroupRow({ group, graph, busy, expanded, onToggle, onContinue, onKill, onOpenRound, t }: {
   group: RunGroupVm;
+  graph: GraphVm;
   busy: boolean;
   expanded: boolean;
-  highlighted: boolean;
   onToggle: () => void;
   onContinue: () => void;
   onKill: () => void;
@@ -182,8 +198,8 @@ function RunGroupRow({ group, busy, expanded, highlighted, onToggle, onContinue,
   const regionId = `run-rounds-${group.run.id}`;
 
   return (
-    <section className={cn('bg-background/20', highlighted && 'bg-primary/[0.035]')}>
-      <div className={cn('grid gap-3 px-4 py-3 xl:grid-cols-[minmax(220px,0.9fr)_minmax(260px,0.8fr)_auto]', highlighted && 'border-l-2 border-l-primary/60 pl-[14px]')}>
+    <section className="bg-background/20">
+      <div className="grid gap-3 px-4 py-3 xl:grid-cols-[minmax(220px,0.9fr)_minmax(260px,0.8fr)_auto]">
         <div className="flex min-w-0 items-center gap-2">
           <Button
             type="button"
@@ -204,6 +220,7 @@ function RunGroupRow({ group, busy, expanded, highlighted, onToggle, onContinue,
         </div>
         <div className="flex min-w-0 flex-wrap items-center gap-x-5 gap-y-1 text-sm text-muted-foreground">
           <InlineMeta label={t('workflow.currentRound')} value={group.run.currentRound ?? '-'} />
+          <InlineMeta label={t('workflow.currentNode')} value={formatCurrentNode(t, graph, group.run.currentNode)} />
           {group.run.pauseReason ? <InlineMeta label={t('workflow.pauseReason')} value={displayStatus(t, group.run.pauseReason)} /> : null}
         </div>
         <div className="flex shrink-0 items-center justify-end gap-2">
@@ -211,7 +228,7 @@ function RunGroupRow({ group, busy, expanded, highlighted, onToggle, onContinue,
           {group.run.status === 'running' || group.run.status === 'paused' ? <Button variant="destructive" size="sm" disabled={busy} onClick={onKill}>{t('common.stopRun')}</Button> : null}
         </div>
       </div>
-      {expanded ? <RoundList id={regionId} runId={group.run.id} rounds={rounds} onOpenRound={onOpenRound} t={t} /> : null}
+      {expanded ? <RoundList id={regionId} runId={group.run.id} graph={graph} rounds={rounds} onOpenRound={onOpenRound} t={t} /> : null}
     </section>
   );
 }
@@ -220,9 +237,10 @@ function InlineMeta({ label, value }: { label: ReactNode; value: ReactNode }) {
   return <span className="min-w-0"><span className="text-muted-foreground/70">{label}</span><span className="mx-1 text-muted-foreground/40">/</span><strong className="font-medium text-foreground">{value}</strong></span>;
 }
 
-function RoundList({ id, runId, rounds, onOpenRound, t }: {
+function RoundList({ id, runId, graph, rounds, onOpenRound, t }: {
   id: string;
   runId: string;
+  graph: GraphVm;
   rounds: RoundSummaryVm[];
   onOpenRound: (roundId: string) => void;
   t: TFunction;
@@ -231,13 +249,13 @@ function RoundList({ id, runId, rounds, onOpenRound, t }: {
   return (
     <div id={id} className="border-t bg-muted/[0.08] px-4 py-3">
       <div className="space-y-2 border-l border-border pl-4">
-        {rounds.map((round) => <RoundRow key={round.id} runId={runId} round={round} onOpen={() => onOpenRound(round.id)} t={t} />)}
+        {rounds.map((round) => <RoundRow key={round.id} runId={runId} graph={graph} round={round} onOpen={() => onOpenRound(round.id)} t={t} />)}
       </div>
     </div>
   );
 }
 
-function RoundRow({ runId, round, onOpen, t }: { runId: string; round: RoundSummaryVm; onOpen: () => void; t: TFunction }) {
+function RoundRow({ runId, graph, round, onOpen, t }: { runId: string; graph: GraphVm; round: RoundSummaryVm; onOpen: () => void; t: TFunction }) {
   return (
     <div className="relative grid items-center gap-3 rounded-lg px-3 py-2 hover:bg-muted/25 xl:grid-cols-[minmax(220px,0.85fr)_minmax(180px,0.6fr)_auto]">
       <span className={cn('absolute -left-[21px] top-1/2 h-2.5 w-2.5 -translate-y-1/2 rounded-full border', timelineDotClass(round.outcome ?? round.status))} />
@@ -248,7 +266,7 @@ function RoundRow({ runId, round, onOpen, t }: { runId: string; round: RoundSumm
         <StatusBadge value={round.outcome} label={displayStatus(t, round.outcome)} />
       </div>
       <div className="flex min-w-0 flex-wrap gap-x-5 gap-y-1 text-sm text-muted-foreground">
-        <InlineMeta label={t('workflow.currentNode')} value={round.currentNode ?? '-'} />
+        <InlineMeta label={t('workflow.currentNode')} value={formatCurrentNode(t, graph, round.currentNode)} />
       </div>
       <Button variant="outline" size="sm" className="justify-self-end" onClick={onOpen} aria-label={t('workflow.openRoundA11y', { runId, roundId: round.id })}>{t('workflow.openRound')}</Button>
     </div>

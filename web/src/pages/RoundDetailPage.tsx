@@ -12,11 +12,12 @@ import { Button } from '@/components/ui/button';
 import { CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { ScrollArea } from '@/components/ui/scroll-area';
 import { Sheet, SheetContent } from '@/components/ui/sheet';
-import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
+import { Tabs, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from '@/components/ui/dropdown-menu';
 import { MoreVertical, Pin, PinOff, X } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { toneSurfaceClass } from '@/lib/status';
+import { formatCurrentNode } from '@/lib/nodes';
 
 interface RoundDetailPageProps {
   vm: RoundDetailVm | null;
@@ -92,7 +93,7 @@ export function RoundDetailPage({ vm, selection, onSelect }: RoundDetailPageProp
         <div className="grid min-w-0 grid-cols-3 gap-3">
           <Metric label={t('roundDetail.trigger')} value={displayStatus(t, vm.round.trigger)} compact />
           <Metric label={t('roundDetail.repairLoopsUsed')} value={vm.round.repairLoopsUsed} compact />
-          <Metric label={t('common.currentNode')} value={vm.round.currentNode ?? vm.run.currentNode ?? '-'} compact />
+          <Metric label={t('common.currentNode')} value={formatCurrentNode(t, vm.graph, vm.round.currentNode ?? vm.run.currentNode)} compact />
         </div>
         <div className="flex shrink-0 gap-2">
           <Button variant="outline" onClick={openDetail}>{t('roundDetail.openDetail')}</Button>
@@ -114,8 +115,8 @@ export function RoundDetailPage({ vm, selection, onSelect }: RoundDetailPageProp
             </CardHeader>
             <CardContent className="min-h-0 flex-1 px-4 py-4"><GraphView graph={vm.graph} variant="actual" selectedNodeId={selectedNodeId} onNodeSelect={selectGraphNode} onNodeOpenDetail={openGraphNodeDetail} onNodeOpenSession={openGraphSession} /></CardContent>
           </AppCard>
-          <AppCard className="flex min-h-0 min-w-0 flex-col overflow-hidden py-0">
-            <CardHeader className="border-b px-4 py-2">
+          <AppCard className="flex min-h-0 min-w-0 flex-col gap-0 overflow-hidden py-0">
+            <CardHeader className="border-b px-4 py-2 !pb-2">
               <Tabs value={activeTab} onValueChange={(value) => setActiveTab(value as RoundTab)}>
                 <div className="flex flex-wrap items-center gap-3">
                   <TabsList className="h-9">
@@ -125,16 +126,11 @@ export function RoundDetailPage({ vm, selection, onSelect }: RoundDetailPageProp
                     {availableTabs.includes('artifacts') ? <TabsTrigger value="artifacts" className="h-7 px-3">{t('roundDetail.artifactTab', { count: streamGroups.artifacts.length })}</TabsTrigger> : null}
                     {availableTabs.includes('attachments') ? <TabsTrigger value="attachments" className="h-7 px-3">{t('roundDetail.attachmentTab', { count: streamGroups.attachments.length })}</TabsTrigger> : null}
                   </TabsList>
-                  <span className="min-w-0 truncate font-mono text-xs text-muted-foreground">{selectedNodeId ? t('roundDetail.selectedNode', { node: selectedNodeId }) : t('roundDetail.roundContext')}</span>
+                  <span className="min-w-0 truncate text-xs text-muted-foreground">{selectedNodeId ? t('roundDetail.selectedNode', { node: formatCurrentNode(t, vm.graph, selectedNodeId) }) : t('roundDetail.roundContext')}</span>
                 </div>
-                <TabsContent value="requirement" className="m-0 min-h-0" />
-                <TabsContent value="events" className="m-0 min-h-0" />
-                <TabsContent value="progress" className="m-0 min-h-0" />
-                <TabsContent value="artifacts" className="m-0 min-h-0" />
-                <TabsContent value="attachments" className="m-0 min-h-0" />
               </Tabs>
             </CardHeader>
-            <CardContent className="min-h-0 flex-1 px-0 py-0"><ScrollArea className="h-full"><div className="space-y-2 p-3">{tabItems(activeTab, streamGroups).map((item) => <StreamItem item={item} key={item.id} onOpenDetail={openStreamDetail} />)}{tabItems(activeTab, streamGroups).length === 0 ? <EmptyState>{t('common.empty')}</EmptyState> : null}</div></ScrollArea></CardContent>
+            <CardContent className="min-h-0 flex-1 px-0 py-0"><ScrollArea className="h-full"><div className="space-y-2 p-2">{tabItems(activeTab, streamGroups).map((item) => <StreamItem item={item} key={item.id} onOpenDetail={openStreamDetail} />)}{tabItems(activeTab, streamGroups).length === 0 ? <EmptyState>{t('common.empty')}</EmptyState> : null}</div></ScrollArea></CardContent>
           </AppCard>
         </div>
         </div>

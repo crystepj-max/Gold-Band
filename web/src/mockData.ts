@@ -58,6 +58,16 @@ const graph = {
   ],
 };
 
+const failedAcceptanceGraph = {
+  nodes: [
+    { id: 'dev', label: '现在我们在测试异常场景，任务会让你输出一个 python 类...', nodeType: 'worker', status: 'completed', outcome: 'success', attemptId: 'attempt-001', artifactCount: 0, attachmentCount: 0, current: false },
+    { id: 'accept', label: 'accept', nodeType: 'verify', status: 'completed', outcome: 'failure', attemptId: 'attempt-001', artifactCount: 1, attachmentCount: 0, current: false },
+  ],
+  edges: [
+    { from: 'dev', to: 'accept', label: 'observed' },
+  ],
+};
+
 const rounds = [
   {
     id: 'round-007',
@@ -148,12 +158,15 @@ export const mockRunDetail: RunDetailVm = {
   progress: { currentStage: 'node_running' },
 };
 
-export function mockRoundDetail(selection?: RoundSelection): RoundDetailVm {
+export function mockRoundDetail(selection?: RoundSelection, route?: { taskId: string; runId: string; roundId: string }): RoundDetailVm {
   const selected = selection?.kind ?? 'round';
+  const isFailedAcceptanceRound = route?.runId === 'run-024' && route.roundId === 'round-001';
+  const routeRun = isFailedAcceptanceRound ? { ...latestRun, id: 'run-024', status: 'completed', outcome: 'failure', currentRound: 'round-001', currentNode: 'accept', resumable: true } : latestRun;
+  const routeRound = isFailedAcceptanceRound ? { ...rounds[0], id: 'round-001', runId: 'run-024', index: 1, status: 'completed', outcome: 'failure', trigger: 'initial', repairLoopsUsed: 0, currentNode: 'accept', artifactCount: 1, attachmentCount: 0 } : rounds[0];
   return {
-    run: latestRun,
-    round: rounds[0],
-    graph,
+    run: routeRun,
+    round: routeRound,
+    graph: isFailedAcceptanceRound ? failedAcceptanceGraph : graph,
     stream: [
       { id: 'requirement', title: 'Requirement', kind: 'requirement', tone: 'accent', content: task.requirementPreview },
       { id: 'round-summary', title: 'Round Summary', kind: 'round', tone: 'success', content: '状态：已完成\n结果：成功\n触发：初始\n修复循环：0\n当前节点：accept' },

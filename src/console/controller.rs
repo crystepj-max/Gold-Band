@@ -1,18 +1,20 @@
-use anyhow::{anyhow, Result};
+use anyhow::{Result, anyhow};
 use serde_json::to_string_pretty;
 use std::thread;
 
 use crate::app::{App, LogSource};
 use crate::command::execute::execute_command;
 use crate::command::{Command, CommandResult, RunCommand};
-use crate::domain::RunStatus;
 use crate::config::ConsoleThemeName;
+use crate::domain::RunStatus;
 use crate::inspect::{render_console_help, render_run_help};
 
-use super::commands::{parse_console_command, suggest_console_commands, ConsoleLocalCommand, ParsedConsoleCommand};
+use super::commands::{
+    ConsoleLocalCommand, ParsedConsoleCommand, parse_console_command, suggest_console_commands,
+};
 use super::state::{
-    BackgroundTaskState, CommandViewKind, ConsoleState, DetailLevel, DetailSelection, FocusPane, OverlayState, Screen,
-    WelcomeAction, WorkspaceSelection,
+    BackgroundTaskState, CommandViewKind, ConsoleState, DetailLevel, DetailSelection, FocusPane,
+    OverlayState, Screen, WelcomeAction, WorkspaceSelection,
 };
 use super::view_models::{build_workspace_state, sync_workspace_detail};
 
@@ -110,7 +112,10 @@ pub fn move_up(state: &mut ConsoleState) {
             }
             FocusPane::Detail => {
                 if let Some(workspace) = state.workspace.as_mut() {
-                    if matches!(workspace.detail_level, DetailLevel::AttemptItems { .. } | DetailLevel::Content) {
+                    if matches!(
+                        workspace.detail_level,
+                        DetailLevel::AttemptItems { .. } | DetailLevel::Content
+                    ) {
                         workspace.log_scroll = workspace.log_scroll.saturating_sub(1);
                     } else {
                         workspace.detail_index = workspace.detail_index.saturating_sub(1);
@@ -174,7 +179,10 @@ pub fn move_down(state: &mut ConsoleState) {
             }
             FocusPane::Detail => {
                 if let Some(workspace) = state.workspace.as_mut() {
-                    if matches!(workspace.detail_level, DetailLevel::AttemptItems { .. } | DetailLevel::Content) {
+                    if matches!(
+                        workspace.detail_level,
+                        DetailLevel::AttemptItems { .. } | DetailLevel::Content
+                    ) {
                         workspace.log_scroll = workspace.log_scroll.saturating_add(1);
                     } else if workspace.detail_index + 1 < workspace.detail_items.len() {
                         workspace.detail_index += 1;
@@ -279,10 +287,15 @@ pub fn escape(app: &App, state: &mut ConsoleState) -> Result<bool> {
             if let Some(workspace) = state.workspace.as_mut() {
                 match workspace.detail_level {
                     DetailLevel::Content => {
-                        if let Some(DetailSelection::Artifact { attempt_id, .. } | DetailSelection::Attachment { attempt_id, .. }) =
-                            workspace.detail_items.get(workspace.detail_index).cloned()
+                        if let Some(
+                            DetailSelection::Artifact { attempt_id, .. }
+                            | DetailSelection::Attachment { attempt_id, .. },
+                        ) = workspace.detail_items.get(workspace.detail_index).cloned()
                         {
-                            workspace.detail_level = DetailLevel::AttemptItems { attempt_id, follow_live: false };
+                            workspace.detail_level = DetailLevel::AttemptItems {
+                                attempt_id,
+                                follow_live: false,
+                            };
                             sync_workspace_detail(app, workspace)?;
                         }
                         return Ok(false);
@@ -327,9 +340,15 @@ pub fn refresh_tick(app: &App, state: &mut ConsoleState) -> Result<()> {
     Ok(())
 }
 
-fn apply_local_command(app: &App, state: &mut ConsoleState, command: ConsoleLocalCommand) -> Result<()> {
+fn apply_local_command(
+    app: &App,
+    state: &mut ConsoleState,
+    command: ConsoleLocalCommand,
+) -> Result<()> {
     match command {
-        ConsoleLocalCommand::Help => show_overlay(app, state, CommandViewKind::Help, render_help_body(state)),
+        ConsoleLocalCommand::Help => {
+            show_overlay(app, state, CommandViewKind::Help, render_help_body(state))
+        }
         ConsoleLocalCommand::Task => open_task_picker(app, state),
         ConsoleLocalCommand::Log => {
             let body = app
@@ -345,11 +364,20 @@ fn apply_local_command(app: &App, state: &mut ConsoleState, command: ConsoleLoca
                 theme_name(app.config.console_theme),
                 persisted_user_theme.map(theme_name).unwrap_or("<unset>"),
                 theme_name(state.console_theme),
-                if state.console_theme == app.config.console_theme { "startup config" } else { "console command" }
+                if state.console_theme == app.config.console_theme {
+                    "startup config"
+                } else {
+                    "console command"
+                }
             );
             show_overlay(app, state, CommandViewKind::Config, body)
         }
-        ConsoleLocalCommand::ThemeShow => show_overlay(app, state, CommandViewKind::Notice, render_theme_help(app, state)),
+        ConsoleLocalCommand::ThemeShow => show_overlay(
+            app,
+            state,
+            CommandViewKind::Notice,
+            render_theme_help(app, state),
+        ),
         ConsoleLocalCommand::ThemeSet(theme) => {
             let persisted = app.set_user_console_theme(theme)?;
             state.console_theme = theme;
@@ -418,19 +446,28 @@ fn open_selected_task(app: &App, state: &mut ConsoleState) -> Result<()> {
 }
 
 pub fn start_selected_task(app: &App, state: &mut ConsoleState) -> Result<()> {
-    if state.screen != Screen::TaskPicker || state.focus != FocusPane::TaskPicker || state.overlay.is_some() {
+    if state.screen != Screen::TaskPicker
+        || state.focus != FocusPane::TaskPicker
+        || state.overlay.is_some()
+    {
         return Ok(());
     }
     let Some(summary) = state.task_list.get(state.task_index).cloned() else {
         return Ok(());
     };
     if !summary.workflow_valid {
-        let reason = summary.workflow_error.as_deref().unwrap_or("workflow invalid");
+        let reason = summary
+            .workflow_error
+            .as_deref()
+            .unwrap_or("workflow invalid");
         return show_overlay(
             app,
             state,
             CommandViewKind::Notice,
-            format!("Task {} cannot start yet.\n\nReason\n{}", summary.task.id, reason),
+            format!(
+                "Task {} cannot start yet.\n\nReason\n{}",
+                summary.task.id, reason
+            ),
         );
     }
     spawn_run_start(app, &summary.task.id);
@@ -460,7 +497,10 @@ fn spawn_run_start(app: &App, task_id: &str) {
         ) {
             let _ = std::fs::create_dir_all(app.paths.runs_dir(&task_id_for_thread).as_std_path());
             let _ = std::fs::write(
-                app.paths.runs_dir(&task_id_for_thread).join("console-start-error.txt").as_std_path(),
+                app.paths
+                    .runs_dir(&task_id_for_thread)
+                    .join("console-start-error.txt")
+                    .as_std_path(),
                 err.to_string(),
             );
         }
@@ -477,15 +517,29 @@ fn focus_workspace_runtime_detail(app: &App, state: &mut ConsoleState) -> Result
     sync_workspace_detail(app, workspace)?;
 
     if let Some(run_id) = workspace.active_run_id.clone() {
-        if let Some((round_id, node_id, attempt_id)) = app.current_attempt_selection(&workspace.task_id, &run_id)? {
+        if let Some((round_id, node_id, attempt_id)) =
+            app.current_attempt_selection(&workspace.task_id, &run_id)?
+        {
             if workspace.selected_round_id.as_deref() == Some(round_id.as_str()) {
-                workspace.selection = WorkspaceSelection::Node { node_id: node_id.clone() };
-                workspace.log_source = if app.attempt_log_exists(&workspace.task_id, &run_id, &round_id, &node_id, &attempt_id, LogSource::ProgressEvents) {
+                workspace.selection = WorkspaceSelection::Node {
+                    node_id: node_id.clone(),
+                };
+                workspace.log_source = if app.attempt_log_exists(
+                    &workspace.task_id,
+                    &run_id,
+                    &round_id,
+                    &node_id,
+                    &attempt_id,
+                    LogSource::ProgressEvents,
+                ) {
                     LogSource::ProgressEvents
                 } else {
                     LogSource::RawStream
                 };
-                workspace.detail_level = DetailLevel::AttemptItems { attempt_id, follow_live: true };
+                workspace.detail_level = DetailLevel::AttemptItems {
+                    attempt_id,
+                    follow_live: true,
+                };
                 workspace.detail_index = 0;
                 sync_workspace_detail(app, workspace)?;
                 state.focus = FocusPane::Detail;
@@ -500,21 +554,34 @@ fn focus_workspace_runtime_detail(app: &App, state: &mut ConsoleState) -> Result
         .position(|item| matches!(item, DetailSelection::Attempt { .. }))
     {
         workspace.detail_index = attempt_index;
-        if let Some(DetailSelection::Attempt { attempt_id }) = workspace.detail_items.get(attempt_index).cloned() {
-            workspace.log_source = if let (Some(run_id), Some(round_id), WorkspaceSelection::Node { node_id }) = (
-                workspace.active_run_id.as_ref(),
-                workspace.selected_round_id.as_ref(),
-                &workspace.selection,
-            ) {
-                if app.attempt_log_exists(&workspace.task_id, run_id, round_id, node_id, &attempt_id, LogSource::ProgressEvents) {
-                    LogSource::ProgressEvents
+        if let Some(DetailSelection::Attempt { attempt_id }) =
+            workspace.detail_items.get(attempt_index).cloned()
+        {
+            workspace.log_source =
+                if let (Some(run_id), Some(round_id), WorkspaceSelection::Node { node_id }) = (
+                    workspace.active_run_id.as_ref(),
+                    workspace.selected_round_id.as_ref(),
+                    &workspace.selection,
+                ) {
+                    if app.attempt_log_exists(
+                        &workspace.task_id,
+                        run_id,
+                        round_id,
+                        node_id,
+                        &attempt_id,
+                        LogSource::ProgressEvents,
+                    ) {
+                        LogSource::ProgressEvents
+                    } else {
+                        LogSource::RawStream
+                    }
                 } else {
                     LogSource::RawStream
-                }
-            } else {
-                LogSource::RawStream
+                };
+            workspace.detail_level = DetailLevel::AttemptItems {
+                attempt_id,
+                follow_live: false,
             };
-            workspace.detail_level = DetailLevel::AttemptItems { attempt_id, follow_live: false };
             workspace.detail_index = 0;
             sync_workspace_detail(app, workspace)?;
         }
@@ -544,20 +611,31 @@ fn open_detail_selection(app: &App, state: &mut ConsoleState) -> Result<()> {
     match item {
         DetailSelection::RetryAction => retry_selected_node(app, state),
         DetailSelection::Attempt { attempt_id } => {
-            workspace.log_source = if let (Some(run_id), Some(round_id), WorkspaceSelection::Node { node_id }) = (
-                workspace.active_run_id.as_ref(),
-                workspace.selected_round_id.as_ref(),
-                &workspace.selection,
-            ) {
-                if app.attempt_log_exists(&workspace.task_id, run_id, round_id, node_id, &attempt_id, LogSource::ProgressEvents) {
-                    LogSource::ProgressEvents
+            workspace.log_source =
+                if let (Some(run_id), Some(round_id), WorkspaceSelection::Node { node_id }) = (
+                    workspace.active_run_id.as_ref(),
+                    workspace.selected_round_id.as_ref(),
+                    &workspace.selection,
+                ) {
+                    if app.attempt_log_exists(
+                        &workspace.task_id,
+                        run_id,
+                        round_id,
+                        node_id,
+                        &attempt_id,
+                        LogSource::ProgressEvents,
+                    ) {
+                        LogSource::ProgressEvents
+                    } else {
+                        LogSource::RawStream
+                    }
                 } else {
                     LogSource::RawStream
-                }
-            } else {
-                LogSource::RawStream
+                };
+            workspace.detail_level = DetailLevel::AttemptItems {
+                attempt_id,
+                follow_live: false,
             };
-            workspace.detail_level = DetailLevel::AttemptItems { attempt_id, follow_live: false };
             workspace.detail_index = 0;
             sync_workspace_detail(app, workspace)
         }
@@ -572,7 +650,10 @@ fn retry_selected_node(app: &App, state: &mut ConsoleState) -> Result<()> {
     let (task_id, run_id) = match state.workspace.as_ref() {
         Some(workspace) => (
             workspace.task_id.clone(),
-            workspace.active_run_id.clone().ok_or_else(|| anyhow!("no active run to retry"))?,
+            workspace
+                .active_run_id
+                .clone()
+                .ok_or_else(|| anyhow!("no active run to retry"))?,
         ),
         None => return Ok(()),
     };
@@ -584,14 +665,24 @@ fn retry_selected_node(app: &App, state: &mut ConsoleState) -> Result<()> {
     show_overlay(app, state, CommandViewKind::RuntimeCommand, body)
 }
 
-fn open_task_workspace(app: &App, state: &mut ConsoleState, summary: crate::app::TaskSummary) -> Result<()> {
+fn open_task_workspace(
+    app: &App,
+    state: &mut ConsoleState,
+    summary: crate::app::TaskSummary,
+) -> Result<()> {
     if !summary.workflow_valid {
-        let reason = summary.workflow_error.as_deref().unwrap_or("workflow invalid");
+        let reason = summary
+            .workflow_error
+            .as_deref()
+            .unwrap_or("workflow invalid");
         return show_overlay(
             app,
             state,
             CommandViewKind::Notice,
-            format!("Task {} is not enterable yet.\n\nReason\n{}", summary.task.id, reason),
+            format!(
+                "Task {} is not enterable yet.\n\nReason\n{}",
+                summary.task.id, reason
+            ),
         );
     }
     let workspace = build_workspace_state(app, summary)?;
@@ -614,7 +705,9 @@ fn refresh_workspace(app: &App, state: &mut ConsoleState) -> Result<()> {
         let runs_dir = app.paths.runs_dir(&background_task.task_id);
         let error_path = runs_dir.join("console-start-error.txt");
         if error_path.exists() {
-            let error = std::fs::read_to_string(error_path.as_std_path())?.trim().to_string();
+            let error = std::fs::read_to_string(error_path.as_std_path())?
+                .trim()
+                .to_string();
             let _ = std::fs::remove_file(error_path.as_std_path());
             state.background_task = None;
             state.last_refresh_label = Some(format!("{} failed", background_task.kind));
@@ -642,7 +735,13 @@ fn refresh_workspace(app: &App, state: &mut ConsoleState) -> Result<()> {
     let previous_log_scroll = current.log_scroll;
     let previous_column = current.dag_column;
     let previous_row = current.dag_row;
-    let preserve_live_runtime_attach = matches!(previous_level, DetailLevel::AttemptItems { follow_live: true, .. });
+    let preserve_live_runtime_attach = matches!(
+        previous_level,
+        DetailLevel::AttemptItems {
+            follow_live: true,
+            ..
+        }
+    );
     let mut workspace = build_workspace_state(app, summary)?;
     let run_changed = current.active_run_id != workspace.active_run_id;
     if !preserve_live_runtime_attach {
@@ -681,11 +780,22 @@ fn continue_workspace_run(app: &App, state: &mut ConsoleState) -> Result<()> {
         return Ok(());
     };
     let Some(run_id) = workspace.active_run_id.clone() else {
-        show_overlay(app, state, CommandViewKind::ContinueResult, "No resumable run".to_string())?;
+        show_overlay(
+            app,
+            state,
+            CommandViewKind::ContinueResult,
+            "No resumable run".to_string(),
+        )?;
         return Ok(());
     };
     let task_id = workspace.task_id.clone();
-    let result = execute_command(app, Command::Run(RunCommand::Continue { task_id: task_id.clone(), run_id }))?;
+    let result = execute_command(
+        app,
+        Command::Run(RunCommand::Continue {
+            task_id: task_id.clone(),
+            run_id,
+        }),
+    )?;
     enter_task_workspace(app, state, &task_id)?;
     if let Some(workspace) = state.workspace.as_ref() {
         if let Some(active_run_id) = workspace.active_run_id.as_ref() {
@@ -703,7 +813,12 @@ fn continue_workspace_run(app: &App, state: &mut ConsoleState) -> Result<()> {
     Ok(())
 }
 
-fn show_overlay(_app: &App, state: &mut ConsoleState, kind: CommandViewKind, body: String) -> Result<()> {
+fn show_overlay(
+    _app: &App,
+    state: &mut ConsoleState,
+    kind: CommandViewKind,
+    body: String,
+) -> Result<()> {
     let return_focus = match state.focus {
         FocusPane::Overlay => match state.screen {
             Screen::TaskPicker => FocusPane::TaskPicker,
@@ -731,7 +846,10 @@ fn render_help_body(state: &ConsoleState) -> String {
 }
 
 fn render_theme_help(app: &App, state: &ConsoleState) -> String {
-    let persisted_user_theme = app.load_user_config().ok().and_then(|config| config.console_theme);
+    let persisted_user_theme = app
+        .load_user_config()
+        .ok()
+        .and_then(|config| config.console_theme);
     format!(
         "Console Themes\n  startup: {}\n  persisted: {}\n  effective: {}\n\nAvailable\n  gold-band\n  nord\n  dracula\n  cyber\n  onyx\n  mist\n  high-contrast\n\nUsage\n  /theme\n  /theme cyber",
         theme_name(app.config.console_theme),

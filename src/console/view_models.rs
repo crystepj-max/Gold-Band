@@ -1,14 +1,14 @@
 use std::collections::{BTreeMap, HashMap, VecDeque};
 
-use anyhow::{anyhow, Result};
 use crate::app::{App, LogSource, TaskSummary};
-use crate::dsl::{validate_workflow, EdgeOutcome, WorkflowDsl};
+use crate::dsl::{EdgeOutcome, WorkflowDsl, validate_workflow};
 use crate::inspect::render_console_banner;
 use crate::runtime::RunState;
+use anyhow::{Result, anyhow};
 
 use super::state::{
-    ConsoleState, DetailLevel, DetailSelection, FocusPane, LayoutMode, Screen, WelcomeAction, WorkspaceSelection,
-    WorkspaceState, MIN_VIEWPORT_HEIGHT, MIN_VIEWPORT_WIDTH,
+    ConsoleState, DetailLevel, DetailSelection, FocusPane, LayoutMode, MIN_VIEWPORT_HEIGHT,
+    MIN_VIEWPORT_WIDTH, Screen, WelcomeAction, WorkspaceSelection, WorkspaceState,
 };
 
 #[derive(Clone, Copy)]
@@ -88,17 +88,23 @@ pub fn build_workspace_state(app: &App, task_summary: TaskSummary) -> Result<Wor
         .map(|validated| dag_columns(&validated.raw))
         .unwrap_or_default();
     let active_run_id = app.find_active_or_resumable_run_id(&task_summary.task.id)?;
-    let live_selection = active_run_id
-        .as_ref()
-        .and_then(|run_id| app.current_attempt_selection(&task_summary.task.id, run_id).ok().flatten());
+    let live_selection = active_run_id.as_ref().and_then(|run_id| {
+        app.current_attempt_selection(&task_summary.task.id, run_id)
+            .ok()
+            .flatten()
+    });
     let selection = live_selection
         .as_ref()
-        .map(|(_, node_id, _)| WorkspaceSelection::Node { node_id: node_id.clone() })
+        .map(|(_, node_id, _)| WorkspaceSelection::Node {
+            node_id: node_id.clone(),
+        })
         .or_else(|| {
             dag_positions
                 .first()
                 .and_then(|column| column.first())
-                .map(|node_id| WorkspaceSelection::Node { node_id: node_id.clone() })
+                .map(|node_id| WorkspaceSelection::Node {
+                    node_id: node_id.clone(),
+                })
         })
         .unwrap_or(WorkspaceSelection::TaskOverview);
     let selected_round_id = live_selection
@@ -112,7 +118,11 @@ pub fn build_workspace_state(app: &App, task_summary: TaskSummary) -> Result<Wor
         });
     let run_progress_summary = active_run_id
         .as_ref()
-        .and_then(|run_id| app.run_progress(&task_summary.task.id, run_id).ok().flatten())
+        .and_then(|run_id| {
+            app.run_progress(&task_summary.task.id, run_id)
+                .ok()
+                .flatten()
+        })
         .map(|value| summarize_run_progress(&value));
     let run_events_tail = active_run_id
         .as_ref()
@@ -137,14 +147,23 @@ pub fn build_workspace_state(app: &App, task_summary: TaskSummary) -> Result<Wor
         log_scroll: 0,
     };
     if let Some((round_id, node_id, attempt_id)) = live_selection {
-        workspace.selection = WorkspaceSelection::Node { node_id: node_id.clone() };
+        workspace.selection = WorkspaceSelection::Node {
+            node_id: node_id.clone(),
+        };
         workspace.selected_round_id = Some(round_id.clone());
         if let Some((column, row)) = locate_dag_node(&workspace.dag_positions, &node_id) {
             workspace.dag_column = column;
             workspace.dag_row = row;
         }
         if let Some(run_id) = workspace.active_run_id.clone() {
-            workspace.log_source = default_log_source(app, &workspace.task_id, &run_id, &round_id, &node_id, &attempt_id);
+            workspace.log_source = default_log_source(
+                app,
+                &workspace.task_id,
+                &run_id,
+                &round_id,
+                &node_id,
+                &attempt_id,
+            );
             workspace.detail_level = DetailLevel::AttemptItems {
                 attempt_id,
                 follow_live: true,
@@ -157,7 +176,9 @@ pub fn build_workspace_state(app: &App, task_summary: TaskSummary) -> Result<Wor
 
 pub fn sync_workspace_detail(app: &App, workspace: &mut WorkspaceState) -> Result<()> {
     workspace.detail_items = match (&workspace.selection, &workspace.detail_level) {
-        (WorkspaceSelection::Node { .. }, DetailLevel::NodeHome) => build_node_home_items(app, workspace)?,
+        (WorkspaceSelection::Node { .. }, DetailLevel::NodeHome) => {
+            build_node_home_items(app, workspace)?
+        }
         (WorkspaceSelection::Node { .. }, DetailLevel::AttemptItems { attempt_id, .. }) => {
             let effective_attempt_id = effective_attempt_id(app, workspace, attempt_id)?;
             build_attempt_items(app, workspace, &effective_attempt_id)?
@@ -174,7 +195,13 @@ fn command_hint(state: &ConsoleState, fallback: &str) -> String {
     if state.command_suggestions.is_empty() {
         fallback.to_string()
     } else {
-        state.command_suggestions.iter().take(6).cloned().collect::<Vec<_>>().join("   ")
+        state
+            .command_suggestions
+            .iter()
+            .take(6)
+            .cloned()
+            .collect::<Vec<_>>()
+            .join("   ")
     }
 }
 
@@ -184,11 +211,22 @@ fn build_too_small_view_model(state: &ConsoleState) -> ConsoleViewModel {
         body_title: "Viewport".to_string(),
         body_lines: vec![
             "Terminal too small for console workspace.".to_string(),
-            format!("Current size: {}x{}", state.viewport.width, state.viewport.height),
-            format!("Minimum supported size: {}x{}", MIN_VIEWPORT_WIDTH, MIN_VIEWPORT_HEIGHT),
+            format!(
+                "Current size: {}x{}",
+                state.viewport.width, state.viewport.height
+            ),
+            format!(
+                "Minimum supported size: {}x{}",
+                MIN_VIEWPORT_WIDTH, MIN_VIEWPORT_HEIGHT
+            ),
             "Resize the terminal, then continue.".to_string(),
         ],
-        body_line_kinds: vec![BodyLineKind::Warning, BodyLineKind::Muted, BodyLineKind::Muted, BodyLineKind::Normal],
+        body_line_kinds: vec![
+            BodyLineKind::Warning,
+            BodyLineKind::Muted,
+            BodyLineKind::Muted,
+            BodyLineKind::Normal,
+        ],
         body_rich_lines: None,
         body_scroll: 0,
         detail_title: String::new(),
@@ -200,9 +238,20 @@ fn build_too_small_view_model(state: &ConsoleState) -> ConsoleViewModel {
         input: String::new(),
         input_hint: String::new(),
         footer: "Resize terminal   ? help   Esc quit".to_string(),
-        overlay_title: state.overlay.as_ref().map(|overlay| overlay.kind.title().to_string()),
-        overlay_body: state.overlay.as_ref().map(|overlay| overlay.body.clone()).unwrap_or_default(),
-        overlay_scroll: state.overlay.as_ref().map(|overlay| overlay.scroll).unwrap_or(0),
+        overlay_title: state
+            .overlay
+            .as_ref()
+            .map(|overlay| overlay.kind.title().to_string()),
+        overlay_body: state
+            .overlay
+            .as_ref()
+            .map(|overlay| overlay.body.clone())
+            .unwrap_or_default(),
+        overlay_scroll: state
+            .overlay
+            .as_ref()
+            .map(|overlay| overlay.scroll)
+            .unwrap_or(0),
         show_overlay: state.overlay.is_some(),
         compact_detail_only: false,
     }
@@ -218,8 +267,14 @@ fn build_welcome_view_model(state: &ConsoleState) -> Result<ConsoleViewModel> {
     body_lines.push(String::new());
     body_lines.push("  workflow-first runtime console".to_string());
     body_lines.push(String::new());
-    body_lines.push(format!("  {}", welcome_line(state, WelcomeAction::AddTask, "新增 task（本期占位）")));
-    body_lines.push(format!("  {}", welcome_line(state, WelcomeAction::SelectTask, "选择现有 task")));
+    body_lines.push(format!(
+        "  {}",
+        welcome_line(state, WelcomeAction::AddTask, "新增 task（本期占位）")
+    ));
+    body_lines.push(format!(
+        "  {}",
+        welcome_line(state, WelcomeAction::SelectTask, "选择现有 task")
+    ));
     let body_line_kinds = body_lines
         .iter()
         .map(|line| {
@@ -246,9 +301,20 @@ fn build_welcome_view_model(state: &ConsoleState) -> Result<ConsoleViewModel> {
         input: String::new(),
         input_hint: String::new(),
         footer: "↑↓ move   Enter select   ? help   Esc quit".to_string(),
-        overlay_title: state.overlay.as_ref().map(|overlay| overlay.kind.title().to_string()),
-        overlay_body: state.overlay.as_ref().map(|overlay| overlay.body.clone()).unwrap_or_default(),
-        overlay_scroll: state.overlay.as_ref().map(|overlay| overlay.scroll).unwrap_or(0),
+        overlay_title: state
+            .overlay
+            .as_ref()
+            .map(|overlay| overlay.kind.title().to_string()),
+        overlay_body: state
+            .overlay
+            .as_ref()
+            .map(|overlay| overlay.body.clone())
+            .unwrap_or_default(),
+        overlay_scroll: state
+            .overlay
+            .as_ref()
+            .map(|overlay| overlay.scroll)
+            .unwrap_or(0),
         show_overlay: state.overlay.is_some(),
         compact_detail_only: false,
     })
@@ -256,133 +322,248 @@ fn build_welcome_view_model(state: &ConsoleState) -> Result<ConsoleViewModel> {
 
 fn build_task_picker_view_model(state: &ConsoleState) -> Result<ConsoleViewModel> {
     let show_overlay = state.overlay.is_some();
-    let overlay_title = state.overlay.as_ref().map(|overlay| overlay.kind.title().to_string());
-    let overlay_body = state.overlay.as_ref().map(|overlay| overlay.body.clone()).unwrap_or_default();
-    let overlay_scroll = state.overlay.as_ref().map(|overlay| overlay.scroll).unwrap_or(0);
-    let (body_lines, body_line_kinds, body_rich_lines) = if let Some(message) = state.message.as_ref() {
-        let lines = message.lines().map(|line| line.to_string()).collect::<Vec<_>>();
-        let kinds = vec![BodyLineKind::Warning; lines.len()];
-        (lines, kinds, None)
-    } else if state.task_list.is_empty() {
-        (
-            vec!["No task-* directories found under .gold-band/tasks".to_string()],
-            vec![BodyLineKind::Muted],
-            None,
-        )
-    } else {
-        let mut lines = Vec::new();
-        let mut kinds = Vec::new();
-        let mut rich_lines = Vec::new();
-        let width = state.viewport.width.saturating_sub(10) as usize;
-        let width = width.clamp(32, 88);
-        for (index, summary) in state.task_list.iter().enumerate() {
-            let selected = index == state.task_index;
-            let marker = if selected { '▶' } else { '·' };
-            let desc = summary.task.description.as_deref().unwrap_or("");
-            let run_hint = summary
-                .suggested_run_id
-                .as_ref()
-                .map(|run_id| format!("run {run_id}"))
-                .unwrap_or_else(|| "run none".to_string());
-            let shell = if selected { ("┏", "┓", "┗", "┛", "━") } else { ("╭", "╮", "╰", "╯", "─") };
-            let border_top = format!("{}{}", shell.0, shell.4.to_string().repeat(width));
-            lines.push(border_top.clone());
-            kinds.push(BodyLineKind::Normal);
-            rich_lines.push(vec![BodySpan { text: border_top, role: BodySpanRole::PickerBorder }]);
-
-            let title_line = format!("│ {} {}{}", marker, summary.task.id, if selected { "   [selected]" } else { "" });
-            lines.push(title_line);
-            kinds.push(BodyLineKind::Normal);
-            let mut title_spans = vec![
-                BodySpan { text: "│ ".to_string(), role: BodySpanRole::PickerBorder },
-                BodySpan { text: format!("{} ", marker), role: BodySpanRole::PickerSelection },
-                BodySpan { text: summary.task.id.clone(), role: BodySpanRole::PickerTitle },
-            ];
-            if selected {
-                title_spans.push(BodySpan { text: "   [selected]".to_string(), role: BodySpanRole::Accent });
-            }
-            rich_lines.push(title_spans);
-
-            let desc_line = format!("│   {}", desc);
-            lines.push(desc_line.clone());
-            kinds.push(BodyLineKind::Muted);
-            rich_lines.push(vec![
-                BodySpan { text: "│   ".to_string(), role: BodySpanRole::PickerBorder },
-                BodySpan { text: desc_line.trim_start_matches("│   ").to_string(), role: BodySpanRole::Muted },
-            ]);
-
-            if summary.workflow_valid {
-                let workflow_line = format!("│   workflow valid   {}", run_hint);
-                lines.push(workflow_line);
-                kinds.push(BodyLineKind::Success);
-                rich_lines.push(vec![
-                    BodySpan { text: "│   ".to_string(), role: BodySpanRole::PickerBorder },
-                    BodySpan { text: "workflow valid".to_string(), role: BodySpanRole::Success },
-                    BodySpan { text: "   ".to_string(), role: BodySpanRole::Normal },
-                    BodySpan { text: run_hint, role: BodySpanRole::PickerMeta },
-                ]);
-            } else if summary.workflow_exists {
-                lines.push("│   workflow invalid".to_string());
-                kinds.push(BodyLineKind::Error);
-                rich_lines.push(vec![
-                    BodySpan { text: "│   ".to_string(), role: BodySpanRole::PickerBorder },
-                    BodySpan { text: "workflow invalid".to_string(), role: BodySpanRole::Error },
-                ]);
-                let reason = summary.workflow_error.as_deref().unwrap_or("unknown").to_string();
-                lines.push(format!("│   reason: {}", reason));
-                kinds.push(BodyLineKind::Warning);
-                rich_lines.push(vec![
-                    BodySpan { text: "│   ".to_string(), role: BodySpanRole::PickerBorder },
-                    BodySpan { text: "reason: ".to_string(), role: BodySpanRole::PickerReasonLabel },
-                    BodySpan { text: reason, role: BodySpanRole::Warning },
-                ]);
-                lines.push(format!("│   {}", run_hint));
-                kinds.push(BodyLineKind::Muted);
-                rich_lines.push(vec![
-                    BodySpan { text: "│   ".to_string(), role: BodySpanRole::PickerBorder },
-                    BodySpan { text: run_hint, role: BodySpanRole::PickerMeta },
-                ]);
-            } else {
-                lines.push("│   workflow missing".to_string());
-                kinds.push(BodyLineKind::Warning);
-                rich_lines.push(vec![
-                    BodySpan { text: "│   ".to_string(), role: BodySpanRole::PickerBorder },
-                    BodySpan { text: "workflow missing".to_string(), role: BodySpanRole::Warning },
-                ]);
-                lines.push("│   reason: missing authoring/workflow.json".to_string());
-                kinds.push(BodyLineKind::Warning);
-                rich_lines.push(vec![
-                    BodySpan { text: "│   ".to_string(), role: BodySpanRole::PickerBorder },
-                    BodySpan { text: "reason: ".to_string(), role: BodySpanRole::PickerReasonLabel },
-                    BodySpan { text: "missing authoring/workflow.json".to_string(), role: BodySpanRole::Warning },
-                ]);
-                lines.push(format!("│   {}", run_hint));
-                kinds.push(BodyLineKind::Muted);
-                rich_lines.push(vec![
-                    BodySpan { text: "│   ".to_string(), role: BodySpanRole::PickerBorder },
-                    BodySpan { text: run_hint, role: BodySpanRole::PickerMeta },
-                ]);
-            }
-
-            let border_bottom = format!("{}{}", shell.2, shell.4.to_string().repeat(width));
-            lines.push(border_bottom.clone());
-            kinds.push(BodyLineKind::Normal);
-            rich_lines.push(vec![BodySpan { text: border_bottom, role: BodySpanRole::PickerBorder }]);
-            if index + 1 < state.task_list.len() {
-                lines.push(String::new());
+    let overlay_title = state
+        .overlay
+        .as_ref()
+        .map(|overlay| overlay.kind.title().to_string());
+    let overlay_body = state
+        .overlay
+        .as_ref()
+        .map(|overlay| overlay.body.clone())
+        .unwrap_or_default();
+    let overlay_scroll = state
+        .overlay
+        .as_ref()
+        .map(|overlay| overlay.scroll)
+        .unwrap_or(0);
+    let (body_lines, body_line_kinds, body_rich_lines) =
+        if let Some(message) = state.message.as_ref() {
+            let lines = message
+                .lines()
+                .map(|line| line.to_string())
+                .collect::<Vec<_>>();
+            let kinds = vec![BodyLineKind::Warning; lines.len()];
+            (lines, kinds, None)
+        } else if state.task_list.is_empty() {
+            (
+                vec!["No task-* directories found under .gold-band/tasks".to_string()],
+                vec![BodyLineKind::Muted],
+                None,
+            )
+        } else {
+            let mut lines = Vec::new();
+            let mut kinds = Vec::new();
+            let mut rich_lines = Vec::new();
+            let width = state.viewport.width.saturating_sub(10) as usize;
+            let width = width.clamp(32, 88);
+            for (index, summary) in state.task_list.iter().enumerate() {
+                let selected = index == state.task_index;
+                let marker = if selected { '▶' } else { '·' };
+                let desc = summary.task.description.as_deref().unwrap_or("");
+                let run_hint = summary
+                    .suggested_run_id
+                    .as_ref()
+                    .map(|run_id| format!("run {run_id}"))
+                    .unwrap_or_else(|| "run none".to_string());
+                let shell = if selected {
+                    ("┏", "┓", "┗", "┛", "━")
+                } else {
+                    ("╭", "╮", "╰", "╯", "─")
+                };
+                let border_top = format!("{}{}", shell.0, shell.4.to_string().repeat(width));
+                lines.push(border_top.clone());
                 kinds.push(BodyLineKind::Normal);
-                rich_lines.push(vec![BodySpan { text: String::new(), role: BodySpanRole::Normal }]);
+                rich_lines.push(vec![BodySpan {
+                    text: border_top,
+                    role: BodySpanRole::PickerBorder,
+                }]);
+
+                let title_line = format!(
+                    "│ {} {}{}",
+                    marker,
+                    summary.task.id,
+                    if selected { "   [selected]" } else { "" }
+                );
+                lines.push(title_line);
+                kinds.push(BodyLineKind::Normal);
+                let mut title_spans = vec![
+                    BodySpan {
+                        text: "│ ".to_string(),
+                        role: BodySpanRole::PickerBorder,
+                    },
+                    BodySpan {
+                        text: format!("{} ", marker),
+                        role: BodySpanRole::PickerSelection,
+                    },
+                    BodySpan {
+                        text: summary.task.id.clone(),
+                        role: BodySpanRole::PickerTitle,
+                    },
+                ];
+                if selected {
+                    title_spans.push(BodySpan {
+                        text: "   [selected]".to_string(),
+                        role: BodySpanRole::Accent,
+                    });
+                }
+                rich_lines.push(title_spans);
+
+                let desc_line = format!("│   {}", desc);
+                lines.push(desc_line.clone());
+                kinds.push(BodyLineKind::Muted);
+                rich_lines.push(vec![
+                    BodySpan {
+                        text: "│   ".to_string(),
+                        role: BodySpanRole::PickerBorder,
+                    },
+                    BodySpan {
+                        text: desc_line.trim_start_matches("│   ").to_string(),
+                        role: BodySpanRole::Muted,
+                    },
+                ]);
+
+                if summary.workflow_valid {
+                    let workflow_line = format!("│   workflow valid   {}", run_hint);
+                    lines.push(workflow_line);
+                    kinds.push(BodyLineKind::Success);
+                    rich_lines.push(vec![
+                        BodySpan {
+                            text: "│   ".to_string(),
+                            role: BodySpanRole::PickerBorder,
+                        },
+                        BodySpan {
+                            text: "workflow valid".to_string(),
+                            role: BodySpanRole::Success,
+                        },
+                        BodySpan {
+                            text: "   ".to_string(),
+                            role: BodySpanRole::Normal,
+                        },
+                        BodySpan {
+                            text: run_hint,
+                            role: BodySpanRole::PickerMeta,
+                        },
+                    ]);
+                } else if summary.workflow_exists {
+                    lines.push("│   workflow invalid".to_string());
+                    kinds.push(BodyLineKind::Error);
+                    rich_lines.push(vec![
+                        BodySpan {
+                            text: "│   ".to_string(),
+                            role: BodySpanRole::PickerBorder,
+                        },
+                        BodySpan {
+                            text: "workflow invalid".to_string(),
+                            role: BodySpanRole::Error,
+                        },
+                    ]);
+                    let reason = summary
+                        .workflow_error
+                        .as_deref()
+                        .unwrap_or("unknown")
+                        .to_string();
+                    lines.push(format!("│   reason: {}", reason));
+                    kinds.push(BodyLineKind::Warning);
+                    rich_lines.push(vec![
+                        BodySpan {
+                            text: "│   ".to_string(),
+                            role: BodySpanRole::PickerBorder,
+                        },
+                        BodySpan {
+                            text: "reason: ".to_string(),
+                            role: BodySpanRole::PickerReasonLabel,
+                        },
+                        BodySpan {
+                            text: reason,
+                            role: BodySpanRole::Warning,
+                        },
+                    ]);
+                    lines.push(format!("│   {}", run_hint));
+                    kinds.push(BodyLineKind::Muted);
+                    rich_lines.push(vec![
+                        BodySpan {
+                            text: "│   ".to_string(),
+                            role: BodySpanRole::PickerBorder,
+                        },
+                        BodySpan {
+                            text: run_hint,
+                            role: BodySpanRole::PickerMeta,
+                        },
+                    ]);
+                } else {
+                    lines.push("│   workflow missing".to_string());
+                    kinds.push(BodyLineKind::Warning);
+                    rich_lines.push(vec![
+                        BodySpan {
+                            text: "│   ".to_string(),
+                            role: BodySpanRole::PickerBorder,
+                        },
+                        BodySpan {
+                            text: "workflow missing".to_string(),
+                            role: BodySpanRole::Warning,
+                        },
+                    ]);
+                    lines.push("│   reason: missing authoring/workflow.json".to_string());
+                    kinds.push(BodyLineKind::Warning);
+                    rich_lines.push(vec![
+                        BodySpan {
+                            text: "│   ".to_string(),
+                            role: BodySpanRole::PickerBorder,
+                        },
+                        BodySpan {
+                            text: "reason: ".to_string(),
+                            role: BodySpanRole::PickerReasonLabel,
+                        },
+                        BodySpan {
+                            text: "missing authoring/workflow.json".to_string(),
+                            role: BodySpanRole::Warning,
+                        },
+                    ]);
+                    lines.push(format!("│   {}", run_hint));
+                    kinds.push(BodyLineKind::Muted);
+                    rich_lines.push(vec![
+                        BodySpan {
+                            text: "│   ".to_string(),
+                            role: BodySpanRole::PickerBorder,
+                        },
+                        BodySpan {
+                            text: run_hint,
+                            role: BodySpanRole::PickerMeta,
+                        },
+                    ]);
+                }
+
+                let border_bottom = format!("{}{}", shell.2, shell.4.to_string().repeat(width));
+                lines.push(border_bottom.clone());
+                kinds.push(BodyLineKind::Normal);
+                rich_lines.push(vec![BodySpan {
+                    text: border_bottom,
+                    role: BodySpanRole::PickerBorder,
+                }]);
+                if index + 1 < state.task_list.len() {
+                    lines.push(String::new());
+                    kinds.push(BodyLineKind::Normal);
+                    rich_lines.push(vec![BodySpan {
+                        text: String::new(),
+                        role: BodySpanRole::Normal,
+                    }]);
+                }
             }
-        }
-        (lines, kinds, Some(rich_lines))
-    };
+            (lines, kinds, Some(rich_lines))
+        };
     Ok(ConsoleViewModel {
         header: if show_overlay {
             "Gold Band Console • overlay mode".to_string()
         } else {
-            format!("Gold Band Console • tasks discovered: {}", state.task_list.len())
+            format!(
+                "Gold Band Console • tasks discovered: {}",
+                state.task_list.len()
+            )
         },
-        body_title: pane_title("Task Picker", state.focus == FocusPane::TaskPicker && !show_overlay),
+        body_title: pane_title(
+            "Task Picker",
+            state.focus == FocusPane::TaskPicker && !show_overlay,
+        ),
         body_lines,
         body_line_kinds,
         body_rich_lines,
@@ -409,13 +590,28 @@ fn build_task_picker_view_model(state: &ConsoleState) -> Result<ConsoleViewModel
 }
 
 fn build_workspace_view_model(app: &App, state: &ConsoleState) -> Result<ConsoleViewModel> {
-    let workspace = state.workspace.as_ref().ok_or_else(|| anyhow!("workspace missing"))?;
+    let workspace = state
+        .workspace
+        .as_ref()
+        .ok_or_else(|| anyhow!("workspace missing"))?;
     let detail_body = render_detail_panel(app, workspace, &state.command_suggestions)?;
-    let compact_detail_only = state.layout_mode == LayoutMode::Compact && state.focus == FocusPane::Detail;
+    let compact_detail_only =
+        state.layout_mode == LayoutMode::Compact && state.focus == FocusPane::Detail;
     let show_overlay = state.overlay.is_some();
-    let overlay_title = state.overlay.as_ref().map(|overlay| overlay.kind.title().to_string());
-    let overlay_body = state.overlay.as_ref().map(|overlay| overlay.body.clone()).unwrap_or_default();
-    let overlay_scroll = state.overlay.as_ref().map(|overlay| overlay.scroll).unwrap_or(0);
+    let overlay_title = state
+        .overlay
+        .as_ref()
+        .map(|overlay| overlay.kind.title().to_string());
+    let overlay_body = state
+        .overlay
+        .as_ref()
+        .map(|overlay| overlay.body.clone())
+        .unwrap_or_default();
+    let overlay_scroll = state
+        .overlay
+        .as_ref()
+        .map(|overlay| overlay.scroll)
+        .unwrap_or(0);
     let body_lines = if compact_detail_only {
         detail_body.lines().map(|line| line.to_string()).collect()
     } else {
@@ -430,9 +626,13 @@ fn build_workspace_view_model(app: &App, state: &ConsoleState) -> Result<Console
             if let Some(background_task) = state.background_task.as_ref() {
                 if background_task.task_id == workspace.task_id {
                     if let Some(error) = background_task.error.as_ref() {
-                        header.push_str(&format!("\n[background: {} failed] {}", background_task.kind, error));
+                        header.push_str(&format!(
+                            "\n[background: {} failed] {}",
+                            background_task.kind, error
+                        ));
                     } else {
-                        header.push_str(&format!("\n[background: {} pending]", background_task.kind));
+                        header
+                            .push_str(&format!("\n[background: {} pending]", background_task.kind));
                     }
                 }
             }
@@ -446,10 +646,26 @@ fn build_workspace_view_model(app: &App, state: &ConsoleState) -> Result<Console
         body_lines,
         body_line_kinds,
         body_rich_lines: None,
-        body_scroll: if compact_detail_only { workspace.log_scroll } else { 0 },
-        detail_title: if state.layout_mode == LayoutMode::Full { pane_title("Details", state.focus == FocusPane::Detail) } else { String::new() },
-        detail_body: if state.layout_mode == LayoutMode::Full { detail_body } else { String::new() },
-        detail_scroll: if state.layout_mode == LayoutMode::Full { workspace.log_scroll } else { 0 },
+        body_scroll: if compact_detail_only {
+            workspace.log_scroll
+        } else {
+            0
+        },
+        detail_title: if state.layout_mode == LayoutMode::Full {
+            pane_title("Details", state.focus == FocusPane::Detail)
+        } else {
+            String::new()
+        },
+        detail_body: if state.layout_mode == LayoutMode::Full {
+            detail_body
+        } else {
+            String::new()
+        },
+        detail_scroll: if state.layout_mode == LayoutMode::Full {
+            workspace.log_scroll
+        } else {
+            0
+        },
         show_detail: state.layout_mode == LayoutMode::Full,
         show_input: !show_overlay,
         input_title: pane_title("Command Bar", state.focus == FocusPane::Input),
@@ -458,9 +674,11 @@ fn build_workspace_view_model(app: &App, state: &ConsoleState) -> Result<Console
         footer: if show_overlay {
             "↑↓ scroll   Esc close".to_string()
         } else if state.layout_mode == LayoutMode::Compact {
-            "←→↑↓ move   Enter open   l toggle log   Tab swap pane   / command   ? help   Esc back".to_string()
+            "←→↑↓ move   Enter open   l toggle log   Tab swap pane   / command   ? help   Esc back"
+                .to_string()
         } else {
-            "←→↑↓ move   Enter open   l toggle log   Tab focus   / command   ? help   Esc back".to_string()
+            "←→↑↓ move   Enter open   l toggle log   Tab focus   / command   ? help   Esc back"
+                .to_string()
         },
         overlay_title,
         overlay_body,
@@ -485,13 +703,27 @@ fn render_workspace_header(workspace: &WorkspaceState) -> String {
     let workflow = if workspace.task_summary.workflow_valid {
         "workflow=ok".to_string()
     } else if workspace.task_summary.workflow_exists {
-        format!("workflow=invalid({})", workspace.task_summary.workflow_error.as_deref().unwrap_or("unknown"))
+        format!(
+            "workflow=invalid({})",
+            workspace
+                .task_summary
+                .workflow_error
+                .as_deref()
+                .unwrap_or("unknown")
+        )
     } else {
         "workflow=missing".to_string()
     };
     let run = workspace.active_run_id.as_deref().unwrap_or("none");
-    let restore = workspace.task_summary.resumable_run_id.as_deref().unwrap_or("none");
-    let progress = workspace.run_progress_summary.as_deref().unwrap_or("progress unavailable");
+    let restore = workspace
+        .task_summary
+        .resumable_run_id
+        .as_deref()
+        .unwrap_or("none");
+    let progress = workspace
+        .run_progress_summary
+        .as_deref()
+        .unwrap_or("progress unavailable");
     format!(
         "Task: {}\n{}\n[run: {}] [resumable: {}] [{}]\n{}",
         task.id, desc, run, restore, workflow, progress
@@ -503,18 +735,29 @@ fn render_workspace_dag(app: &App, workspace: &WorkspaceState) -> Result<Vec<Str
         return Ok(vec!["No valid workflow graph available".to_string()]);
     }
 
-    let workflow: WorkflowDsl = crate::storage::read_json(&app.paths.workflow_file(&workspace.task_id))?;
+    let workflow: WorkflowDsl =
+        crate::storage::read_json(&app.paths.workflow_file(&workspace.task_id))?;
     let active_run = workspace
         .active_run_id
         .as_ref()
         .and_then(|run_id| app.run_status(&workspace.task_id, run_id).ok());
 
-    let max_rows = workspace.dag_positions.iter().map(|column| column.len()).max().unwrap_or(0);
+    let max_rows = workspace
+        .dag_positions
+        .iter()
+        .map(|column| column.len())
+        .max()
+        .unwrap_or(0);
     let cell_width = 20usize;
     let column_gap = 6usize;
     let row_height = 4usize;
     let total_rows = max_rows.saturating_mul(row_height).max(row_height);
-    let total_cols = workspace.dag_positions.len().saturating_mul(cell_width + column_gap).saturating_sub(column_gap).max(cell_width);
+    let total_cols = workspace
+        .dag_positions
+        .len()
+        .saturating_mul(cell_width + column_gap)
+        .saturating_sub(column_gap)
+        .max(cell_width);
     let mut canvas = vec![vec![' '; total_cols]; total_rows];
     let mut anchors = HashMap::<String, (usize, usize, usize, usize)>::new();
 
@@ -534,7 +777,16 @@ fn render_workspace_dag(app: &App, workspace: &WorkspaceState) -> Result<Vec<Str
             } else {
                 status.to_string()
             };
-            draw_box(&mut canvas, x, y, cell_width, 3, &title, &status_line, selected);
+            draw_box(
+                &mut canvas,
+                x,
+                y,
+                cell_width,
+                3,
+                &title,
+                &status_line,
+                selected,
+            );
             anchors.insert(node_id.clone(), (x, y, x + cell_width - 1, y + 1));
         }
     }
@@ -543,7 +795,8 @@ fn render_workspace_dag(app: &App, workspace: &WorkspaceState) -> Result<Vec<Str
         if edge.to == crate::dsl::END_NODE {
             continue;
         }
-        let Some((from_left, _from_top, from_right, from_mid_y)) = anchors.get(&edge.from).copied() else {
+        let Some((from_left, _from_top, from_right, from_mid_y)) = anchors.get(&edge.from).copied()
+        else {
             continue;
         };
         let Some((to_left, _to_top, _to_right, to_mid_y)) = anchors.get(&edge.to).copied() else {
@@ -595,20 +848,36 @@ fn render_workspace_dag(app: &App, workspace: &WorkspaceState) -> Result<Vec<Str
         .collect())
 }
 
-fn render_detail_panel(app: &App, workspace: &WorkspaceState, command_suggestions: &[String]) -> Result<String> {
+fn render_detail_panel(
+    app: &App,
+    workspace: &WorkspaceState,
+    command_suggestions: &[String],
+) -> Result<String> {
     let body = match (&workspace.selection, &workspace.detail_level) {
         (WorkspaceSelection::TaskOverview, _) => Ok(render_task_summary(&workspace.task_summary)),
-        (WorkspaceSelection::Node { node_id }, DetailLevel::NodeHome) => render_node_home(app, workspace, node_id),
+        (WorkspaceSelection::Node { node_id }, DetailLevel::NodeHome) => {
+            render_node_home(app, workspace, node_id)
+        }
         (WorkspaceSelection::Node { node_id }, DetailLevel::AttemptItems { attempt_id, .. }) => {
             render_attempt_items(app, workspace, node_id, attempt_id)
         }
-        (WorkspaceSelection::Node { node_id }, DetailLevel::Content) => render_content_view(app, workspace, node_id),
+        (WorkspaceSelection::Node { node_id }, DetailLevel::Content) => {
+            render_content_view(app, workspace, node_id)
+        }
     }?;
 
     if command_suggestions.is_empty() {
         Ok(body)
     } else {
-        Ok(format!("{}\n\nCommands\n{}", body, command_suggestions.iter().map(|item| format!("- {}", item)).collect::<Vec<_>>().join("\n")))
+        Ok(format!(
+            "{}\n\nCommands\n{}",
+            body,
+            command_suggestions
+                .iter()
+                .map(|item| format!("- {}", item))
+                .collect::<Vec<_>>()
+                .join("\n")
+        ))
     }
 }
 
@@ -619,7 +888,10 @@ fn render_task_summary(summary: &TaskSummary) -> String {
     let workflow = if summary.workflow_valid {
         "valid".to_string()
     } else if summary.workflow_exists {
-        format!("invalid: {}", summary.workflow_error.as_deref().unwrap_or("unknown"))
+        format!(
+            "invalid: {}",
+            summary.workflow_error.as_deref().unwrap_or("unknown")
+        )
     } else {
         "missing authoring/workflow.json".to_string()
     };
@@ -642,8 +914,10 @@ fn render_node_home(app: &App, workspace: &WorkspaceState, node_id: &str) -> Res
     let Some(round_id) = workspace.selected_round_id.as_ref() else {
         return Ok(format!("Node: {}\nNo active round", node_id));
     };
-    let workflow: WorkflowDsl = crate::storage::read_json(&app.paths.workflow_file(&workspace.task_id))?;
-    let summary = app.node_runtime_summary(&workspace.task_id, run_id, round_id, &workflow, node_id)?;
+    let workflow: WorkflowDsl =
+        crate::storage::read_json(&app.paths.workflow_file(&workspace.task_id))?;
+    let summary =
+        app.node_runtime_summary(&workspace.task_id, run_id, round_id, &workflow, node_id)?;
     let mut lines = vec![format!("Node: {}", node_id)];
     if let Some(progress) = workspace.run_progress_summary.as_ref() {
         lines.push(format!("Run: {}", progress));
@@ -658,11 +932,19 @@ fn render_node_home(app: &App, workspace: &WorkspaceState, node_id: &str) -> Res
     for (index, item) in workspace.detail_items.iter().enumerate() {
         match item {
             DetailSelection::RetryAction => {
-                let marker = if workspace.detail_index == index { ">" } else { " " };
+                let marker = if workspace.detail_index == index {
+                    ">"
+                } else {
+                    " "
+                };
                 lines.push(format!("{} retry current node", marker));
             }
             DetailSelection::Attempt { attempt_id } => {
-                let marker = if workspace.detail_index == index { ">" } else { " " };
+                let marker = if workspace.detail_index == index {
+                    ">"
+                } else {
+                    " "
+                };
                 let status = summary
                     .attempts
                     .iter()
@@ -684,8 +966,22 @@ fn render_node_home(app: &App, workspace: &WorkspaceState, node_id: &str) -> Res
     Ok(lines.join("\n"))
 }
 
-fn default_log_source(app: &App, task_id: &str, run_id: &str, round_id: &str, node_id: &str, attempt_id: &str) -> LogSource {
-    if app.attempt_log_exists(task_id, run_id, round_id, node_id, attempt_id, LogSource::ProgressEvents) {
+fn default_log_source(
+    app: &App,
+    task_id: &str,
+    run_id: &str,
+    round_id: &str,
+    node_id: &str,
+    attempt_id: &str,
+) -> LogSource {
+    if app.attempt_log_exists(
+        task_id,
+        run_id,
+        round_id,
+        node_id,
+        attempt_id,
+        LogSource::ProgressEvents,
+    ) {
         LogSource::ProgressEvents
     } else {
         LogSource::RawStream
@@ -712,17 +1008,25 @@ fn effective_attempt_id(app: &App, workspace: &WorkspaceState, attempt_id: &str)
         return Ok(attempt_id.to_string());
     };
     Ok(match &workspace.detail_level {
-        DetailLevel::AttemptItems { follow_live: true, .. } => app
+        DetailLevel::AttemptItems {
+            follow_live: true, ..
+        } => app
             .current_attempt_selection(&workspace.task_id, run_id)?
             .and_then(|(active_round_id, active_node_id, active_attempt_id)| {
-                (active_round_id == *round_id && active_node_id == *node_id).then_some(active_attempt_id)
+                (active_round_id == *round_id && active_node_id == *node_id)
+                    .then_some(active_attempt_id)
             })
             .unwrap_or_else(|| attempt_id.to_string()),
         _ => attempt_id.to_string(),
     })
 }
 
-fn render_attempt_items(app: &App, workspace: &WorkspaceState, node_id: &str, attempt_id: &str) -> Result<String> {
+fn render_attempt_items(
+    app: &App,
+    workspace: &WorkspaceState,
+    node_id: &str,
+    attempt_id: &str,
+) -> Result<String> {
     let Some(run_id) = workspace.active_run_id.as_ref() else {
         return Ok("No active run".to_string());
     };
@@ -770,12 +1074,31 @@ fn render_attempt_items(app: &App, workspace: &WorkspaceState, node_id: &str, at
                 .and_then(|attempt| attempt.finished_at.clone())
                 .unwrap_or_else(|| "not finished".to_string())
         ),
-        format!("Follow live: {}", matches!(workspace.detail_level, DetailLevel::AttemptItems { follow_live: true, .. })),
+        format!(
+            "Follow live: {}",
+            matches!(
+                workspace.detail_level,
+                DetailLevel::AttemptItems {
+                    follow_live: true,
+                    ..
+                }
+            )
+        ),
     ];
     if maybe_attempt.is_none() {
-        lines.push("Attempt state file is not available yet. Waiting for runtime persistence...".to_string());
+        lines.push(
+            "Attempt state file is not available yet. Waiting for runtime persistence..."
+                .to_string(),
+        );
     }
-    if app.attempt_log_exists(&workspace.task_id, run_id, round_id, node_id, &effective_attempt_id, workspace.log_source) {
+    if app.attempt_log_exists(
+        &workspace.task_id,
+        run_id,
+        round_id,
+        node_id,
+        &effective_attempt_id,
+        workspace.log_source,
+    ) {
         if let Some(output) = provider_output {
             lines.push(String::new());
             lines.push(log_title.to_string());
@@ -789,10 +1112,18 @@ fn render_attempt_items(app: &App, workspace: &WorkspaceState, node_id: &str, at
     lines.push(String::new());
     lines.push("Items".to_string());
     for (index, item) in workspace.detail_items.iter().enumerate() {
-        let marker = if workspace.detail_index == index { ">" } else { " " };
+        let marker = if workspace.detail_index == index {
+            ">"
+        } else {
+            " "
+        };
         match item {
-            DetailSelection::Artifact { name, .. } => lines.push(format!("{} artifact {}", marker, name)),
-            DetailSelection::Attachment { name, .. } => lines.push(format!("{} attachment {}", marker, name)),
+            DetailSelection::Artifact { name, .. } => {
+                lines.push(format!("{} artifact {}", marker, name))
+            }
+            DetailSelection::Attachment { name, .. } => {
+                lines.push(format!("{} attachment {}", marker, name))
+            }
             _ => {}
         }
     }
@@ -810,8 +1141,22 @@ fn render_content_view(app: &App, workspace: &WorkspaceState, node_id: &str) -> 
         return Ok("No content selected".to_string());
     };
     match item {
-        DetailSelection::Artifact { attempt_id, name } => app.artifact_show(&workspace.task_id, run_id, round_id, node_id, attempt_id, name),
-        DetailSelection::Attachment { attempt_id, name } => app.attachment_show(&workspace.task_id, run_id, round_id, node_id, attempt_id, name),
+        DetailSelection::Artifact { attempt_id, name } => app.artifact_show(
+            &workspace.task_id,
+            run_id,
+            round_id,
+            node_id,
+            attempt_id,
+            name,
+        ),
+        DetailSelection::Attachment { attempt_id, name } => app.attachment_show(
+            &workspace.task_id,
+            run_id,
+            round_id,
+            node_id,
+            attempt_id,
+            name,
+        ),
         _ => Ok("No content selected".to_string()),
     }
 }
@@ -828,13 +1173,22 @@ fn build_node_home_items(app: &App, workspace: &WorkspaceState) -> Result<Vec<De
     };
     let attempts = app.attempt_list(&workspace.task_id, run_id, round_id, node_id)?;
     let mut items = vec![DetailSelection::RetryAction];
-    items.extend(attempts.into_iter().rev().map(|attempt| DetailSelection::Attempt {
-        attempt_id: attempt.attempt_id,
-    }));
+    items.extend(
+        attempts
+            .into_iter()
+            .rev()
+            .map(|attempt| DetailSelection::Attempt {
+                attempt_id: attempt.attempt_id,
+            }),
+    );
     Ok(items)
 }
 
-fn build_attempt_items(app: &App, workspace: &WorkspaceState, attempt_id: &str) -> Result<Vec<DetailSelection>> {
+fn build_attempt_items(
+    app: &App,
+    workspace: &WorkspaceState,
+    attempt_id: &str,
+) -> Result<Vec<DetailSelection>> {
     let WorkspaceSelection::Node { node_id } = &workspace.selection else {
         return Ok(Vec::new());
     };
@@ -888,7 +1242,10 @@ fn dag_columns(workflow: &WorkflowDsl) -> Vec<Vec<String>> {
         if edge.to == crate::dsl::END_NODE {
             continue;
         }
-        adjacency.entry(edge.from.clone()).or_default().push(edge.to.clone());
+        adjacency
+            .entry(edge.from.clone())
+            .or_default()
+            .push(edge.to.clone());
         *indegree.entry(edge.to.clone()).or_insert(0) += 1;
     }
     let mut queue = VecDeque::new();
@@ -911,17 +1268,33 @@ fn dag_columns(workflow: &WorkflowDsl) -> Vec<Vec<String>> {
     let mut columns = BTreeMap::<usize, Vec<String>>::new();
     for node in &workflow.nodes {
         let column = depth.get(node.id()).copied().unwrap_or(0);
-        columns.entry(column).or_default().push(node.id().to_string());
+        columns
+            .entry(column)
+            .or_default()
+            .push(node.id().to_string());
     }
     columns.into_values().collect()
 }
 
 fn welcome_line(state: &ConsoleState, action: WelcomeAction, label: &str) -> String {
-    let marker = if state.welcome_action == action { '◆' } else { '·' };
+    let marker = if state.welcome_action == action {
+        '◆'
+    } else {
+        '·'
+    };
     format!("{} {}", marker, label)
 }
 
-fn draw_box(canvas: &mut [Vec<char>], x: usize, y: usize, width: usize, height: usize, title: &str, body: &str, selected: bool) {
+fn draw_box(
+    canvas: &mut [Vec<char>],
+    x: usize,
+    y: usize,
+    width: usize,
+    height: usize,
+    title: &str,
+    body: &str,
+    selected: bool,
+) {
     if canvas.is_empty() || width < 6 || height < 3 {
         return;
     }
@@ -975,11 +1348,26 @@ fn draw_box(canvas: &mut [Vec<char>], x: usize, y: usize, width: usize, height: 
 }
 
 fn summarize_run_progress(value: &serde_json::Value) -> String {
-    let status = value.get("status").and_then(|v| v.as_str()).unwrap_or("unknown");
-    let node = value.get("current_node").and_then(|v| v.as_str()).unwrap_or("none");
-    let attempt = value.get("current_attempt").and_then(|v| v.as_str()).unwrap_or("none");
-    let round = value.get("current_round").and_then(|v| v.as_str()).unwrap_or("none");
-    format!("status={} round={} node={} attempt={}", status, round, node, attempt)
+    let status = value
+        .get("status")
+        .and_then(|v| v.as_str())
+        .unwrap_or("unknown");
+    let node = value
+        .get("current_node")
+        .and_then(|v| v.as_str())
+        .unwrap_or("none");
+    let attempt = value
+        .get("current_attempt")
+        .and_then(|v| v.as_str())
+        .unwrap_or("none");
+    let round = value
+        .get("current_round")
+        .and_then(|v| v.as_str())
+        .unwrap_or("none");
+    format!(
+        "status={} round={} node={} attempt={}",
+        status, round, node, attempt
+    )
 }
 
 fn tail_lines(text: &str, limit: usize) -> String {

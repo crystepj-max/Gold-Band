@@ -69,7 +69,10 @@ pub enum DetailSelection {
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum DetailLevel {
     NodeHome,
-    AttemptItems { attempt_id: String, follow_live: bool },
+    AttemptItems {
+        attempt_id: String,
+        follow_live: bool,
+    },
     Content,
 }
 
@@ -173,7 +176,10 @@ impl Default for ConsoleState {
             message: None,
             auto_refresh_enabled: true,
             last_refresh_label: None,
-            viewport: Viewport { width: 120, height: 40 },
+            viewport: Viewport {
+                width: 120,
+                height: 40,
+            },
             layout_mode: LayoutMode::Full,
             welcome_action: WelcomeAction::SelectTask,
             console_theme: ConsoleThemeName::GoldBand,

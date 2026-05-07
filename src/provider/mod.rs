@@ -1,8 +1,8 @@
 pub use crate::domain::SessionRef;
-use crate::domain::{InvocationKind, SessionMode, DEFAULT_PROVIDER};
+use crate::domain::{DEFAULT_PROVIDER, InvocationKind, SessionMode};
 use crate::observability::append_raw_stream_best_effort;
 use crate::storage::{append_jsonl, ensure_parent_dir};
-use anyhow::{anyhow, bail, ensure, Result};
+use anyhow::{Result, anyhow, bail, ensure};
 use camino::Utf8PathBuf;
 use serde::{Deserialize, Serialize};
 use std::io::{BufRead, BufReader, Read};
@@ -99,7 +99,6 @@ pub struct PrimaryArtifactPayload {
     pub content: String,
 }
 
-
 #[derive(Debug, Clone)]
 pub struct PromptBundle {
     pub system_prompt: String,
@@ -161,7 +160,10 @@ impl ProviderAdapter for ClaudeCodeProvider {
             },
             Ok(output) => DoctorResult {
                 available: false,
-                reason: Some(format!("claude --version failed with status {:?}", output.status.code())),
+                reason: Some(format!(
+                    "claude --version failed with status {:?}",
+                    output.status.code()
+                )),
             },
             Err(err) => DoctorResult {
                 available: false,
@@ -176,7 +178,10 @@ impl ProviderAdapter for ClaudeCodeProvider {
         debug!(invocation_kind = ?req.invocation_kind, attempt_dir = %req.attempt_dir, session_mode = ?req.session_mode, stream_mode = ?req.stream_mode, "starting claude provider invocation");
         command.current_dir(req.workspace_dir.as_std_path());
         command.arg("--bare").arg("-p");
-        command.arg(format!("{}\n\n{}", prompt.system_prompt, prompt.user_prompt));
+        command.arg(format!(
+            "{}\n\n{}",
+            prompt.system_prompt, prompt.user_prompt
+        ));
 
         let raw_stream_path = matches!(req.stream_mode, StreamMode::Raw | StreamMode::StreamJson)
             .then(|| req.attempt_dir.join("raw.stream.jsonl"));
@@ -227,13 +232,22 @@ impl ProviderAdapter for ClaudeCodeProvider {
         command.stderr(Stdio::piped());
         if let Some(path) = raw_stream_path.as_ref() {
             ensure_parent_dir(path)?;
-            let _ = std::fs::File::options().create(true).append(true).open(path.as_std_path())?;
+            let _ = std::fs::File::options()
+                .create(true)
+                .append(true)
+                .open(path.as_std_path())?;
             debug!(path = %path, "prepared raw stream file");
         }
         let mut child = command.spawn().map_err(|err| provider_spawn_error(err))?;
 
-        let stdout = child.stdout.take().ok_or_else(|| anyhow!("failed to capture claude stdout"))?;
-        let stderr = child.stderr.take().ok_or_else(|| anyhow!("failed to capture claude stderr"))?;
+        let stdout = child
+            .stdout
+            .take()
+            .ok_or_else(|| anyhow!("failed to capture claude stdout"))?;
+        let stderr = child
+            .stderr
+            .take()
+            .ok_or_else(|| anyhow!("failed to capture claude stderr"))?;
         let stderr_path = raw_stream_path.clone();
         let stderr_handle = thread::spawn(move || read_stream(stderr, "stderr", stderr_path));
         let stream_path = raw_stream_path.clone();
@@ -243,8 +257,10 @@ impl ProviderAdapter for ClaudeCodeProvider {
             StreamMode::None | StreamMode::Raw => {
                 let stdout = read_stream(stdout, "stdout", raw_stream_path.clone());
                 let stdout = stdout.trim().to_string();
-                let response: ClaudeJsonResponse = serde_json::from_str(&stdout)
-                    .map_err(|err| anyhow!("failed to parse Claude Code JSON output: {err}; stdout={stdout}"))?;
+                let response: ClaudeJsonResponse =
+                    serde_json::from_str(&stdout).map_err(|err| {
+                        anyhow!("failed to parse Claude Code JSON output: {err}; stdout={stdout}")
+                    })?;
                 let worker_ref_seed = response.session_id.as_ref().map(|session_id| SessionRef {
                     provider: "claude-code".to_string(),
                     mode: req.session_mode,
@@ -253,12 +269,15 @@ impl ProviderAdapter for ClaudeCodeProvider {
                     continue_ref: Some(serde_json::json!({ "sessionId": session_id })),
                     open_command: Some(format!("claude -c {session_id}")),
                 });
-                let result_payload = req.primary_artifact.as_ref().map(|primary_artifact| ProviderResultPayload {
-                    primary_artifact: Some(PrimaryArtifactPayload {
-                        name: primary_artifact.clone(),
-                        content: response.result,
-                    }),
-                });
+                let result_payload =
+                    req.primary_artifact
+                        .as_ref()
+                        .map(|primary_artifact| ProviderResultPayload {
+                            primary_artifact: Some(PrimaryArtifactPayload {
+                                name: primary_artifact.clone(),
+                                content: response.result,
+                            }),
+                        });
                 ProviderRunResult {
                     status: ProviderRunStatus::Success,
                     exit_code: None,
@@ -271,11 +290,21 @@ impl ProviderAdapter for ClaudeCodeProvider {
 
         let status = child.wait()?;
         let exit_code = status.code();
-        let stderr_text = stderr_handle.join().map_err(|_| anyhow!("stderr reader thread panicked"))?;
-        debug!(?exit_code, stderr_len = stderr_text.len(), "claude provider finished");
+        let stderr_text = stderr_handle
+            .join()
+            .map_err(|_| anyhow!("stderr reader thread panicked"))?;
+        debug!(
+            ?exit_code,
+            stderr_len = stderr_text.len(),
+            "claude provider finished"
+        );
 
         if !status.success() {
-            warn!(?exit_code, stderr_len = stderr_text.len(), "claude provider returned failure status");
+            warn!(
+                ?exit_code,
+                stderr_len = stderr_text.len(),
+                "claude provider returned failure status"
+            );
             bail!(format_provider_failure(exit_code, &stderr_text));
         }
 
@@ -323,7 +352,10 @@ fn provider_spawn_error(err: std::io::Error) -> anyhow::Error {
     let mut message = format!("failed to start Claude Code provider: {err}");
     if cfg!(windows) {
         let lower = message.to_ascii_lowercase();
-        if lower.contains("git-bash") || lower.contains("bash.exe") || lower.contains("claude_code_git_bash_path") {
+        if lower.contains("git-bash")
+            || lower.contains("bash.exe")
+            || lower.contains("claude_code_git_bash_path")
+        {
             message.push_str(". ");
             message.push_str(WINDOWS_GIT_BASH_HINT);
         }
@@ -340,7 +372,10 @@ fn format_provider_failure(exit_code: Option<i32>, stderr_text: &str) -> String 
     }
     if cfg!(windows) {
         let lower = stderr_trimmed.to_ascii_lowercase();
-        if lower.contains("git-bash") || lower.contains("bash.exe") || lower.contains("claude_code_git_bash_path") {
+        if lower.contains("git-bash")
+            || lower.contains("bash.exe")
+            || lower.contains("claude_code_git_bash_path")
+        {
             message.push_str(". ");
             message.push_str(WINDOWS_GIT_BASH_HINT);
         }
@@ -371,7 +406,11 @@ fn read_stream<R: Read>(reader: R, stream: &'static str, path: Option<Utf8PathBu
     collected
 }
 
-fn read_stream_json<R: Read>(reader: R, req: &WorkerInvocation, path: Option<Utf8PathBuf>) -> Result<ProviderRunResult> {
+fn read_stream_json<R: Read>(
+    reader: R,
+    req: &WorkerInvocation,
+    path: Option<Utf8PathBuf>,
+) -> Result<ProviderRunResult> {
     let mut accumulator = StreamAccumulator::default();
     sanitize_progress_events_file(req)?;
     let mut reader = BufReader::new(reader);
@@ -388,21 +427,27 @@ fn read_stream_json<R: Read>(reader: R, req: &WorkerInvocation, path: Option<Utf
         line.clear();
     }
 
-    let worker_ref_seed = accumulator.session_id.as_ref().map(|session_id| SessionRef {
-        provider: "claude-code".to_string(),
-        mode: req.session_mode,
-        supports_open_session: true,
-        supports_continue_session: true,
-        continue_ref: Some(serde_json::json!({ "sessionId": session_id })),
-        open_command: Some(format!("claude -c {session_id}")),
-    });
+    let worker_ref_seed = accumulator
+        .session_id
+        .as_ref()
+        .map(|session_id| SessionRef {
+            provider: "claude-code".to_string(),
+            mode: req.session_mode,
+            supports_open_session: true,
+            supports_continue_session: true,
+            continue_ref: Some(serde_json::json!({ "sessionId": session_id })),
+            open_command: Some(format!("claude -c {session_id}")),
+        });
 
-    let result_payload = req.primary_artifact.as_ref().map(|primary_artifact| ProviderResultPayload {
-        primary_artifact: Some(PrimaryArtifactPayload {
-            name: primary_artifact.clone(),
-            content: accumulator.final_result.clone().unwrap_or_default(),
-        }),
-    });
+    let result_payload =
+        req.primary_artifact
+            .as_ref()
+            .map(|primary_artifact| ProviderResultPayload {
+                primary_artifact: Some(PrimaryArtifactPayload {
+                    name: primary_artifact.clone(),
+                    content: accumulator.final_result.clone().unwrap_or_default(),
+                }),
+            });
 
     Ok(ProviderRunResult {
         status: ProviderRunStatus::Success,
@@ -413,10 +458,17 @@ fn read_stream_json<R: Read>(reader: R, req: &WorkerInvocation, path: Option<Utf
     })
 }
 
-fn write_provider_input_progress_event(req: &WorkerInvocation, prompt: &PromptBundle) -> Result<()> {
+fn write_provider_input_progress_event(
+    req: &WorkerInvocation,
+    prompt: &PromptBundle,
+) -> Result<()> {
     let path = progress_events_path(req);
     ensure_parent_dir(&path)?;
-    let _ = std::fs::File::options().create(true).write(true).truncate(true).open(path.as_std_path())?;
+    let _ = std::fs::File::options()
+        .create(true)
+        .write(true)
+        .truncate(true)
+        .open(path.as_std_path())?;
     let event = ProviderInputProgressEvent {
         version: crate::domain::VERSION,
         event_type: "provider_input",
@@ -456,11 +508,17 @@ fn sanitize_progress_events_file(req: &WorkerInvocation) -> Result<()> {
         return Ok(());
     }
     let content = std::fs::read_to_string(path.as_std_path())?;
-    let first_line = content.lines().find(|line| !line.trim().is_empty()).unwrap_or_default();
+    let first_line = content
+        .lines()
+        .find(|line| !line.trim().is_empty())
+        .unwrap_or_default();
     if first_line.contains("\"type\":\"provider_input\"") {
         return Ok(());
     }
-    let _ = std::fs::File::options().write(true).truncate(true).open(path.as_std_path())?;
+    let _ = std::fs::File::options()
+        .write(true)
+        .truncate(true)
+        .open(path.as_std_path())?;
     Ok(())
 }
 
@@ -479,7 +537,9 @@ fn collect_stream_json_line(raw_line: &str, accumulator: &mut StreamAccumulator)
 
     if let Some(text) = find_string_field(&value, &["delta", "text", "result"]) {
         accumulator.final_result = Some(match accumulator.final_result.take() {
-            Some(existing) if raw_event_type.as_deref() != Some("result") => format!("{existing}{text}"),
+            Some(existing) if raw_event_type.as_deref() != Some("result") => {
+                format!("{existing}{text}")
+            }
             _ => text,
         });
     }
@@ -496,7 +556,11 @@ fn find_string_field(value: &serde_json::Value, keys: &[&str]) -> Option<String>
             return Some(found);
         }
     }
-    for item in value.as_object().into_iter().flat_map(|object| object.values()) {
+    for item in value
+        .as_object()
+        .into_iter()
+        .flat_map(|object| object.values())
+    {
         if let Some(found) = find_string_field(item, keys) {
             return Some(found);
         }
@@ -505,19 +569,31 @@ fn find_string_field(value: &serde_json::Value, keys: &[&str]) -> Option<String>
 }
 
 fn task_id_from_attempt_dir(path: &Utf8PathBuf) -> &str {
-    path.components().nth_back(7).map(|part| part.as_str()).unwrap_or("")
+    path.components()
+        .nth_back(7)
+        .map(|part| part.as_str())
+        .unwrap_or("")
 }
 
 fn run_id_from_attempt_dir(path: &Utf8PathBuf) -> &str {
-    path.components().nth_back(5).map(|part| part.as_str()).unwrap_or("")
+    path.components()
+        .nth_back(5)
+        .map(|part| part.as_str())
+        .unwrap_or("")
 }
 
 fn round_id_from_attempt_dir(path: &Utf8PathBuf) -> &str {
-    path.components().nth_back(3).map(|part| part.as_str()).unwrap_or("")
+    path.components()
+        .nth_back(3)
+        .map(|part| part.as_str())
+        .unwrap_or("")
 }
 
 fn node_id_from_attempt_dir(path: &Utf8PathBuf) -> &str {
-    path.components().nth_back(1).map(|part| part.as_str()).unwrap_or("")
+    path.components()
+        .nth_back(1)
+        .map(|part| part.as_str())
+        .unwrap_or("")
 }
 
 fn attempt_id_from_attempt_dir(path: &Utf8PathBuf) -> &str {
@@ -525,7 +601,10 @@ fn attempt_id_from_attempt_dir(path: &Utf8PathBuf) -> &str {
 }
 
 fn render_prompt_bundle(req: &WorkerInvocation) -> Result<PromptBundle> {
-    ensure!(req.requirement_path.is_some() || req.requirement_text.is_some(), "worker invocation requires requirementPath or requirementText");
+    ensure!(
+        req.requirement_path.is_some() || req.requirement_text.is_some(),
+        "worker invocation requires requirementPath or requirementText"
+    );
 
     let requirement_text = match (&req.requirement_text, &req.requirement_path) {
         (Some(text), _) => text.clone(),
@@ -709,7 +788,11 @@ mod tests {
         };
 
         let prompt = render_prompt_bundle(&req).unwrap();
-        assert!(prompt.system_prompt.contains("Required primary artifact: verify-result"));
+        assert!(
+            prompt
+                .system_prompt
+                .contains("Required primary artifact: verify-result")
+        );
         assert!(prompt.system_prompt.contains("unmet_requirements"));
         assert!(prompt.system_prompt.contains("validation_gaps"));
         assert!(prompt.system_prompt.contains("status=\"failure\""));
@@ -725,7 +808,9 @@ mod tests {
             requirement_path: None,
             requirement_text: Some("Need an execution plan".to_string()),
             workspace_dir: repo_root.clone(),
-            attempt_dir: repo_root.join(".gold-band/tasks/task-001/runs/run-001/rounds/round-001/nodes/dev/attempt-001"),
+            attempt_dir: repo_root.join(
+                ".gold-band/tasks/task-001/runs/run-001/rounds/round-001/nodes/dev/attempt-001",
+            ),
             primary_artifact: Some("exec-plan".to_string()),
             task_instruction: Some("Create an exec plan".to_string()),
             session_mode: SessionMode::New,
@@ -742,7 +827,11 @@ mod tests {
 
         let prompt = render_prompt_bundle(&req).unwrap();
         assert!(prompt.system_prompt.contains("Output contract"));
-        assert!(prompt.system_prompt.contains("return exactly one valid `exec-plan` artifact"));
+        assert!(
+            prompt
+                .system_prompt
+                .contains("return exactly one valid `exec-plan` artifact")
+        );
         assert!(prompt.system_prompt.contains("\"commands\""));
         assert!(prompt.system_prompt.contains("non-empty"));
     }
@@ -751,11 +840,14 @@ mod tests {
     fn write_provider_input_progress_event_records_invocation_input() {
         let temp = tempdir().unwrap();
         let repo_root = Utf8PathBuf::from_path_buf(temp.path().to_path_buf()).unwrap();
-        let attempt_dir = repo_root.join(".gold-band/tasks/task-001/runs/run-001/rounds/round-001/nodes/dev/attempt-001");
+        let attempt_dir = repo_root
+            .join(".gold-band/tasks/task-001/runs/run-001/rounds/round-001/nodes/dev/attempt-001");
         let req = WorkerInvocation {
             invocation_kind: InvocationKind::WorkerGeneric,
             profile: Some("developer".to_string()),
-            requirement_path: Some(repo_root.join(".gold-band/tasks/task-001/authoring/requirement.md")),
+            requirement_path: Some(
+                repo_root.join(".gold-band/tasks/task-001/authoring/requirement.md"),
+            ),
             requirement_text: None,
             workspace_dir: repo_root.clone(),
             attempt_dir,

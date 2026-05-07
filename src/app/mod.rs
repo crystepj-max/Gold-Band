@@ -49,6 +49,10 @@ fn tail_text(text: &str, limit: usize) -> String {
     lines[start..].join("\n")
 }
 
+fn logical_artifact_name(name: &str) -> &str {
+    name.strip_suffix(".json").unwrap_or(name)
+}
+
 #[derive(Debug, Clone, serde::Serialize)]
 pub struct TaskSummary {
     pub task: TaskState,
@@ -138,8 +142,12 @@ impl App {
     pub fn set_user_desktop_workspace(&self, workspace: &str) -> Result<UserConfig> {
         let mut config = self.load_user_config()?;
         config.desktop_workspace = Some(workspace.to_string());
-        config.recent_desktop_workspaces.retain(|item| item != workspace);
-        config.recent_desktop_workspaces.insert(0, workspace.to_string());
+        config
+            .recent_desktop_workspaces
+            .retain(|item| item != workspace);
+        config
+            .recent_desktop_workspaces
+            .insert(0, workspace.to_string());
         config.recent_desktop_workspaces.truncate(8);
         self.save_user_config(&config)?;
         Ok(config)
@@ -267,7 +275,9 @@ impl App {
                 .map(|entry| entry.path())
                 .collect::<Vec<_>>();
             attempt_dirs.sort();
-            if let Some(latest_attempt_dir) = attempt_dirs.into_iter().rev().find(|path| path.is_dir()) {
+            if let Some(latest_attempt_dir) =
+                attempt_dirs.into_iter().rev().find(|path| path.is_dir())
+            {
                 let node_file = latest_attempt_dir.join("node.json");
                 if node_file.exists() {
                     let utf8 = Utf8PathBuf::from_path_buf(node_file)
@@ -579,9 +589,15 @@ impl App {
         attempt_id: &str,
         name: &str,
     ) -> Result<String> {
-        let path = self
-            .paths
-            .artifact_file(task_id, run_id, round_id, node_id, attempt_id, name);
+        let artifact_name = logical_artifact_name(name);
+        let path = self.paths.artifact_file(
+            task_id,
+            run_id,
+            round_id,
+            node_id,
+            attempt_id,
+            artifact_name,
+        );
         self.artifact_show_path(&path)
     }
 
@@ -603,6 +619,7 @@ impl App {
         let mut names = fs::read_dir(dir.as_std_path())?
             .filter_map(|entry| entry.ok())
             .filter_map(|entry| entry.file_name().to_str().map(ToOwned::to_owned))
+            .map(|name| logical_artifact_name(&name).to_string())
             .collect::<Vec<_>>();
         names.sort();
         Ok(names)

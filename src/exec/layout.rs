@@ -8,15 +8,27 @@ pub(crate) fn command_dir(attempt_dir: &Utf8Path, index: usize, command_id: &str
     commands_dir(attempt_dir).join(format!("{:02}-{}", index + 1, command_id))
 }
 
-pub(crate) fn command_json_path(attempt_dir: &Utf8Path, index: usize, command_id: &str) -> Utf8PathBuf {
+pub(crate) fn command_json_path(
+    attempt_dir: &Utf8Path,
+    index: usize,
+    command_id: &str,
+) -> Utf8PathBuf {
     command_dir(attempt_dir, index, command_id).join("command.json")
 }
 
-pub(crate) fn stdout_log_path(attempt_dir: &Utf8Path, index: usize, command_id: &str) -> Utf8PathBuf {
+pub(crate) fn stdout_log_path(
+    attempt_dir: &Utf8Path,
+    index: usize,
+    command_id: &str,
+) -> Utf8PathBuf {
     command_dir(attempt_dir, index, command_id).join("stdout.log")
 }
 
-pub(crate) fn stderr_log_path(attempt_dir: &Utf8Path, index: usize, command_id: &str) -> Utf8PathBuf {
+pub(crate) fn stderr_log_path(
+    attempt_dir: &Utf8Path,
+    index: usize,
+    command_id: &str,
+) -> Utf8PathBuf {
     command_dir(attempt_dir, index, command_id).join("stderr.log")
 }
 

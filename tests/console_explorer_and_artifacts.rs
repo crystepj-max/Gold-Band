@@ -1,7 +1,13 @@
 use camino::Utf8PathBuf;
 use gold_band::app::App;
-use gold_band::console::controller::{activate_current, cycle_focus, escape, move_right, refresh_tick, show_help_overlay, start_command_input, toggle_log_source};
-use gold_band::console::state::{ConsoleState, DetailLevel, DetailSelection, FocusPane, LayoutMode, WelcomeAction, WorkspaceSelection};
+use gold_band::console::controller::{
+    activate_current, cycle_focus, escape, move_right, refresh_tick, show_help_overlay,
+    start_command_input, toggle_log_source,
+};
+use gold_band::console::state::{
+    ConsoleState, DetailLevel, DetailSelection, FocusPane, LayoutMode, WelcomeAction,
+    WorkspaceSelection,
+};
 use gold_band::console::view_models::build_view_model;
 use tempfile::tempdir;
 
@@ -13,7 +19,13 @@ fn seed_branching_repo(repo_root: &Utf8PathBuf) {
     )
     .unwrap();
     std::fs::create_dir_all(repo_root.join(".gold-band/presets/profiles").as_std_path()).unwrap();
-    std::fs::write(repo_root.join(".gold-band/presets/profiles/developer.md").as_std_path(), "# developer").unwrap();
+    std::fs::write(
+        repo_root
+            .join(".gold-band/presets/profiles/developer.md")
+            .as_std_path(),
+        "# developer",
+    )
+    .unwrap();
     std::fs::create_dir_all(
         repo_root
             .join(".gold-band/tasks/task-001/runs/run-001/rounds/round-001/nodes/dev/attempt-001/artifacts")
@@ -47,7 +59,9 @@ fn seed_branching_repo(repo_root: &Utf8PathBuf) {
     )
     .unwrap();
     std::fs::write(
-        repo_root.join(".gold-band/tasks/task-001/runs/run-001/events.jsonl").as_std_path(),
+        repo_root
+            .join(".gold-band/tasks/task-001/runs/run-001/events.jsonl")
+            .as_std_path(),
         "node-started\nprovider-streaming",
     )
     .unwrap();
@@ -118,8 +132,14 @@ fn entering_node_moves_focus_to_detail_and_shows_attempts() {
     let state = open_workspace(&app);
     assert_eq!(state.focus, FocusPane::Detail);
     let workspace = state.workspace.as_ref().unwrap();
-    assert!(matches!(workspace.detail_level, DetailLevel::AttemptItems { .. }));
-    assert!(workspace.detail_items.iter().any(|item| matches!(item, DetailSelection::Artifact { .. } | DetailSelection::Attachment { .. })));
+    assert!(matches!(
+        workspace.detail_level,
+        DetailLevel::AttemptItems { .. }
+    ));
+    assert!(workspace.detail_items.iter().any(|item| matches!(
+        item,
+        DetailSelection::Artifact { .. } | DetailSelection::Attachment { .. }
+    )));
 }
 
 #[test]
@@ -131,7 +151,10 @@ fn entering_attempt_then_artifact_supports_escape_backtracking() {
     let mut state = open_workspace(&app);
     {
         let workspace = state.workspace.as_ref().unwrap();
-        assert!(matches!(workspace.detail_level, DetailLevel::AttemptItems { .. }));
+        assert!(matches!(
+            workspace.detail_level,
+            DetailLevel::AttemptItems { .. }
+        ));
     }
     activate_current(&app, &mut state).unwrap();
     {
@@ -141,7 +164,10 @@ fn entering_attempt_then_artifact_supports_escape_backtracking() {
     escape(&app, &mut state).unwrap();
     {
         let workspace = state.workspace.as_ref().unwrap();
-        assert!(matches!(workspace.detail_level, DetailLevel::AttemptItems { .. }));
+        assert!(matches!(
+            workspace.detail_level,
+            DetailLevel::AttemptItems { .. }
+        ));
     }
     escape(&app, &mut state).unwrap();
     {
@@ -178,7 +204,10 @@ fn toggle_log_source_switches_attempt_detail_view() {
     toggle_log_source(&mut state);
 
     let vm = build_view_model(&app, &state).unwrap();
-    assert!(vm.detail_body.contains("Provider output (raw.stream.jsonl)"));
+    assert!(
+        vm.detail_body
+            .contains("Provider output (raw.stream.jsonl)")
+    );
     assert!(vm.detail_body.contains("raw-line"));
 }
 
@@ -219,7 +248,13 @@ fn refresh_tick_preserves_live_attempt_detail_mode() {
     refresh_tick(&app, &mut state).unwrap();
 
     let workspace = state.workspace.as_ref().unwrap();
-    assert!(matches!(workspace.detail_level, DetailLevel::AttemptItems { follow_live: true, .. }));
+    assert!(matches!(
+        workspace.detail_level,
+        DetailLevel::AttemptItems {
+            follow_live: true,
+            ..
+        }
+    ));
 }
 
 #[test]
@@ -272,5 +307,8 @@ fn dag_navigation_moves_between_columns() {
     let mut state = open_workspace(&app);
     move_right(&mut state);
     let workspace = state.workspace.as_ref().unwrap();
-    assert!(matches!(workspace.selection, WorkspaceSelection::Node { .. }));
+    assert!(matches!(
+        workspace.selection,
+        WorkspaceSelection::Node { .. }
+    ));
 }

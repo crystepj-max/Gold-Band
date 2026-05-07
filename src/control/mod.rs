@@ -1,25 +1,35 @@
 use crate::domain::{PauseReason, RunOutcome, SessionMode};
-use crate::dsl::{EdgeOutcome, NodeDsl, ValidatedWorkflow, END_NODE};
+use crate::dsl::{END_NODE, EdgeOutcome, NodeDsl, ValidatedWorkflow};
 use crate::provider::supports_continue_session;
 use crate::runtime::{NodeState, RoundState, RunState};
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum ControlDecision {
-    TransitionToNode { node_id: String, session: SessionMode },
+    TransitionToNode {
+        node_id: String,
+        session: SessionMode,
+    },
     OpenNewRound,
     CompleteRun(RunOutcome),
     PauseRun(PauseReason),
 }
 
-pub fn decide_next_step(workflow: &ValidatedWorkflow, run: &RunState, round: &RoundState, node: &NodeState) -> ControlDecision {
+pub fn decide_next_step(
+    workflow: &ValidatedWorkflow,
+    run: &RunState,
+    round: &RoundState,
+    node: &NodeState,
+) -> ControlDecision {
     match node.outcome {
-        Some(crate::domain::NodeOutcome::Success) => match_edge_or_default(workflow, &node.node_id, EdgeOutcome::Success, || {
-            if matches!(node.node_type, crate::domain::NodeType::Verify) {
-                ControlDecision::CompleteRun(RunOutcome::Success)
-            } else {
-                ControlDecision::PauseRun(PauseReason::ErrorBlocked)
-            }
-        }),
+        Some(crate::domain::NodeOutcome::Success) => {
+            match_edge_or_default(workflow, &node.node_id, EdgeOutcome::Success, || {
+                if matches!(node.node_type, crate::domain::NodeType::Verify) {
+                    ControlDecision::CompleteRun(RunOutcome::Success)
+                } else {
+                    ControlDecision::PauseRun(PauseReason::ErrorBlocked)
+                }
+            })
+        }
         Some(crate::domain::NodeOutcome::Failure) => match node.node_type {
             crate::domain::NodeType::Exec => decide_exec_failure(workflow, round, &node.node_id),
             crate::domain::NodeType::Verify => match workflow.raw.control.on_acceptance_failure {
@@ -30,7 +40,9 @@ pub fn decide_next_step(workflow: &ValidatedWorkflow, run: &RunState, round: &Ro
                         ControlDecision::OpenNewRound
                     }
                 }
-                crate::domain::AcceptanceFailurePolicy::Stop => ControlDecision::CompleteRun(RunOutcome::Failure),
+                crate::domain::AcceptanceFailurePolicy::Stop => {
+                    ControlDecision::CompleteRun(RunOutcome::Failure)
+                }
             },
             crate::domain::NodeType::Worker => ControlDecision::PauseRun(PauseReason::ErrorBlocked),
         },
@@ -38,12 +50,18 @@ pub fn decide_next_step(workflow: &ValidatedWorkflow, run: &RunState, round: &Ro
             crate::domain::NodeType::Exec => decide_exec_invalid(workflow, round, &node.node_id),
             _ => ControlDecision::PauseRun(PauseReason::ErrorBlocked),
         },
-        Some(crate::domain::NodeOutcome::Killed) => ControlDecision::CompleteRun(RunOutcome::Killed),
+        Some(crate::domain::NodeOutcome::Killed) => {
+            ControlDecision::CompleteRun(RunOutcome::Killed)
+        }
         None => ControlDecision::PauseRun(PauseReason::ProcessInterrupted),
     }
 }
 
-fn decide_exec_failure(workflow: &ValidatedWorkflow, round: &RoundState, node_id: &str) -> ControlDecision {
+fn decide_exec_failure(
+    workflow: &ValidatedWorkflow,
+    round: &RoundState,
+    node_id: &str,
+) -> ControlDecision {
     match_edge_or_default(workflow, node_id, EdgeOutcome::Failure, || {
         if round.repair_loops_used >= workflow.raw.control.max_repair_loops {
             ControlDecision::CompleteRun(RunOutcome::Failure)
@@ -53,7 +71,11 @@ fn decide_exec_failure(workflow: &ValidatedWorkflow, round: &RoundState, node_id
     })
 }
 
-fn decide_exec_invalid(workflow: &ValidatedWorkflow, round: &RoundState, node_id: &str) -> ControlDecision {
+fn decide_exec_invalid(
+    workflow: &ValidatedWorkflow,
+    round: &RoundState,
+    node_id: &str,
+) -> ControlDecision {
     if let Some(decision) = find_edge_decision(workflow, node_id, EdgeOutcome::Invalid) {
         return decision;
     }
@@ -70,14 +92,23 @@ fn decide_exec_invalid(workflow: &ValidatedWorkflow, round: &RoundState, node_id
     }
 }
 
-fn match_edge_or_default<F>(workflow: &ValidatedWorkflow, node_id: &str, outcome: EdgeOutcome, default: F) -> ControlDecision
+fn match_edge_or_default<F>(
+    workflow: &ValidatedWorkflow,
+    node_id: &str,
+    outcome: EdgeOutcome,
+    default: F,
+) -> ControlDecision
 where
     F: FnOnce() -> ControlDecision,
 {
     find_edge_decision(workflow, node_id, outcome).unwrap_or_else(default)
 }
 
-fn find_edge_decision(workflow: &ValidatedWorkflow, node_id: &str, outcome: EdgeOutcome) -> Option<ControlDecision> {
+fn find_edge_decision(
+    workflow: &ValidatedWorkflow,
+    node_id: &str,
+    outcome: EdgeOutcome,
+) -> Option<ControlDecision> {
     workflow
         .raw
         .edges
@@ -98,7 +129,11 @@ fn find_edge_decision(workflow: &ValidatedWorkflow, node_id: &str, outcome: Edge
         })
 }
 
-fn session_for_target(workflow: &ValidatedWorkflow, target_node_id: &str, requested: Option<SessionMode>) -> SessionMode {
+fn session_for_target(
+    workflow: &ValidatedWorkflow,
+    target_node_id: &str,
+    requested: Option<SessionMode>,
+) -> SessionMode {
     match requested.unwrap_or(SessionMode::New) {
         SessionMode::New => SessionMode::New,
         SessionMode::Continue => workflow

@@ -34,11 +34,11 @@ export function RunDetailPage({ vm, labels, busy, taskId, onNavigate, onContinue
         )}
       />
       <div className="grid min-h-[520px] grid-cols-[420px_minmax(0,1fr)] gap-6">
-        <AppCard className="py-0">
-          <CardHeader className="border-b py-5"><CardTitle>Rounds</CardTitle></CardHeader>
+        <AppCard className="gap-0 py-0">
+          <CardHeader className="border-b px-5 py-3 !pb-3"><CardTitle>Rounds</CardTitle></CardHeader>
           <CardContent className="px-0 py-0">
             <ScrollArea className="h-[520px]">
-              <div className="space-y-2 p-5">
+              <div className="space-y-2 p-3">
                 {vm.rounds.map((round) => (
                   <Button className="h-auto w-full justify-between p-4" variant="outline" key={round.id} onClick={() => onNavigate({ kind: 'round-detail', taskId, runId: vm.run.id, roundId: round.id })}>
                     <span className="min-w-0 text-left"><strong className="block truncate font-mono">{round.id}</strong><small className="text-muted-foreground">{labels.openRound}</small></span>
@@ -49,9 +49,9 @@ export function RunDetailPage({ vm, labels, busy, taskId, onNavigate, onContinue
             </ScrollArea>
           </CardContent>
         </AppCard>
-        <AppCard>
-          <CardHeader className="border-b"><CardTitle>Events / Progress</CardTitle></CardHeader>
-          <CardContent><CodeBlock className="min-h-[420px]">{vm.events ?? JSON.stringify(vm.progress ?? {}, null, 2)}</CodeBlock></CardContent>
+        <AppCard className="gap-0 py-0">
+          <CardHeader className="border-b px-5 py-3 !pb-3"><CardTitle>Events / Progress</CardTitle></CardHeader>
+          <CardContent className="px-4 py-4"><CodeBlock className="min-h-[420px]">{vm.events ?? JSON.stringify(vm.progress ?? {}, null, 2)}</CodeBlock></CardContent>
         </AppCard>
       </div>
     </Page>

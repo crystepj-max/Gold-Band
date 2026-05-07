@@ -16,11 +16,26 @@ pub enum TaskCommand {
 
 #[derive(Debug, Clone)]
 pub enum RunCommand {
-    Start { task_id: String, workflow: Option<Utf8PathBuf> },
-    Status { task_id: String, run_id: String },
-    Continue { task_id: String, run_id: String },
-    Retry { task_id: String, run_id: String },
-    Kill { task_id: String, run_id: String },
+    Start {
+        task_id: String,
+        workflow: Option<Utf8PathBuf>,
+    },
+    Status {
+        task_id: String,
+        run_id: String,
+    },
+    Continue {
+        task_id: String,
+        run_id: String,
+    },
+    Retry {
+        task_id: String,
+        run_id: String,
+    },
+    Kill {
+        task_id: String,
+        run_id: String,
+    },
     OpenSession {
         task_id: String,
         run_id: String,
@@ -47,7 +62,9 @@ pub enum ArtifactCommand {
         attempt: String,
         name: String,
     },
-    ShowPath { path: Utf8PathBuf },
+    ShowPath {
+        path: Utf8PathBuf,
+    },
 }
 
 #[derive(Debug, Clone)]

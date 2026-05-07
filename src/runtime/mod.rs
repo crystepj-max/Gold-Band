@@ -1,5 +1,8 @@
-use crate::domain::{NodeOutcome, NodeType, PauseReason, ResolvedConfig, RoundTrigger, RunOutcome, RunStatus, SessionMode, VERSION};
-use anyhow::{ensure, Result};
+use crate::domain::{
+    NodeOutcome, NodeType, PauseReason, ResolvedConfig, RoundTrigger, RunOutcome, RunStatus,
+    SessionMode, VERSION,
+};
+use anyhow::{Result, ensure};
 use serde::{Deserialize, Serialize};
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -97,38 +100,76 @@ pub fn validate_task_state(state: &TaskState) -> Result<()> {
 
 pub fn validate_run_state(state: &RunState) -> Result<()> {
     ensure!(state.version == VERSION, "unsupported run state version");
-    ensure!(!(state.status != RunStatus::Completed && state.outcome.is_some()), "non-completed run cannot have outcome");
-    ensure!(!(state.status == RunStatus::Completed && state.outcome.is_none()), "completed run must have outcome");
-    ensure!(!(state.status != RunStatus::Paused && state.pause_reason.is_some()), "non-paused run cannot have pauseReason");
-    ensure!(!(state.current_attempt.is_some() && state.current_node.is_none()), "currentAttempt requires currentNode");
-    ensure!(!(state.current_node.is_some() && state.current_round.is_none()), "currentNode requires currentRound");
+    ensure!(
+        !(state.status != RunStatus::Completed && state.outcome.is_some()),
+        "non-completed run cannot have outcome"
+    );
+    ensure!(
+        !(state.status == RunStatus::Completed && state.outcome.is_none()),
+        "completed run must have outcome"
+    );
+    ensure!(
+        !(state.status != RunStatus::Paused && state.pause_reason.is_some()),
+        "non-paused run cannot have pauseReason"
+    );
+    ensure!(
+        !(state.current_attempt.is_some() && state.current_node.is_none()),
+        "currentAttempt requires currentNode"
+    );
+    ensure!(
+        !(state.current_node.is_some() && state.current_round.is_none()),
+        "currentNode requires currentRound"
+    );
     Ok(())
 }
 
 pub fn validate_round_state(state: &RoundState) -> Result<()> {
     ensure!(state.version == VERSION, "unsupported round state version");
     ensure!(state.index > 0, "round index must be positive");
-    ensure!(!(state.status != RunStatus::Completed && state.outcome.is_some()), "non-completed round cannot have outcome");
-    ensure!(!(state.status == RunStatus::Completed && state.outcome.is_none()), "completed round must have outcome");
+    ensure!(
+        !(state.status != RunStatus::Completed && state.outcome.is_some()),
+        "non-completed round cannot have outcome"
+    );
+    ensure!(
+        !(state.status == RunStatus::Completed && state.outcome.is_none()),
+        "completed round must have outcome"
+    );
     for step in &state.trace {
         ensure!(step.sequence > 0, "round trace sequence must be positive");
-        ensure!(!step.node_id.trim().is_empty(), "round trace node id cannot be empty");
-        ensure!(!step.attempt_id.trim().is_empty(), "round trace attempt id cannot be empty");
+        ensure!(
+            !step.node_id.trim().is_empty(),
+            "round trace node id cannot be empty"
+        );
+        ensure!(
+            !step.attempt_id.trim().is_empty(),
+            "round trace attempt id cannot be empty"
+        );
     }
     Ok(())
 }
 
 pub fn validate_node_state(state: &NodeState) -> Result<()> {
     ensure!(state.version == VERSION, "unsupported node state version");
-    ensure!(!(state.status != RunStatus::Completed && state.outcome.is_some()), "non-completed node cannot have outcome");
-    ensure!(!(state.status == RunStatus::Completed && state.outcome.is_none()), "completed node must have outcome");
-    ensure!(!(state.status == RunStatus::Completed && state.finished_at.is_none()), "completed node must have finishedAt");
+    ensure!(
+        !(state.status != RunStatus::Completed && state.outcome.is_some()),
+        "non-completed node cannot have outcome"
+    );
+    ensure!(
+        !(state.status == RunStatus::Completed && state.outcome.is_none()),
+        "completed node must have outcome"
+    );
+    ensure!(
+        !(state.status == RunStatus::Completed && state.finished_at.is_none()),
+        "completed node must have finishedAt"
+    );
     Ok(())
 }
 
 pub fn validate_worker_ref_state(state: &WorkerRefState) -> Result<()> {
     ensure!(state.version == VERSION, "unsupported worker-ref version");
-    ensure!(!state.provider.trim().is_empty(), "worker-ref provider cannot be empty");
+    ensure!(
+        !state.provider.trim().is_empty(),
+        "worker-ref provider cannot be empty"
+    );
     Ok(())
 }
-

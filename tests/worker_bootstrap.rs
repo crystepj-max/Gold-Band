@@ -2,8 +2,8 @@ use camino::Utf8PathBuf;
 use gold_band::app::App;
 use gold_band::domain::SessionMode;
 use gold_band::provider::{
-    DoctorResult, PrimaryArtifactPayload, ProviderAdapter, ProviderCapabilities, ProviderInfo, ProviderResultPayload, ProviderRunResult,
-    ProviderRunStatus, WorkerInvocation, SessionRef,
+    DoctorResult, PrimaryArtifactPayload, ProviderAdapter, ProviderCapabilities, ProviderInfo,
+    ProviderResultPayload, ProviderRunResult, ProviderRunStatus, SessionRef, WorkerInvocation,
 };
 use gold_band::runtime::RunState;
 use std::sync::{Arc, Mutex};
@@ -29,7 +29,10 @@ impl ProviderAdapter for RecordingProvider {
     }
 
     fn doctor(&self) -> DoctorResult {
-        DoctorResult { available: true, reason: None }
+        DoctorResult {
+            available: true,
+            reason: None,
+        }
     }
 
     fn run_worker(&self, req: WorkerInvocation) -> anyhow::Result<ProviderRunResult> {
@@ -59,7 +62,10 @@ impl ProviderAdapter for RecordingProvider {
         Ok(())
     }
 
-    fn build_continue_command(&self, _worker_ref: &gold_band::domain::SessionRef) -> anyhow::Result<Option<String>> {
+    fn build_continue_command(
+        &self,
+        _worker_ref: &gold_band::domain::SessionRef,
+    ) -> anyhow::Result<Option<String>> {
         Ok(Some("claude -c session-123".to_string()))
     }
 }
@@ -70,16 +76,31 @@ fn run_start_executes_entry_worker_and_persists_outputs() {
     let repo_root = Utf8PathBuf::from_path_buf(temp.path().to_path_buf()).unwrap();
     let task_id = "task-001";
 
-    std::fs::create_dir_all(repo_root.join(".gold-band/tasks/task-001/authoring").as_std_path()).unwrap();
+    std::fs::create_dir_all(
+        repo_root
+            .join(".gold-band/tasks/task-001/authoring")
+            .as_std_path(),
+    )
+    .unwrap();
     std::fs::create_dir_all(repo_root.join(".gold-band/presets/profiles").as_std_path()).unwrap();
-    std::fs::write(repo_root.join(".gold-band/presets/profiles/developer.md").as_std_path(), "developer profile").unwrap();
     std::fs::write(
-        repo_root.join(".gold-band/tasks/task-001/authoring/requirement.md").as_std_path(),
+        repo_root
+            .join(".gold-band/presets/profiles/developer.md")
+            .as_std_path(),
+        "developer profile",
+    )
+    .unwrap();
+    std::fs::write(
+        repo_root
+            .join(".gold-band/tasks/task-001/authoring/requirement.md")
+            .as_std_path(),
         "Implement feature",
     )
     .unwrap();
     std::fs::write(
-        repo_root.join(".gold-band/tasks/task-001/authoring/workflow.json").as_std_path(),
+        repo_root
+            .join(".gold-band/tasks/task-001/authoring/workflow.json")
+            .as_std_path(),
         r#"{
           "version": "0.1",
           "id": "dev-only",
@@ -104,7 +125,9 @@ fn run_start_executes_entry_worker_and_persists_outputs() {
     )
     .unwrap();
     std::fs::write(
-        repo_root.join(".gold-band/tasks/task-001/task.json").as_std_path(),
+        repo_root
+            .join(".gold-band/tasks/task-001/task.json")
+            .as_std_path(),
         r#"{"version":"0.1","id":"task-001"}"#,
     )
     .unwrap();
@@ -118,7 +141,10 @@ fn run_start_executes_entry_worker_and_persists_outputs() {
     let invocation_count = provider.invocations.lock().unwrap().len();
     assert_eq!(invocation_count, 1);
 
-    let run_state: RunState = gold_band::storage::read_json(&repo_root.join(".gold-band/tasks/task-001/runs/run-001/run.json")).unwrap();
+    let run_state: RunState = gold_band::storage::read_json(
+        &repo_root.join(".gold-band/tasks/task-001/runs/run-001/run.json"),
+    )
+    .unwrap();
     assert_eq!(run_state.id, "run-001");
 
     let artifact_path = repo_root.join(".gold-band/tasks/task-001/runs/run-001/rounds/round-001/nodes/dev/attempt-001/artifacts/exec-plan.json");
@@ -126,5 +152,4 @@ fn run_start_executes_entry_worker_and_persists_outputs() {
 
     let worker_ref_path = repo_root.join(".gold-band/tasks/task-001/runs/run-001/rounds/round-001/nodes/dev/attempt-001/worker-ref.json");
     assert!(worker_ref_path.exists());
-
 }

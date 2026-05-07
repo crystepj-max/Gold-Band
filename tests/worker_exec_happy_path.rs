@@ -2,8 +2,8 @@ use camino::Utf8PathBuf;
 use gold_band::app::App;
 use gold_band::domain::SessionMode;
 use gold_band::provider::{
-    DoctorResult, PrimaryArtifactPayload, ProviderAdapter, ProviderCapabilities, ProviderInfo, ProviderResultPayload, ProviderRunResult,
-    ProviderRunStatus, WorkerInvocation, SessionRef,
+    DoctorResult, PrimaryArtifactPayload, ProviderAdapter, ProviderCapabilities, ProviderInfo,
+    ProviderResultPayload, ProviderRunResult, ProviderRunStatus, SessionRef, WorkerInvocation,
 };
 use tempfile::tempdir;
 
@@ -25,7 +25,10 @@ impl ProviderAdapter for FakeProvider {
     }
 
     fn doctor(&self) -> DoctorResult {
-        DoctorResult { available: true, reason: None }
+        DoctorResult {
+            available: true,
+            reason: None,
+        }
     }
 
     fn run_worker(&self, _req: WorkerInvocation) -> anyhow::Result<ProviderRunResult> {
@@ -54,7 +57,10 @@ impl ProviderAdapter for FakeProvider {
         Ok(())
     }
 
-    fn build_continue_command(&self, _worker_ref: &gold_band::domain::SessionRef) -> anyhow::Result<Option<String>> {
+    fn build_continue_command(
+        &self,
+        _worker_ref: &gold_band::domain::SessionRef,
+    ) -> anyhow::Result<Option<String>> {
         Ok(Some("claude -c session-123".to_string()))
     }
 }
@@ -65,16 +71,31 @@ fn run_start_executes_worker_then_exec() {
     let repo_root = Utf8PathBuf::from_path_buf(temp.path().to_path_buf()).unwrap();
     let task_id = "task-001";
 
-    std::fs::create_dir_all(repo_root.join(".gold-band/tasks/task-001/authoring").as_std_path()).unwrap();
+    std::fs::create_dir_all(
+        repo_root
+            .join(".gold-band/tasks/task-001/authoring")
+            .as_std_path(),
+    )
+    .unwrap();
     std::fs::create_dir_all(repo_root.join(".gold-band/presets/profiles").as_std_path()).unwrap();
-    std::fs::write(repo_root.join(".gold-band/presets/profiles/developer.md").as_std_path(), "developer profile").unwrap();
     std::fs::write(
-        repo_root.join(".gold-band/tasks/task-001/authoring/requirement.md").as_std_path(),
+        repo_root
+            .join(".gold-band/presets/profiles/developer.md")
+            .as_std_path(),
+        "developer profile",
+    )
+    .unwrap();
+    std::fs::write(
+        repo_root
+            .join(".gold-band/tasks/task-001/authoring/requirement.md")
+            .as_std_path(),
         "Implement feature",
     )
     .unwrap();
     std::fs::write(
-        repo_root.join(".gold-band/tasks/task-001/authoring/workflow.json").as_std_path(),
+        repo_root
+            .join(".gold-band/tasks/task-001/authoring/workflow.json")
+            .as_std_path(),
         r#"{
           "version": "0.1",
           "id": "dev-exec",
@@ -106,7 +127,9 @@ fn run_start_executes_worker_then_exec() {
     )
     .unwrap();
     std::fs::write(
-        repo_root.join(".gold-band/tasks/task-001/task.json").as_std_path(),
+        repo_root
+            .join(".gold-band/tasks/task-001/task.json")
+            .as_std_path(),
         r#"{"version":"0.1","id":"task-001"}"#,
     )
     .unwrap();

@@ -7,10 +7,14 @@ fn worker_invocation_can_be_serialized_with_context_indexes() {
     let invocation = WorkerInvocation {
         invocation_kind: InvocationKind::WorkerGeneric,
         profile: Some("developer".to_string()),
-        requirement_path: Some(Utf8PathBuf::from("/repo/.gold-band/tasks/task-001/authoring/requirement.md")),
+        requirement_path: Some(Utf8PathBuf::from(
+            "/repo/.gold-band/tasks/task-001/authoring/requirement.md",
+        )),
         requirement_text: None,
         workspace_dir: Utf8PathBuf::from("/repo"),
-        attempt_dir: Utf8PathBuf::from("/repo/.gold-band/tasks/task-001/runs/run-001/rounds/round-001/nodes/dev/attempt-001"),
+        attempt_dir: Utf8PathBuf::from(
+            "/repo/.gold-band/tasks/task-001/runs/run-001/rounds/round-001/nodes/dev/attempt-001",
+        ),
         primary_artifact: Some("exec-plan".to_string()),
         task_instruction: Some("Create an exec plan".to_string()),
         session_mode: SessionMode::New,

@@ -4,7 +4,7 @@ use crate::command::{ArtifactCommand, Command, CommandResult, RunCommand, TaskCo
 use crate::config::{ConsoleThemeName, RuntimeConfig, RuntimeLogLevel, UserConfig};
 use crate::console::run_console;
 use crate::observability::{init_tracing, touch_log_file_best_effort};
-use crate::storage::{read_json, GoldBandPaths};
+use crate::storage::{GoldBandPaths, read_json};
 use anyhow::Result;
 use camino::Utf8PathBuf;
 use clap::{Parser, Subcommand};
@@ -21,10 +21,22 @@ pub struct Cli {
 
 #[derive(Debug, Subcommand)]
 enum Commands {
-    Task { #[command(subcommand)] command: TaskCommands },
-    Run { #[command(subcommand)] command: RunCommands },
-    Artifact { #[command(subcommand)] command: ArtifactCommands },
-    Console { #[arg(long)] theme: Option<ConsoleThemeName> },
+    Task {
+        #[command(subcommand)]
+        command: TaskCommands,
+    },
+    Run {
+        #[command(subcommand)]
+        command: RunCommands,
+    },
+    Artifact {
+        #[command(subcommand)]
+        command: ArtifactCommands,
+    },
+    Console {
+        #[arg(long)]
+        theme: Option<ConsoleThemeName>,
+    },
 }
 
 #[derive(Debug, Subcommand)]
@@ -34,25 +46,73 @@ enum TaskCommands {
 
 #[derive(Debug, Subcommand)]
 enum RunCommands {
-    Start { task_id: String, #[arg(long)] workflow: Option<Utf8PathBuf> },
-    Status { task_id: String, run_id: String },
-    Continue { task_id: String, run_id: String },
-    Retry { task_id: String, run_id: String },
-    Kill { task_id: String, run_id: String },
-    OpenSession { task_id: String, run_id: String, #[arg(long)] round: String, #[arg(long)] node: String, #[arg(long)] attempt: String },
+    Start {
+        task_id: String,
+        #[arg(long)]
+        workflow: Option<Utf8PathBuf>,
+    },
+    Status {
+        task_id: String,
+        run_id: String,
+    },
+    Continue {
+        task_id: String,
+        run_id: String,
+    },
+    Retry {
+        task_id: String,
+        run_id: String,
+    },
+    Kill {
+        task_id: String,
+        run_id: String,
+    },
+    OpenSession {
+        task_id: String,
+        run_id: String,
+        #[arg(long)]
+        round: String,
+        #[arg(long)]
+        node: String,
+        #[arg(long)]
+        attempt: String,
+    },
 }
 
 #[derive(Debug, Subcommand)]
 enum ArtifactCommands {
-    List { task_id: String, run_id: String, #[arg(long)] round: String, #[arg(long)] node: String, #[arg(long)] attempt: String },
-    Show { task_id: String, run_id: String, #[arg(long)] round: String, #[arg(long)] node: String, #[arg(long)] attempt: String, #[arg(long)] name: String },
-    ShowPath { path: Utf8PathBuf },
+    List {
+        task_id: String,
+        run_id: String,
+        #[arg(long)]
+        round: String,
+        #[arg(long)]
+        node: String,
+        #[arg(long)]
+        attempt: String,
+    },
+    Show {
+        task_id: String,
+        run_id: String,
+        #[arg(long)]
+        round: String,
+        #[arg(long)]
+        node: String,
+        #[arg(long)]
+        attempt: String,
+        #[arg(long)]
+        name: String,
+    },
+    ShowPath {
+        path: Utf8PathBuf,
+    },
 }
 
 pub async fn run() -> Result<()> {
     let cli = Cli::parse();
     let cwd = std::env::current_dir()?;
-    let repo_root = Utf8PathBuf::from_path_buf(cwd).map_err(|_| anyhow::anyhow!("working directory is not valid UTF-8"))?;
+    let repo_root = Utf8PathBuf::from_path_buf(cwd)
+        .map_err(|_| anyhow::anyhow!("working directory is not valid UTF-8"))?;
     let paths = GoldBandPaths::new(repo_root.clone());
     let user_config: UserConfig = match read_json(&paths.user_config_file()) {
         Ok(config) => config,
@@ -66,9 +126,18 @@ pub async fn run() -> Result<()> {
 
     match cli.command {
         Commands::Console { .. } => run_console(&app),
-        Commands::Task { command } => print_result(execute_command(&app, Command::Task(map_task_command(command)?))?),
-        Commands::Run { command } => print_result(execute_command(&app, Command::Run(map_run_command(command)?))?),
-        Commands::Artifact { command } => print_result(execute_command(&app, Command::Artifact(map_artifact_command(command)?))?),
+        Commands::Task { command } => print_result(execute_command(
+            &app,
+            Command::Task(map_task_command(command)?),
+        )?),
+        Commands::Run { command } => print_result(execute_command(
+            &app,
+            Command::Run(map_run_command(command)?),
+        )?),
+        Commands::Artifact { command } => print_result(execute_command(
+            &app,
+            Command::Artifact(map_artifact_command(command)?),
+        )?),
     }
 }
 
@@ -94,7 +163,13 @@ fn map_run_command(command: RunCommands) -> Result<RunCommand> {
         RunCommands::Continue { task_id, run_id } => RunCommand::Continue { task_id, run_id },
         RunCommands::Retry { task_id, run_id } => RunCommand::Retry { task_id, run_id },
         RunCommands::Kill { task_id, run_id } => RunCommand::Kill { task_id, run_id },
-        RunCommands::OpenSession { task_id, run_id, round, node, attempt } => RunCommand::OpenSession {
+        RunCommands::OpenSession {
+            task_id,
+            run_id,
+            round,
+            node,
+            attempt,
+        } => RunCommand::OpenSession {
             task_id,
             run_id,
             round,
@@ -106,14 +181,27 @@ fn map_run_command(command: RunCommands) -> Result<RunCommand> {
 
 fn map_artifact_command(command: ArtifactCommands) -> Result<ArtifactCommand> {
     Ok(match command {
-        ArtifactCommands::List { task_id, run_id, round, node, attempt } => ArtifactCommand::List {
+        ArtifactCommands::List {
+            task_id,
+            run_id,
+            round,
+            node,
+            attempt,
+        } => ArtifactCommand::List {
             task_id,
             run_id,
             round,
             node,
             attempt,
         },
-        ArtifactCommands::Show { task_id, run_id, round, node, attempt, name } => ArtifactCommand::Show {
+        ArtifactCommands::Show {
+            task_id,
+            run_id,
+            round,
+            node,
+            attempt,
+            name,
+        } => ArtifactCommand::Show {
             task_id,
             run_id,
             round,
@@ -135,7 +223,7 @@ fn print_result(result: CommandResult) -> Result<()> {
 
 #[cfg(test)]
 mod tests {
-    use super::{resolve_runtime_config, Cli, Commands};
+    use super::{Cli, Commands, resolve_runtime_config};
 
     fn stderr_progress_enabled(cli: &Cli) -> bool {
         !matches!(cli.command, Commands::Console { .. })
@@ -182,7 +270,12 @@ mod tests {
         );
 
         assert_eq!(config.console_theme, ConsoleThemeName::Cyber);
-        assert!(matches!(cli.command, Commands::Console { theme: Some(ConsoleThemeName::Cyber) }));
+        assert!(matches!(
+            cli.command,
+            Commands::Console {
+                theme: Some(ConsoleThemeName::Cyber)
+            }
+        ));
         assert!(matches!(config.log_level, RuntimeLogLevel::Debug));
     }
 }

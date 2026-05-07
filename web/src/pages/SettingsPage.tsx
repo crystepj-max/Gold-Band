@@ -44,11 +44,11 @@ export function SettingsPage({ preferences, onSave }: SettingsPageProps) {
 
       <PageHeader title={t('settings.title')} />
 
-      <AppCard>
-        <CardHeader>
+      <AppCard className="gap-3 py-4">
+        <CardHeader className="px-5">
           <CardTitle>{t('settings.appearance')}</CardTitle>
         </CardHeader>
-        <CardContent className="flex gap-2">
+        <CardContent className="flex gap-2 px-5">
           {(['light', 'dark', 'system'] as DesktopThemePreference[]).map((value) => (
             <Button className={cn('min-w-28 capitalize', theme === value && 'border-primary bg-primary/15 text-primary')} variant="outline" key={value} onClick={() => chooseTheme(value)}>
               {t(`settings.${value}`)}
@@ -57,11 +57,11 @@ export function SettingsPage({ preferences, onSave }: SettingsPageProps) {
         </CardContent>
       </AppCard>
 
-      <AppCard>
-        <CardHeader>
+      <AppCard className="gap-3 py-4">
+        <CardHeader className="px-5">
           <CardTitle>{t('settings.language')}</CardTitle>
         </CardHeader>
-        <CardContent>
+        <CardContent className="px-5">
           <Select value={language} onValueChange={(value) => chooseLanguage(value as DesktopLanguage)}>
             <SelectTrigger className="w-56">
               <SelectValue aria-label={language} />

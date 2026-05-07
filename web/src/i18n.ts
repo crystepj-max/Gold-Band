@@ -85,6 +85,21 @@ const resources = {
         retry: '重试',
         unknown: '未知',
       },
+      nodeType: {
+        worker: '模型节点',
+        exec: '执行命令节点',
+        verify: '验收节点',
+        unknown: '未知节点',
+      },
+      node: {
+        summary: '{{type}}：{{id}}',
+        summaryWithLabel: '{{type}}：{{label}}（{{id}}）',
+        fallbackLabels: {
+          dev: '开发实现',
+          accept: '验收需求',
+          'run-tests': '运行测试',
+        },
+      },
       taskList: {
         title: '任务编排',
         taskList: '任务列表',
@@ -133,6 +148,8 @@ const resources = {
         maxAcceptanceLoops: '最大验收循环',
         onAcceptanceFailure: '验收失败策略',
         blueprintTitle: '原始 workflow 全貌图',
+        expandBlueprint: '展开',
+        collapseBlueprint: '收起',
         historyTitle: '运行记录',
         idGroup: 'ID / 分组',
         currentNode: '当前节点',
@@ -284,6 +301,21 @@ const resources = {
         retry: 'Retry',
         unknown: 'Unknown',
       },
+      nodeType: {
+        worker: 'Agent Node',
+        exec: 'Command Node',
+        verify: 'Acceptance Node',
+        unknown: 'Unknown Node',
+      },
+      node: {
+        summary: '{{type}}: {{id}}',
+        summaryWithLabel: '{{type}}: {{label}} ({{id}})',
+        fallbackLabels: {
+          dev: 'Development',
+          accept: 'Acceptance',
+          'run-tests': 'Run tests',
+        },
+      },
       taskList: {
         title: 'Task Orchestration',
         taskList: 'Task List',
@@ -332,6 +364,8 @@ const resources = {
         maxAcceptanceLoops: 'Max Acceptance Loops',
         onAcceptanceFailure: 'Acceptance Failure Policy',
         blueprintTitle: 'Original Workflow Blueprint',
+        expandBlueprint: 'Expand',
+        collapseBlueprint: 'Collapse',
         historyTitle: 'Execution History',
         idGroup: 'ID / Group',
         currentNode: 'Current Node',
@@ -414,6 +448,11 @@ export function displayStatus(t: TFunction, value?: string | null) {
 
 export function displayPolicy(t: TFunction, value?: string | null) {
   return displayStatus(t, value);
+}
+
+export function displayNodeType(t: TFunction, value?: string | null) {
+  if (!value) return t('nodeType.unknown');
+  return t(`nodeType.${value.toLowerCase()}`, { defaultValue: value });
 }
 
 if (!i18n.isInitialized) {

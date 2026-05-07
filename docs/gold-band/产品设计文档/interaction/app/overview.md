@@ -187,8 +187,47 @@ MVP 范围：
 本轮将 Round 详情页右侧常驻 Detail Viewer 改为 shadcn/ui Sheet 详情抽屉：
 - 实际工作图和全局信息流默认占满主工作区宽度，详情不再长期挤压画布。
 - 单击节点仍负责选择和更新下方上下文；双击节点、右键查看节点详情/会话、点击信息流条目会打开详情抽屉。
-- 详情抽屉使用非模态、无遮罩交互，可固定在右侧以便持续对照图和 JSON；未固定时可关闭以回到纯工作台视图。
+- 详情抽屉使用非模态、无遮罩交互；未固定时作为覆盖式 Sheet，固定后切换为右侧占位面板，让工作图和信息流自动收窄以便持续对照图和 JSON。
 - 详情内容复用现有 DetailViewer 内容区和 CodeBlock，不自研基础抽屉控件。
+
+---
+
+## 12. 2026-05-06 浏览器调试 Deep Link 记录
+
+本轮为桌面端 Web 调试模式补充轻量 deep link，不引入 React Router：
+- `/tasks` 直达任务列表。
+- `/tasks/:taskId/workflow` 直达指定任务工作流页。
+- `/tasks/:taskId/runs/:runId/rounds/:roundId` 直达指定 Round 详情页。
+- `/settings` 直达设置页。
+- App 内部导航会同步 `history.pushState`，浏览器前进/后退通过 `popstate` 恢复页面状态。
+- deep link 主要服务 Vite 浏览器调试和 agent-browser 验证；Tauri command、view model 与 canonical state 契约不变。
+
+---
+
+## 13. 2026-05-07 运行节点可读化记录
+
+本轮修正任务工作流页和 Round 详情页中当前节点只显示内部 id 的问题：
+- 当前状态、Run 分组行、Round 明细行和 Round header 均展示“节点类型 + 节点说明 + 原始 node id”。
+- `run-tests` 等内部 id 继续保留用于定位 canonical state，但不再单独作为用户理解当前阶段的主文案。
+- Round 详情实际工作图优先从 run 的 workflow snapshot 读取节点说明，避免真实执行图退化为纯 id 列表。
+
+---
+
+## 14. 2026-05-07 工作流蓝图默认折叠记录
+
+本轮将任务工作流页的原始 workflow 全貌图改为默认折叠：
+- 首屏优先展示 task 摘要、关键指标和运行记录，蓝图不再默认占据大块高度。
+- 折叠态保留“原始 workflow 全貌图”标题与展开按钮，用户需要检查 authoring workflow 时再展开。
+- 展开后仍显示 control 规则条与只读节点-边画布，不改变 Tauri command、view model 或 canonical state 契约。
+
+---
+
+## 15. 2026-05-07 品牌 Logo 替换记录
+
+本轮将桌面端品牌标识从临时菱形字形替换为用户提供的红蓝金无限环 Logo：
+- 左侧应用壳品牌区使用 `web/public/logo.svg`，保持 Gold Band 产品名和 AI Orchestrator 副标题不变。
+- 浏览器调试 favicon 与 Web 侧品牌图共用同一 SVG，减少多份前端 Logo 资源漂移。
+- Tauri 图标资源由同一 Logo 生成正方形源图与平台图标，Windows `.ico`、macOS `.icns` 和 PNG 图标使用一致品牌来源。
 
 ---
 

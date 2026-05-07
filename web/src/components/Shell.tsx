@@ -1,4 +1,4 @@
-import { Bot, Boxes, BrainCircuit, ChevronsUpDown, Command, Settings } from 'lucide-react';
+import { Boxes, BrainCircuit, ChevronsUpDown, Command, Settings } from 'lucide-react';
 import { useTranslation } from 'react-i18next';
 import type { PrimaryModule } from '../types';
 import { Button } from '@/components/ui/button';
@@ -21,7 +21,9 @@ export function Shell({ active, repoRoot, onSelect, onChooseWorkspace, children 
       <div className="grid h-screen grid-cols-[256px_minmax(0,1fr)] bg-gold-workspace text-foreground" onContextMenu={(event) => event.preventDefault()}>
         <aside className="flex min-h-0 flex-col gap-5 border-r bg-sidebar px-5 py-7 text-sidebar-foreground">
           <Button variant="ghost" className="h-auto justify-start gap-3 px-0 py-0 hover:bg-transparent" onClick={() => onSelect('task-orchestration')}>
-            <span className="grid size-9 place-items-center rounded-lg bg-primary text-lg font-black text-primary-foreground">◇</span>
+            <span className="grid h-9 w-14 place-items-center rounded-lg border border-sidebar-border bg-sidebar-accent/60 p-1">
+              <img src="/logo.svg" alt="" className="h-full w-full object-contain" />
+            </span>
             <span className="text-left">
               <strong className="block text-xl leading-none text-primary">Gold Band</strong>
               <small className="mt-1 block text-[11px] uppercase tracking-[0.18em] text-muted-foreground">AI Orchestrator</small>

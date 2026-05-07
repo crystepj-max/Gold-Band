@@ -1,4 +1,4 @@
-use gold_band::control::{decide_next_step, ControlDecision};
+use gold_band::control::{ControlDecision, decide_next_step};
 use gold_band::domain::{NodeOutcome, NodeType, RunStatus, SessionMode, VERSION};
 use gold_band::dsl::WorkflowDsl;
 use gold_band::runtime::{NodeState, RoundState, RunState};
@@ -76,8 +76,16 @@ fn verify_success_completes_run() {
     );
 
     let validated = gold_band::dsl::validate_workflow(workflow).unwrap();
-    let decision = decide_next_step(&validated, &sample_run(), &sample_round(), &sample_node("accept", NodeType::Verify, NodeOutcome::Success));
-    assert!(matches!(decision, ControlDecision::CompleteRun(gold_band::domain::RunOutcome::Success)));
+    let decision = decide_next_step(
+        &validated,
+        &sample_run(),
+        &sample_round(),
+        &sample_node("accept", NodeType::Verify, NodeOutcome::Success),
+    );
+    assert!(matches!(
+        decision,
+        ControlDecision::CompleteRun(gold_band::domain::RunOutcome::Success)
+    ));
 }
 
 #[test]
@@ -107,8 +115,15 @@ fn exec_invalid_prefers_explicit_edge() {
     );
 
     let validated = gold_band::dsl::validate_workflow(workflow).unwrap();
-    let decision = decide_next_step(&validated, &sample_run(), &sample_round(), &sample_node("run-tests", NodeType::Exec, NodeOutcome::Invalid));
-    assert!(matches!(decision, ControlDecision::TransitionToNode { node_id, session: SessionMode::Continue } if node_id == "fix"));
+    let decision = decide_next_step(
+        &validated,
+        &sample_run(),
+        &sample_round(),
+        &sample_node("run-tests", NodeType::Exec, NodeOutcome::Invalid),
+    );
+    assert!(
+        matches!(decision, ControlDecision::TransitionToNode { node_id, session: SessionMode::Continue } if node_id == "fix")
+    );
 }
 
 #[test]
@@ -136,8 +151,15 @@ fn exec_invalid_defaults_back_to_plan_from() {
     );
 
     let validated = gold_band::dsl::validate_workflow(workflow).unwrap();
-    let decision = decide_next_step(&validated, &sample_run(), &sample_round(), &sample_node("run-tests", NodeType::Exec, NodeOutcome::Invalid));
-    assert!(matches!(decision, ControlDecision::TransitionToNode { node_id, session: SessionMode::Continue } if node_id == "dev"));
+    let decision = decide_next_step(
+        &validated,
+        &sample_run(),
+        &sample_round(),
+        &sample_node("run-tests", NodeType::Exec, NodeOutcome::Invalid),
+    );
+    assert!(
+        matches!(decision, ControlDecision::TransitionToNode { node_id, session: SessionMode::Continue } if node_id == "dev")
+    );
 }
 
 #[test]
@@ -165,8 +187,15 @@ fn exec_invalid_downgrades_continue_when_provider_cannot_continue() {
     );
 
     let validated = gold_band::dsl::validate_workflow(workflow).unwrap();
-    let decision = decide_next_step(&validated, &sample_run(), &sample_round(), &sample_node("run-tests", NodeType::Exec, NodeOutcome::Invalid));
-    assert!(matches!(decision, ControlDecision::TransitionToNode { node_id, session: SessionMode::New } if node_id == "dev"));
+    let decision = decide_next_step(
+        &validated,
+        &sample_run(),
+        &sample_round(),
+        &sample_node("run-tests", NodeType::Exec, NodeOutcome::Invalid),
+    );
+    assert!(
+        matches!(decision, ControlDecision::TransitionToNode { node_id, session: SessionMode::New } if node_id == "dev")
+    );
 }
 
 #[test]
@@ -196,6 +225,14 @@ fn exec_invalid_completes_failure_when_repair_budget_is_exhausted() {
     let validated = gold_band::dsl::validate_workflow(workflow).unwrap();
     let mut round = sample_round();
     round.repair_loops_used = 1;
-    let decision = decide_next_step(&validated, &sample_run(), &round, &sample_node("run-tests", NodeType::Exec, NodeOutcome::Invalid));
-    assert!(matches!(decision, ControlDecision::CompleteRun(gold_band::domain::RunOutcome::Failure)));
+    let decision = decide_next_step(
+        &validated,
+        &sample_run(),
+        &round,
+        &sample_node("run-tests", NodeType::Exec, NodeOutcome::Invalid),
+    );
+    assert!(matches!(
+        decision,
+        ControlDecision::CompleteRun(gold_band::domain::RunOutcome::Failure)
+    ));
 }

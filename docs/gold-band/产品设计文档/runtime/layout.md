@@ -404,6 +404,7 @@ accept/
 - schema 固定
 - 由 runtime 规范化落盘
 - 可被下游节点程序化消费
+- UI、CLI 和 selection 层优先使用不带 `.json` 的逻辑名，例如 `verify-result`；落盘文件仍为 `verify-result.json`，读取接口应兼容带 `.json` 后缀的旧入参，避免拼成 `verify-result.json.json`
 
 ### 14.2 `attachments/`
 只放 free-form 附件。

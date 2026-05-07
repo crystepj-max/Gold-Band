@@ -14,7 +14,10 @@ impl GoldBandPaths {
     pub fn new(repo_root: impl Into<Utf8PathBuf>) -> Self {
         let repo_root = repo_root.into();
         let runtime_root = repo_root.join(".gold-band");
-        Self { repo_root, runtime_root }
+        Self {
+            repo_root,
+            runtime_root,
+        }
     }
 
     pub fn repo_presets_dir(&self) -> Utf8PathBuf {
@@ -33,7 +36,11 @@ impl GoldBandPaths {
         let home = std::env::var("HOME")
             .ok()
             .filter(|value| !value.trim().is_empty())
-            .or_else(|| std::env::var("USERPROFILE").ok().filter(|value| !value.trim().is_empty()))
+            .or_else(|| {
+                std::env::var("USERPROFILE")
+                    .ok()
+                    .filter(|value| !value.trim().is_empty())
+            })
             .unwrap_or_else(|| ".".to_string());
         Utf8PathBuf::from(home).join(".gold-band")
     }
@@ -83,7 +90,8 @@ impl GoldBandPaths {
     }
 
     pub fn task_workflow_resolved_file(&self, task_id: &str) -> Utf8PathBuf {
-        self.task_dir(task_id).join("authoring/workflow.resolved.json")
+        self.task_dir(task_id)
+            .join("authoring/workflow.resolved.json")
     }
 
     pub fn task_provenance_file(&self, task_id: &str) -> Utf8PathBuf {
@@ -122,41 +130,113 @@ impl GoldBandPaths {
         self.round_dir(task_id, run_id, round_id).join("round.json")
     }
 
-    pub fn node_dir(&self, task_id: &str, run_id: &str, round_id: &str, node_id: &str) -> Utf8PathBuf {
-        self.round_dir(task_id, run_id, round_id).join("nodes").join(node_id)
+    pub fn node_dir(
+        &self,
+        task_id: &str,
+        run_id: &str,
+        round_id: &str,
+        node_id: &str,
+    ) -> Utf8PathBuf {
+        self.round_dir(task_id, run_id, round_id)
+            .join("nodes")
+            .join(node_id)
     }
 
-    pub fn attempt_dir(&self, task_id: &str, run_id: &str, round_id: &str, node_id: &str, attempt_id: &str) -> Utf8PathBuf {
-        self.node_dir(task_id, run_id, round_id, node_id).join(attempt_id)
+    pub fn attempt_dir(
+        &self,
+        task_id: &str,
+        run_id: &str,
+        round_id: &str,
+        node_id: &str,
+        attempt_id: &str,
+    ) -> Utf8PathBuf {
+        self.node_dir(task_id, run_id, round_id, node_id)
+            .join(attempt_id)
     }
 
-    pub fn node_file(&self, task_id: &str, run_id: &str, round_id: &str, node_id: &str, attempt_id: &str) -> Utf8PathBuf {
-        self.attempt_dir(task_id, run_id, round_id, node_id, attempt_id).join("node.json")
+    pub fn node_file(
+        &self,
+        task_id: &str,
+        run_id: &str,
+        round_id: &str,
+        node_id: &str,
+        attempt_id: &str,
+    ) -> Utf8PathBuf {
+        self.attempt_dir(task_id, run_id, round_id, node_id, attempt_id)
+            .join("node.json")
     }
 
-    pub fn worker_ref_file(&self, task_id: &str, run_id: &str, round_id: &str, node_id: &str, attempt_id: &str) -> Utf8PathBuf {
-        self.attempt_dir(task_id, run_id, round_id, node_id, attempt_id).join("worker-ref.json")
+    pub fn worker_ref_file(
+        &self,
+        task_id: &str,
+        run_id: &str,
+        round_id: &str,
+        node_id: &str,
+        attempt_id: &str,
+    ) -> Utf8PathBuf {
+        self.attempt_dir(task_id, run_id, round_id, node_id, attempt_id)
+            .join("worker-ref.json")
     }
 
-    pub fn artifacts_dir(&self, task_id: &str, run_id: &str, round_id: &str, node_id: &str, attempt_id: &str) -> Utf8PathBuf {
-        self.attempt_dir(task_id, run_id, round_id, node_id, attempt_id).join("artifacts")
+    pub fn artifacts_dir(
+        &self,
+        task_id: &str,
+        run_id: &str,
+        round_id: &str,
+        node_id: &str,
+        attempt_id: &str,
+    ) -> Utf8PathBuf {
+        self.attempt_dir(task_id, run_id, round_id, node_id, attempt_id)
+            .join("artifacts")
     }
 
-    pub fn artifact_file(&self, task_id: &str, run_id: &str, round_id: &str, node_id: &str, attempt_id: &str, name: &str) -> Utf8PathBuf {
+    pub fn artifact_file(
+        &self,
+        task_id: &str,
+        run_id: &str,
+        round_id: &str,
+        node_id: &str,
+        attempt_id: &str,
+        name: &str,
+    ) -> Utf8PathBuf {
         self.artifacts_dir(task_id, run_id, round_id, node_id, attempt_id)
             .join(format!("{name}.json"))
     }
 
-    pub fn attachments_dir(&self, task_id: &str, run_id: &str, round_id: &str, node_id: &str, attempt_id: &str) -> Utf8PathBuf {
-        self.attempt_dir(task_id, run_id, round_id, node_id, attempt_id).join("attachments")
+    pub fn attachments_dir(
+        &self,
+        task_id: &str,
+        run_id: &str,
+        round_id: &str,
+        node_id: &str,
+        attempt_id: &str,
+    ) -> Utf8PathBuf {
+        self.attempt_dir(task_id, run_id, round_id, node_id, attempt_id)
+            .join("attachments")
     }
 
-    pub fn progress_events_file(&self, task_id: &str, run_id: &str, round_id: &str, node_id: &str, attempt_id: &str) -> Utf8PathBuf {
-        self.attempt_dir(task_id, run_id, round_id, node_id, attempt_id).join("progress.events.jsonl")
+    pub fn progress_events_file(
+        &self,
+        task_id: &str,
+        run_id: &str,
+        round_id: &str,
+        node_id: &str,
+        attempt_id: &str,
+    ) -> Utf8PathBuf {
+        self.attempt_dir(task_id, run_id, round_id, node_id, attempt_id)
+            .join("progress.events.jsonl")
     }
 
-    pub fn raw_stream_file(&self, task_id: &str, run_id: &str, round_id: &str, node_id: &str, attempt_id: &str) -> Utf8PathBuf {
-        self.attempt_dir(task_id, run_id, round_id, node_id, attempt_id).join("raw.stream.jsonl")
+    pub fn raw_stream_file(
+        &self,
+        task_id: &str,
+        run_id: &str,
+        round_id: &str,
+        node_id: &str,
+        attempt_id: &str,
+    ) -> Utf8PathBuf {
+        self.attempt_dir(task_id, run_id, round_id, node_id, attempt_id)
+            .join("raw.stream.jsonl")
     }
 }
 
@@ -181,7 +261,10 @@ pub fn read_json<T: serde::de::DeserializeOwned>(path: &Utf8Path) -> Result<T> {
 
 pub fn append_jsonl<T: Serialize>(path: &Utf8Path, value: &T) -> Result<()> {
     ensure_parent_dir(path)?;
-    let mut file = OpenOptions::new().create(true).append(true).open(path.as_std_path())?;
+    let mut file = OpenOptions::new()
+        .create(true)
+        .append(true)
+        .open(path.as_std_path())?;
     serde_json::to_writer(&mut file, value)?;
     file.write_all(b"\n")?;
     Ok(())

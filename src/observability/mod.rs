@@ -1,7 +1,7 @@
 use std::fs::{self, File, OpenOptions};
 use std::io::Write as _;
-use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::OnceLock;
+use std::sync::atomic::{AtomicBool, Ordering};
 
 use camino::Utf8Path;
 use serde::Serialize;
@@ -9,13 +9,13 @@ use tracing::warn;
 use tracing_subscriber::fmt::writer::BoxMakeWriter;
 use tracing_subscriber::layer::SubscriberExt;
 use tracing_subscriber::util::SubscriberInitExt;
-use tracing_subscriber::{fmt, EnvFilter, Layer};
+use tracing_subscriber::{EnvFilter, Layer, fmt};
 
 use crate::config::RuntimeConfig;
 use crate::domain::{NodeType, PauseReason, RunStatus, VERSION};
 use crate::inspect::render_run_status;
 use crate::runtime::RunState;
-use crate::storage::{append_jsonl, ensure_parent_dir, write_json, GoldBandPaths};
+use crate::storage::{GoldBandPaths, append_jsonl, ensure_parent_dir, write_json};
 
 const PROGRESS_TARGET: &str = "gold_band.progress";
 static TRACE_ID: OnceLock<String> = OnceLock::new();
@@ -247,7 +247,12 @@ pub fn append_run_event_best_effort(
     }
 }
 
-pub fn append_raw_stream_best_effort(path: &Utf8Path, timestamp: &str, stream: &str, content: &str) {
+pub fn append_raw_stream_best_effort(
+    path: &Utf8Path,
+    timestamp: &str,
+    stream: &str,
+    content: &str,
+) {
     let envelope = RawStreamEnvelope {
         timestamp,
         stream,
@@ -337,9 +342,20 @@ fn trace_id_seed() -> String {
     format!("trace-{millis}")
 }
 
-pub fn write_progress_hint(paths: &GoldBandPaths, task_id: &str, run_id: &str, node_raw_stream: Option<&Utf8Path>) {
-    progress(&format!("progress file: {}", paths.run_progress_file(task_id, run_id)));
-    progress(&format!("events file: {}", paths.run_events_file(task_id, run_id)));
+pub fn write_progress_hint(
+    paths: &GoldBandPaths,
+    task_id: &str,
+    run_id: &str,
+    node_raw_stream: Option<&Utf8Path>,
+) {
+    progress(&format!(
+        "progress file: {}",
+        paths.run_progress_file(task_id, run_id)
+    ));
+    progress(&format!(
+        "events file: {}",
+        paths.run_events_file(task_id, run_id)
+    ));
     if let Some(raw_stream) = node_raw_stream {
         progress(&format!("raw stream: {raw_stream}"));
     }
@@ -351,7 +367,12 @@ pub fn touch_log_file_best_effort(paths: &GoldBandPaths) {
         warn!(path = %path, error = %err, "failed to prepare runtime log path");
         return;
     }
-    if let Err(err) = File::options().create(true).append(true).open(path.as_std_path()).and_then(|mut file| file.write_all(b"")) {
+    if let Err(err) = File::options()
+        .create(true)
+        .append(true)
+        .open(path.as_std_path())
+        .and_then(|mut file| file.write_all(b""))
+    {
         warn!(path = %path, error = %err, "failed to touch runtime log file");
     }
 }

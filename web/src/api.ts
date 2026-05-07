@@ -61,7 +61,7 @@ export function getRunDetail(taskId: string, runId: string) {
 }
 
 export function getRoundDetail(taskId: string, runId: string, roundId: string, selection?: RoundSelection) {
-  return command<RoundDetailVm>('get_round_detail', { taskId, runId, roundId, selection: toRoundSelectionInput(selection) }, mockRoundDetail(selection));
+  return command<RoundDetailVm>('get_round_detail', { taskId, runId, roundId, selection: toRoundSelectionInput(selection) }, mockRoundDetail(selection, { taskId, runId, roundId }));
 }
 
 function toRoundSelectionInput(selection?: RoundSelection) {

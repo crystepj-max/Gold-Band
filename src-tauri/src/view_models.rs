@@ -1,4 +1,4 @@
-use std::fs;
+use std::{collections::HashMap, fs};
 
 use anyhow::Result;
 use gold_band::app::{App, TaskSummary};
@@ -524,8 +524,9 @@ fn round_graph_vm(
     round: &RoundState,
     nodes: &[NodeState],
 ) -> Result<GraphVm> {
+    let node_labels = workflow_node_labels(app, task_id, &run.id);
     if !round.trace.is_empty() {
-        return round_trace_graph_vm(app, task_id, run, round, nodes);
+        return round_trace_graph_vm(app, task_id, run, round, nodes, &node_labels);
     }
 
     let mut ordered_nodes = nodes.to_vec();
@@ -537,7 +538,7 @@ fn round_graph_vm(
     let graph_nodes = ordered_nodes
         .iter()
         .enumerate()
-        .map(|(index, node)| round_node_graph_vm(app, task_id, run, round, node, index as u32 + 1))
+        .map(|(index, node)| round_node_graph_vm(app, task_id, run, round, node, index as u32 + 1, &node_labels))
         .collect::<Result<Vec<_>>>()?;
     let edges = graph_nodes
         .windows(2)
@@ -560,6 +561,7 @@ fn round_trace_graph_vm(
     run: &RunState,
     round: &RoundState,
     nodes: &[NodeState],
+    node_labels: &HashMap<String, String>,
 ) -> Result<GraphVm> {
     let mut steps = round.trace.clone();
     steps.sort_by_key(|step| step.sequence);
@@ -569,7 +571,7 @@ fn round_trace_graph_vm(
             let node = nodes.iter().find(|node| {
                 node.node_id == step.node_id && node.attempt_id == step.attempt_id
             });
-            trace_step_graph_vm(app, task_id, run, round, step, node)
+            trace_step_graph_vm(app, task_id, run, round, step, node, node_labels)
         })
         .collect::<Result<Vec<_>>>()?;
     let edges = graph_nodes
@@ -594,6 +596,7 @@ fn trace_step_graph_vm(
     round: &RoundState,
     step: &RoundTraceStep,
     node: Option<&NodeState>,
+    node_labels: &HashMap<String, String>,
 ) -> Result<GraphNodeVm> {
     let artifacts = app
         .artifact_list(task_id, &run.id, &round.id, &step.node_id, &step.attempt_id)?
@@ -605,7 +608,7 @@ fn trace_step_graph_vm(
         id: format!("{}:{}:{}", step.sequence, step.node_id, step.attempt_id),
         node_id: Some(step.node_id.clone()),
         sequence: Some(step.sequence),
-        label: step.node_id.clone(),
+        label: node_labels.get(&step.node_id).cloned().unwrap_or_else(|| step.node_id.clone()),
         node_type: node.map(|node| enum_label(&node.node_type)).unwrap_or_else(|| "unknown".to_string()),
         status: node.map(|node| enum_label(&node.status)),
         outcome: node.and_then(|node| node.outcome.map(|outcome| enum_label(&outcome))),
@@ -625,6 +628,7 @@ fn round_node_graph_vm(
     round: &RoundState,
     node: &NodeState,
     sequence: u32,
+    node_labels: &HashMap<String, String>,
 ) -> Result<GraphNodeVm> {
     let artifacts = app
         .artifact_list(task_id, &run.id, &round.id, &node.node_id, &node.attempt_id)?
@@ -636,7 +640,7 @@ fn round_node_graph_vm(
         id: format!("{}:{}:{}", sequence, node.node_id, node.attempt_id),
         node_id: Some(node.node_id.clone()),
         sequence: Some(sequence),
-        label: node.node_id.clone(),
+        label: node_labels.get(&node.node_id).cloned().unwrap_or_else(|| node.node_id.clone()),
         node_type: enum_label(&node.node_type),
         status: Some(enum_label(&node.status)),
         outcome: node.outcome.map(|outcome| enum_label(&outcome)),
@@ -944,6 +948,19 @@ fn count_round_outputs(
         }
     }
     Ok((artifacts, attachments))
+}
+
+fn workflow_node_labels(app: &App, task_id: &str, run_id: &str) -> HashMap<String, String> {
+    read_json::<WorkflowDsl>(&app.paths.workflow_snapshot_file(task_id, run_id))
+        .or_else(|_| read_json::<WorkflowDsl>(&app.paths.workflow_file(task_id)))
+        .map(|workflow| {
+            workflow
+                .nodes
+                .iter()
+                .map(|node| (node.id().to_string(), node_label(node)))
+                .collect()
+        })
+        .unwrap_or_default()
 }
 
 fn node_label(node: &NodeDsl) -> String {

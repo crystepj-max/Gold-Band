@@ -71,7 +71,15 @@
 - 2026-05-05：补充验收修正：工作流 control 信息移入蓝图画板，面包屑等导航标签接入 i18n，任务列表分页布局改为响应式，execution history Action 列保持可见，Round 详情小窗口改为滚动而非裁切；面包屑当前页改为短金色渐变底线，可点击上级项 hover/focus 改为文字提亮与 primary 底边线反馈，任务 ID 作为不可点击上下文标签不显示 hover 底线。
 - 2026-05-06：任务编排首页视觉层级收敛，summary cards 改为中性表面 + 小面积状态强调；Task Preview 改为固定 header + 内部滚动正文，执行统计窄栏单列展示，修复底部统计贴边/超出卡片的问题。
 - 2026-05-06：任务列表 Task Preview 从固定右栏改为 shadcn/ui Sheet 右侧抽屉，初始不打开；单击任务行滑出，单击其他任务行直接切换内容，单击非任务区域、Escape 或关闭按钮收回。
-- 2026-05-06：Round 详情页右侧 Detail Viewer 从常驻固定列改为 shadcn/ui Sheet 详情抽屉，释放实际工作图和信息流宽度；双击节点、右键详情/会话、点击信息流条目打开抽屉，支持固定详情持续对照。
+- 2026-05-06：Round 详情页右侧 Detail Viewer 从常驻固定列改为 shadcn/ui Sheet 详情抽屉，释放实际工作图和信息流宽度；双击节点、右键详情/会话、点击信息流条目打开抽屉，支持固定详情持续对照；固定时抽屉切换为右侧占位面板，主工作区自动收窄。
+- 2026-05-06：浏览器调试模式支持轻量 deep link：`/tasks`、`/tasks/:taskId/workflow`、`/tasks/:taskId/runs/:runId/rounds/:roundId`、`/settings`，用于 agent-browser 直达页面验证。
+- 2026-05-07：任务工作流页顶部 task 摘要移除“当前状态：某节点正在执行”句子；Run/Round 记录与 Round 详情的当前节点展示改为可读化格式，组合展示节点类型、workflow 节点说明和原始 node id；Round 详情实际工作图从 workflow snapshot 补齐节点说明。
+- 2026-05-07：修复 Round 详情实际工作图默认视口偏下和底部裁切的问题；GraphView 改为受控 viewport，按节点 bounds 和容器尺寸计算初始平移/缩放，并移除实际工作图超过父内容区的固定最小高度，确保打开页面时执行路径图边框与节点卡片完整居中展示；浏览器 fallback 对 `/run-024/round-001` 复现两节点失败验收图用于验证。
+- 2026-05-07：任务工作流页原始 workflow 全貌图默认折叠，仅保留展开入口；展开后仍显示 control 规则条与只读 GraphView，首屏优先给运行记录。
+- 2026-05-07：桌面端品牌 Logo 从临时菱形字形替换为用户提供的红蓝金无限环 SVG；Web 品牌区和 favicon 共用 `web/public/logo.svg`，Tauri 平台图标由同一 Logo 生成。
+- 2026-05-07：修复任务编排面包屑上级项 hover/focus 高亮在页面跳转后残留的问题；可点击上级项改为纯 CSS 的 hover/focus-visible 临时反馈，Round 详情只保留当前 round 的常驻高亮。
+- 2026-05-07：工作流 execution history 的默认展开 run 不再使用黄色背景或左侧金线，所有 run 分组保持一致黑色背景，避免默认展开被误解为选中态。
+- 2026-05-07：统一压缩桌面端卡片 header 与内容之间的过大空白；Round 详情左下信息流、Workflow 运行记录、Workspace 最近列表、Settings 表单卡片和遗留 Task/Run 详情页均移除 Card 默认 gap、覆盖 border header 大底部 padding，并降低内容区内边距。
 - 2026-05-07：Settings 页面移除标题副文案、范围提示块，以及外观/语言卡片的辅助说明文案，保留主题切换与语言选择两组本地偏好控件。
 - 启动：`npm run dev`；构建：`npm run build`。
 

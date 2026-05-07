@@ -1,7 +1,8 @@
 mod layout;
 
 use crate::artifacts::{
-    validate_exec_plan, validate_exec_result, ExecCommandResult, ExecPlanArtifact, ExecResultArtifact, ExecResultStatus,
+    ExecCommandResult, ExecPlanArtifact, ExecResultArtifact, ExecResultStatus, validate_exec_plan,
+    validate_exec_result,
 };
 use crate::domain::CommandStatus;
 use anyhow::Result;
@@ -10,7 +11,10 @@ use serde::Serialize;
 use std::process::Command;
 use std::time::{Instant, SystemTime, UNIX_EPOCH};
 
-use self::layout::{command_dir, command_json_path, commands_dir, stderr_log_path, stderr_rel_path, stdout_log_path, stdout_rel_path};
+use self::layout::{
+    command_dir, command_json_path, commands_dir, stderr_log_path, stderr_rel_path,
+    stdout_log_path, stdout_rel_path,
+};
 
 pub fn build_skipped_exec_result(plan: &ExecPlanArtifact) -> Result<ExecResultArtifact> {
     let commands = plan
@@ -36,7 +40,11 @@ pub fn build_skipped_exec_result(plan: &ExecPlanArtifact) -> Result<ExecResultAr
     })
 }
 
-pub fn run_exec_plan(plan: &ExecPlanArtifact, workspace_dir: &Utf8Path, attempt_dir: &Utf8Path) -> Result<ExecResultArtifact> {
+pub fn run_exec_plan(
+    plan: &ExecPlanArtifact,
+    workspace_dir: &Utf8Path,
+    attempt_dir: &Utf8Path,
+) -> Result<ExecResultArtifact> {
     validate_exec_plan(plan)?;
 
     let commands_dir = commands_dir(attempt_dir);
@@ -63,7 +71,10 @@ pub fn run_exec_plan(plan: &ExecPlanArtifact, workspace_dir: &Utf8Path, attempt_
 
         let command_dir = command_dir(attempt_dir, index, &command.id);
         std::fs::create_dir_all(command_dir.as_std_path())?;
-        write_json_file(command_json_path(attempt_dir, index, &command.id).as_std_path(), command)?;
+        write_json_file(
+            command_json_path(attempt_dir, index, &command.id).as_std_path(),
+            command,
+        )?;
 
         let start_stamp = timestamp_like();
         let started = Instant::now();
@@ -82,8 +93,14 @@ pub fn run_exec_plan(plan: &ExecPlanArtifact, workspace_dir: &Utf8Path, attempt_
 
         let stdout_rel = stdout_rel_path(index, &command.id);
         let stderr_rel = stderr_rel_path(index, &command.id);
-        std::fs::write(stdout_log_path(attempt_dir, index, &command.id).as_std_path(), &output.stdout)?;
-        std::fs::write(stderr_log_path(attempt_dir, index, &command.id).as_std_path(), &output.stderr)?;
+        std::fs::write(
+            stdout_log_path(attempt_dir, index, &command.id).as_std_path(),
+            &output.stdout,
+        )?;
+        std::fs::write(
+            stderr_log_path(attempt_dir, index, &command.id).as_std_path(),
+            &output.stderr,
+        )?;
 
         let status = if output.status.success() {
             CommandStatus::Success
@@ -105,7 +122,10 @@ pub fn run_exec_plan(plan: &ExecPlanArtifact, workspace_dir: &Utf8Path, attempt_
         });
     }
 
-    let top_level_status = if results.iter().any(|command| command.status == CommandStatus::Failure) {
+    let top_level_status = if results
+        .iter()
+        .any(|command| command.status == CommandStatus::Failure)
+    {
         ExecResultStatus::Failure
     } else {
         ExecResultStatus::Success

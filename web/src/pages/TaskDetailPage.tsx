@@ -42,21 +42,21 @@ export function TaskDetailPage({ vm, labels, busy, onNavigate, onStartRun, onCon
         <Metric label="Artifacts" value={`A${vm.task.artifactCount} / P${vm.task.attachmentCount}`} />
       </MetricsBar>
 
-      <div className="space-y-6">
-        <AppCard>
-          <CardHeader className="flex-row items-center justify-between border-b">
+      <div className="space-y-5">
+        <AppCard className="gap-0 py-0">
+          <CardHeader className="flex-row items-center justify-between border-b px-5 py-3 !pb-3">
             <CardTitle>{labels.requirement}</CardTitle>
             <span className="text-sm text-muted-foreground">完整 authoring 内容，只读</span>
           </CardHeader>
-          <CardContent><CodeBlock>{vm.requirement}</CodeBlock></CardContent>
+          <CardContent className="px-4 py-4"><CodeBlock>{vm.requirement}</CodeBlock></CardContent>
         </AppCard>
 
-        <AppCard>
-          <CardHeader className="flex-row items-center justify-between border-b">
+        <AppCard className="gap-0 py-0">
+          <CardHeader className="flex-row items-center justify-between border-b px-5 py-3 !pb-3">
             <CardTitle>当前状态</CardTitle>
             {vm.task.workflowError ? <span className="text-sm text-muted-foreground">{vm.task.workflowError}</span> : null}
           </CardHeader>
-          <CardContent className="grid grid-cols-4 gap-3">
+          <CardContent className="grid grid-cols-4 gap-3 px-4 py-4">
             <Metric label="workflow 校验" value={vm.task.workflowValid ? 'valid' : vm.task.workflowExists ? 'invalid' : 'missing'} compact />
             <Metric label="resumable run" value={resumable ?? '-'} compact />
             <Metric label="latest outcome" value={vm.task.latestRun?.outcome ?? vm.task.latestRun?.status ?? '-'} compact />
@@ -64,8 +64,8 @@ export function TaskDetailPage({ vm, labels, busy, onNavigate, onStartRun, onCon
           </CardContent>
         </AppCard>
 
-        <AppCard className="py-0">
-          <CardHeader className="border-b py-5"><CardTitle>最近运行</CardTitle></CardHeader>
+        <AppCard className="gap-0 py-0">
+          <CardHeader className="border-b px-5 py-3 !pb-3"><CardTitle>最近运行</CardTitle></CardHeader>
           <Table>
             <TableHeader><TableRow><TableHead>Run ID</TableHead><TableHead>Status</TableHead><TableHead>Outcome</TableHead><TableHead>Current Round</TableHead><TableHead>Updated</TableHead><TableHead className="text-right">Action</TableHead></TableRow></TableHeader>
             <TableBody>

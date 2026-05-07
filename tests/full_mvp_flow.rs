@@ -2,8 +2,8 @@ use camino::Utf8PathBuf;
 use gold_band::app::App;
 use gold_band::domain::SessionMode;
 use gold_band::provider::{
-    DoctorResult, PrimaryArtifactPayload, ProviderAdapter, ProviderCapabilities, ProviderInfo, ProviderResultPayload, ProviderRunResult,
-    ProviderRunStatus, WorkerInvocation, SessionRef,
+    DoctorResult, PrimaryArtifactPayload, ProviderAdapter, ProviderCapabilities, ProviderInfo,
+    ProviderResultPayload, ProviderRunResult, ProviderRunStatus, SessionRef, WorkerInvocation,
 };
 use gold_band::runtime::RunState;
 use std::sync::{Arc, Mutex};
@@ -30,7 +30,10 @@ impl ProviderAdapter for SequencedProvider {
     }
 
     fn doctor(&self) -> DoctorResult {
-        DoctorResult { available: true, reason: None }
+        DoctorResult {
+            available: true,
+            reason: None,
+        }
     }
 
     fn run_worker(&self, req: WorkerInvocation) -> anyhow::Result<ProviderRunResult> {
@@ -78,17 +81,45 @@ impl ProviderAdapter for SequencedProvider {
         Ok(())
     }
 
-    fn build_continue_command(&self, _worker_ref: &gold_band::domain::SessionRef) -> anyhow::Result<Option<String>> {
+    fn build_continue_command(
+        &self,
+        _worker_ref: &gold_band::domain::SessionRef,
+    ) -> anyhow::Result<Option<String>> {
         Ok(Some("claude -c session-1".to_string()))
     }
 }
 
 fn write_happy_path_fixture(repo_root: &Utf8PathBuf, task_id: &str) {
-    std::fs::create_dir_all(repo_root.join(format!(".gold-band/tasks/{task_id}/authoring")).as_std_path()).unwrap();
+    std::fs::create_dir_all(
+        repo_root
+            .join(format!(".gold-band/tasks/{task_id}/authoring"))
+            .as_std_path(),
+    )
+    .unwrap();
     std::fs::create_dir_all(repo_root.join(".gold-band/presets/profiles").as_std_path()).unwrap();
-    std::fs::write(repo_root.join(".gold-band/presets/profiles/developer.md").as_std_path(), "developer profile").unwrap();
-    std::fs::write(repo_root.join(".gold-band/presets/profiles/verifier.md").as_std_path(), "verifier profile").unwrap();
-    std::fs::write(repo_root.join(format!(".gold-band/tasks/{task_id}/authoring/requirement.md")).as_std_path(), "Implement feature").unwrap();
+    std::fs::write(
+        repo_root
+            .join(".gold-band/presets/profiles/developer.md")
+            .as_std_path(),
+        "developer profile",
+    )
+    .unwrap();
+    std::fs::write(
+        repo_root
+            .join(".gold-band/presets/profiles/verifier.md")
+            .as_std_path(),
+        "verifier profile",
+    )
+    .unwrap();
+    std::fs::write(
+        repo_root
+            .join(format!(
+                ".gold-band/tasks/{task_id}/authoring/requirement.md"
+            ))
+            .as_std_path(),
+        "Implement feature",
+    )
+    .unwrap();
     std::fs::write(
         repo_root.join(format!(".gold-band/tasks/{task_id}/authoring/workflow.json")).as_std_path(),
         r#"{
@@ -112,7 +143,13 @@ fn write_happy_path_fixture(repo_root: &Utf8PathBuf, task_id: &str) {
         }"#,
     )
     .unwrap();
-    std::fs::write(repo_root.join(format!(".gold-band/tasks/{task_id}/task.json")).as_std_path(), format!(r#"{{"version":"0.1","id":"{task_id}"}}"#)).unwrap();
+    std::fs::write(
+        repo_root
+            .join(format!(".gold-band/tasks/{task_id}/task.json"))
+            .as_std_path(),
+        format!(r#"{{"version":"0.1","id":"{task_id}"}}"#),
+    )
+    .unwrap();
 }
 
 #[test]
@@ -127,18 +164,40 @@ fn run_start_completes_worker_exec_verify_happy_path() {
     let run = app.run_start(task_id, None).unwrap();
     assert_eq!(run.id, "run-001");
 
-    let run_state: RunState = gold_band::storage::read_json(&repo_root.join(".gold-band/tasks/task-001/runs/run-001/run.json")).unwrap();
+    let run_state: RunState = gold_band::storage::read_json(
+        &repo_root.join(".gold-band/tasks/task-001/runs/run-001/run.json"),
+    )
+    .unwrap();
     assert_eq!(run_state.status, gold_band::domain::RunStatus::Completed);
-    assert_eq!(run_state.outcome, Some(gold_band::domain::RunOutcome::Success));
+    assert_eq!(
+        run_state.outcome,
+        Some(gold_band::domain::RunOutcome::Success)
+    );
 
     assert!(repo_root.join(".gold-band/tasks/task-001/runs/run-001/rounds/round-001/nodes/accept/attempt-001/artifacts/verify-result.json").exists());
 
     let invocations = provider.invocations.lock().unwrap();
-    let verify_call = invocations.iter().find(|call| call.primary_artifact.as_deref() == Some("verify-result")).unwrap();
+    let verify_call = invocations
+        .iter()
+        .find(|call| call.primary_artifact.as_deref() == Some("verify-result"))
+        .unwrap();
     assert!(verify_call.attachments_dir.is_none());
     assert_eq!(verify_call.cold_artifacts.len(), 2);
-    assert!(verify_call.cold_artifacts.iter().any(|entry| entry.name.as_deref() == Some("exec-result")));
-    assert!(verify_call.cold_artifacts.iter().any(|entry| entry.name.as_deref() == Some("worker-primary-artifact")));
+    assert!(
+        verify_call
+            .cold_artifacts
+            .iter()
+            .any(|entry| entry.name.as_deref() == Some("exec-result"))
+    );
+    assert!(
+        verify_call
+            .cold_artifacts
+            .iter()
+            .any(|entry| entry.name.as_deref() == Some("worker-primary-artifact"))
+    );
     assert_eq!(verify_call.cold_attachments.len(), 1);
-    assert_eq!(verify_call.cold_attachments[0].path.file_name(), Some("context.md"));
+    assert_eq!(
+        verify_call.cold_attachments[0].path.file_name(),
+        Some("context.md")
+    );
 }

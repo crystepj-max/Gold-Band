@@ -21,6 +21,7 @@ import { SettingsPage } from './pages/SettingsPage';
 import { TaskListPage } from './pages/TaskListPage';
 import { WorkflowPage } from './pages/WorkflowPage';
 import { WorkspaceSelectPage } from './pages/WorkspaceSelectPage';
+import { pushRoute, replaceRoute, routeFromPath } from './routes';
 import { applyTheme } from './theme';
 import type {
   AppBootstrapVm,
@@ -40,9 +41,10 @@ type RefreshMode = 'initial' | 'manual' | 'background';
 type VisibleRefreshMode = Exclude<RefreshMode, 'background'>;
 
 export function App() {
+  const initialRoute = routeFromPath(window.location.pathname);
   const [bootstrap, setBootstrap] = useState<AppBootstrapVm | null>(null);
-  const [primaryModule, setPrimaryModule] = useState<PrimaryModule>('task-orchestration');
-  const [taskPage, setTaskPage] = useState<TaskPage>({ kind: 'task-list' });
+  const [primaryModule, setPrimaryModule] = useState<PrimaryModule>(initialRoute.module);
+  const [taskPage, setTaskPage] = useState<TaskPage>(initialRoute.taskPage);
   const [roundSelection, setRoundSelection] = useState<RoundSelection>({ kind: 'round' });
   const [taskList, setTaskList] = useState<TaskListVm | null>(null);
   const [workflow, setWorkflow] = useState<WorkflowVm | null>(null);
@@ -62,6 +64,19 @@ export function App() {
   useEffect(() => {
     void i18n.changeLanguage(i18nLanguage(preferences.language));
   }, [preferences.language]);
+
+  useEffect(() => {
+    replaceRoute(primaryModule, taskPage);
+    const onPopState = () => {
+      const nextRoute = routeFromPath(window.location.pathname);
+      setPrimaryModule(nextRoute.module);
+      setTaskPage(nextRoute.taskPage);
+      setRoundSelection({ kind: 'round' });
+      setWorkspacePickerOpen(false);
+    };
+    window.addEventListener('popstate', onPopState);
+    return () => window.removeEventListener('popstate', onPopState);
+  }, []);
 
   useEffect(() => {
     getAppBootstrap()
@@ -120,8 +135,11 @@ export function App() {
   }, [refresh, taskList, workflow, roundDetail]);
 
   const navigate = (page: TaskPage) => {
+    setPrimaryModule('task-orchestration');
+    setWorkspacePickerOpen(false);
     setTaskPage(page);
     setRoundSelection({ kind: 'round' });
+    pushRoute('task-orchestration', page);
   };
 
   const runAction = async (action: () => Promise<unknown>) => {
@@ -146,6 +164,7 @@ export function App() {
   const applyWorkspace = (nextBootstrap: AppBootstrapVm) => {
     setBootstrap(nextBootstrap);
     resetWorkspaceViews();
+    replaceRoute('task-orchestration', { kind: 'task-list' });
   };
 
   const onChooseWorkspace = async () => {
@@ -210,6 +229,7 @@ export function App() {
       onSelect={(module) => {
         setWorkspacePickerOpen(false);
         setPrimaryModule(module);
+        pushRoute(module, taskPage);
       }}
       onChooseWorkspace={() => setWorkspacePickerOpen(true)}
     >
