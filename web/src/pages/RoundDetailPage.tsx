@@ -1,12 +1,13 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useState, type ReactNode } from 'react';
 import { useTranslation } from 'react-i18next';
 import type { GraphNodeVm, RoundDetailVm, RoundSelection, StreamItemVm } from '../types';
 import { displayStatus } from '../i18n';
 import { DetailViewerContent } from '../components/DetailViewer';
 import { GraphView } from '../components/GraphView';
+import { RequirementDetailSheet, RequirementTeaser, fullRequirementText } from '../components/RequirementDisclosure';
 import { StatusBadge } from '../components/StatusBadge';
 import { AppCard } from '@/components/AppCard';
-import { EmptyState, Metric, Page } from '@/components/PageScaffold';
+import { EmptyState, Metric, MetricsBar, Page, PageHeader } from '@/components/PageScaffold';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { CardContent, CardHeader, CardTitle } from '@/components/ui/card';
@@ -21,33 +22,48 @@ import { formatCurrentNode } from '@/lib/nodes';
 
 interface RoundDetailPageProps {
   vm: RoundDetailVm | null;
+  breadcrumbs?: ReactNode;
   selection: RoundSelection;
   onSelect: (selection: RoundSelection) => void;
 }
 
-type RoundTab = 'requirement' | 'events' | 'progress' | 'artifacts' | 'attachments';
+type RoundTab = 'artifacts' | 'attachments';
 
-export function RoundDetailPage({ vm, selection, onSelect }: RoundDetailPageProps) {
+const CONTEXT_MENU_DETAIL_CLOSE_DELAY_MS = 150;
+
+export function RoundDetailPage({ vm, breadcrumbs, selection, onSelect }: RoundDetailPageProps) {
   const { t } = useTranslation();
-  const [activeTab, setActiveTab] = useState<RoundTab>('requirement');
+  const [activeTab, setActiveTab] = useState<RoundTab>('artifacts');
   const [detailOpen, setDetailOpen] = useState(false);
+  const [requirementOpen, setRequirementOpen] = useState(false);
   const [detailPinned, setDetailPinned] = useState(false);
   const selectedNodeId = selectedNodeIdFromSelection(selection);
   const pinnedPanelWidth = detailOpen && detailPinned ? 'clamp(360px, 34vw, 520px)' : undefined;
   const streamGroups = useMemo(() => groupStream(vm?.stream ?? []), [vm?.stream]);
+  const selectedNodeIds = useMemo(() => {
+    if (!selectedNodeId) return new Set<string>();
+    const graphNode = vm?.graph.nodes.find((node) => node.id === selectedNodeId || node.nodeId === selectedNodeId);
+    return new Set([selectedNodeId, graphNode?.id, graphNode?.nodeId].filter(Boolean) as string[]);
+  }, [selectedNodeId, vm?.graph.nodes]);
+  const selectedNodeStreamGroups = useMemo(() => filterNodeStreamGroups(streamGroups, selectedNodeIds), [selectedNodeIds, streamGroups]);
   const availableTabs = useMemo(() => {
-    const tabs: RoundTab[] = ['requirement', 'events'];
-    if (selectedNodeId && streamGroups.progress.length > 0) tabs.push('progress');
-    if (selectedNodeId && streamGroups.artifacts.length > 0) tabs.push('artifacts');
-    if (selectedNodeId && streamGroups.attachments.length > 0) tabs.push('attachments');
+    const tabs: RoundTab[] = [];
+    if (selectedNodeStreamGroups.artifacts.length > 0) tabs.push('artifacts');
+    if (selectedNodeStreamGroups.attachments.length > 0) tabs.push('attachments');
     return tabs;
-  }, [selectedNodeId, streamGroups.progress.length, streamGroups.artifacts.length, streamGroups.attachments.length]);
+  }, [selectedNodeStreamGroups.artifacts.length, selectedNodeStreamGroups.attachments.length]);
 
   useEffect(() => {
-    if (!availableTabs.includes(activeTab)) setActiveTab('requirement');
+    if (!availableTabs.includes(activeTab) && availableTabs[0]) setActiveTab(availableTabs[0]);
   }, [activeTab, availableTabs]);
 
   if (!vm) return <Page><EmptyState>{t('common.loading')}</EmptyState></Page>;
+
+  const requirement = fullRequirementText(streamGroups.requirement?.content, null, t('common.empty'));
+  const roundLogItem = streamGroups.events[0] ?? streamGroups.progress[0];
+  const roundLogTarget = roundLogSelection(roundLogItem);
+  const showNodePanel = availableTabs.length > 0;
+  const activeTabItems = tabItems(activeTab, selectedNodeStreamGroups);
 
   const closeDetail = () => {
     setDetailOpen(false);
@@ -65,6 +81,14 @@ export function RoundDetailPage({ vm, selection, onSelect }: RoundDetailPageProp
     onSelect({ kind: 'node', nodeId: canonicalNodeId(node) });
     if (detailPinned) setDetailOpen(true);
   };
+  const prepareGraphNodeContextMenu = (node: GraphNodeVm) => {
+    onSelect({ kind: 'node', nodeId: canonicalNodeId(node) });
+    if (detailOpen && !detailPinned) {
+      setDetailOpen(false);
+      return CONTEXT_MENU_DETAIL_CLOSE_DELAY_MS;
+    }
+    return 0;
+  };
   const openGraphNodeDetail = (node: GraphNodeVm) => {
     onSelect({ kind: 'node', nodeId: canonicalNodeId(node) });
     openDetail();
@@ -74,66 +98,97 @@ export function RoundDetailPage({ vm, selection, onSelect }: RoundDetailPageProp
     onSelect({ kind: 'worker-ref', nodeId: canonicalNodeId(node), attemptId: node.attemptId });
     openDetail();
   };
+  const openGraphNodeLog = (node: GraphNodeVm) => {
+    const nodeId = canonicalNodeId(node);
+    const logItem = streamGroups.progress.find((item) => item.nodeId === nodeId || item.nodeId === node.nodeId || item.nodeId === node.id);
+    if (!logItem) return;
+    onSelect({ kind: 'log', id: logItem.id, nodeId, attemptId: logItem.attemptId ?? undefined });
+    openDetail();
+  };
   const openStreamDetail = (nextSelection: RoundSelection) => {
     onSelect(withCurrentNodeContext(nextSelection, selection));
     openDetail();
   };
+  const openRoundLog = () => {
+    if (roundLogTarget) openStreamDetail(roundLogTarget);
+  };
 
   return (
-    <Page flush className="flex flex-col">
-      <div className="grid min-h-24 grid-cols-[minmax(220px,1fr)_minmax(420px,560px)_auto] items-center gap-5 border-b bg-background/60 px-8 py-4">
-        <div className="min-w-0 space-y-2">
-          <p className="truncate font-mono text-xs text-muted-foreground">{vm.run.id} / {displayStatus(t, vm.round.trigger)}</p>
-          <div className="flex items-center gap-3">
-            <h1 className="truncate text-2xl font-semibold tracking-tight">{vm.round.id}</h1>
+    <Page flush className="flex flex-col overflow-y-auto overflow-x-hidden">
+      <PageHeader
+        className="px-5 py-3 xl:px-6"
+        breadcrumbs={breadcrumbs}
+        title={`${vm.run.id}/${vm.round.id}`}
+        subtitle={(
+          <div className="flex min-w-0 items-start gap-2">
+            <span className="shrink-0 font-medium text-foreground">{t('common.requirement')}</span>
+            <RequirementTeaser text={requirement} detailLabel={t('common.viewFullRequirement')} onOpenDetail={() => setRequirementOpen(true)} />
+          </div>
+        )}
+        badges={(
+          <>
             <StatusBadge value={vm.round.status} label={displayStatus(t, vm.round.status)} />
             <StatusBadge value={vm.round.outcome} label={displayStatus(t, vm.round.outcome)} />
-          </div>
-        </div>
-        <div className="grid min-w-0 grid-cols-3 gap-3">
-          <Metric label={t('roundDetail.trigger')} value={displayStatus(t, vm.round.trigger)} compact />
-          <Metric label={t('roundDetail.repairLoopsUsed')} value={vm.round.repairLoopsUsed} compact />
-          <Metric label={t('common.currentNode')} value={formatCurrentNode(t, vm.graph, vm.round.currentNode ?? vm.run.currentNode)} compact />
-        </div>
-        <div className="flex shrink-0 gap-2">
-          <Button variant="outline" onClick={openDetail}>{t('roundDetail.openDetail')}</Button>
-          <Button variant="outline">{t('roundDetail.exportLog')}</Button>
-          <Button>{t('common.continueRun')}</Button>
-          <DropdownMenu>
-            <DropdownMenuTrigger asChild><Button variant="outline" size="icon"><MoreVertical /></Button></DropdownMenuTrigger>
-            <DropdownMenuContent align="end"><DropdownMenuItem disabled>{t('roundDetail.moreActions')}</DropdownMenuItem></DropdownMenuContent>
-          </DropdownMenu>
-        </div>
-      </div>
-      <div className="grid min-h-0 flex-1 overflow-hidden" style={{ gridTemplateColumns: pinnedPanelWidth ? `minmax(0, 1fr) ${pinnedPanelWidth}` : 'minmax(0, 1fr)' }}>
-        <div className="min-w-0 overflow-hidden p-5">
-          <div className="grid h-full min-h-[620px] min-w-0 grid-rows-[minmax(300px,0.9fr)_minmax(280px,1fr)] gap-5">
-          <AppCard className="flex min-h-0 min-w-0 flex-col overflow-hidden py-0">
-            <CardHeader className="flex-row items-center justify-between border-b px-5 py-3">
-              <CardTitle>{t('roundDetail.graph')}</CardTitle>
-              <div className="flex flex-wrap gap-2 text-xs text-muted-foreground"><Legend tone="success" label={t('roundDetail.success')} /><Legend tone="running" label={t('roundDetail.running')} /><Legend tone="pending" label={t('roundDetail.pending')} /><Legend tone="artifact" label={t('roundDetail.hasArtifacts')} /><Legend tone="attachment" label={t('roundDetail.hasAttachments')} /></div>
-            </CardHeader>
-            <CardContent className="min-h-0 flex-1 px-4 py-4"><GraphView graph={vm.graph} variant="actual" selectedNodeId={selectedNodeId} onNodeSelect={selectGraphNode} onNodeOpenDetail={openGraphNodeDetail} onNodeOpenSession={openGraphSession} /></CardContent>
-          </AppCard>
+          </>
+        )}
+        actions={(
+          <>
+            <Button variant="outline" disabled={!roundLogTarget} onClick={openRoundLog}>{t('roundDetail.openLog')}</Button>
+            <Button variant="outline">{t('roundDetail.exportLog')}</Button>
+            <Button>{t('common.continueRun')}</Button>
+            <DropdownMenu>
+              <DropdownMenuTrigger asChild>
+                <Button variant="outline" size="icon" aria-label={t('roundDetail.moreActions')}>
+                  <MoreVertical />
+                </Button>
+              </DropdownMenuTrigger>
+              <DropdownMenuContent align="end"><DropdownMenuItem disabled>{t('roundDetail.moreActions')}</DropdownMenuItem></DropdownMenuContent>
+            </DropdownMenu>
+          </>
+        )}
+        metrics={(
+          <MetricsBar className="lg:grid-cols-3 xl:grid-cols-3">
+            <Metric label={t('roundDetail.trigger')} value={displayStatus(t, vm.round.trigger)} compact />
+            <Metric label={t('roundDetail.repairLoopsUsed')} value={vm.round.repairLoopsUsed} compact />
+            <Metric label={t('common.currentNode')} value={formatCurrentNode(t, vm.graph, vm.round.currentNode ?? vm.run.currentNode)} compact />
+          </MetricsBar>
+        )}
+      />
+      <div className="grid min-h-0 flex-1 overflow-visible" style={{ gridTemplateColumns: pinnedPanelWidth ? `minmax(0, 1fr) ${pinnedPanelWidth}` : 'minmax(0, 1fr)' }}>
+        <div className="min-h-0 min-w-0 overflow-visible p-4 xl:p-5">
+          <div className={cn('grid h-full min-h-[380px] min-w-0 gap-4', showNodePanel ? 'grid-rows-[minmax(240px,0.9fr)_minmax(200px,1fr)]' : 'grid-rows-[minmax(340px,1fr)]')}>
           <AppCard className="flex min-h-0 min-w-0 flex-col gap-0 overflow-hidden py-0">
-            <CardHeader className="border-b px-4 py-2 !pb-2">
-              <Tabs value={activeTab} onValueChange={(value) => setActiveTab(value as RoundTab)}>
-                <div className="flex flex-wrap items-center gap-3">
-                  <TabsList className="h-9">
-                    <TabsTrigger value="requirement" className="h-7 px-3">{t('roundDetail.contextTab')}</TabsTrigger>
-                    <TabsTrigger value="events" className="h-7 px-3">{t('roundDetail.eventsTab')}</TabsTrigger>
-                    {availableTabs.includes('progress') ? <TabsTrigger value="progress" className="h-7 px-3">{t('roundDetail.progressTab')}</TabsTrigger> : null}
-                    {availableTabs.includes('artifacts') ? <TabsTrigger value="artifacts" className="h-7 px-3">{t('roundDetail.artifactTab', { count: streamGroups.artifacts.length })}</TabsTrigger> : null}
-                    {availableTabs.includes('attachments') ? <TabsTrigger value="attachments" className="h-7 px-3">{t('roundDetail.attachmentTab', { count: streamGroups.attachments.length })}</TabsTrigger> : null}
-                  </TabsList>
-                  <span className="min-w-0 truncate text-xs text-muted-foreground">{selectedNodeId ? t('roundDetail.selectedNode', { node: formatCurrentNode(t, vm.graph, selectedNodeId) }) : t('roundDetail.roundContext')}</span>
-                </div>
-              </Tabs>
+            <CardHeader className="border-b px-4 py-2.5">
+              <CardTitle>{t('roundDetail.graph')}</CardTitle>
             </CardHeader>
-            <CardContent className="min-h-0 flex-1 px-0 py-0"><ScrollArea className="h-full"><div className="space-y-2 p-2">{tabItems(activeTab, streamGroups).map((item) => <StreamItem item={item} key={item.id} onOpenDetail={openStreamDetail} />)}{tabItems(activeTab, streamGroups).length === 0 ? <EmptyState>{t('common.empty')}</EmptyState> : null}</div></ScrollArea></CardContent>
+            <CardContent className="min-h-0 flex-1 p-3"><GraphView graph={vm.graph} variant="actual" selectedNodeId={selectedNodeId} onNodeSelect={selectGraphNode} onNodeContextMenuStart={prepareGraphNodeContextMenu} onNodeOpenDetail={openGraphNodeDetail} onNodeOpenSession={openGraphSession} onNodeOpenLog={openGraphNodeLog} /></CardContent>
           </AppCard>
+          {showNodePanel ? (
+            <AppCard className="flex min-h-0 min-w-0 flex-col gap-0 overflow-hidden py-0">
+              <CardHeader className="border-b px-3 py-2 !pb-2">
+                <Tabs value={activeTab} onValueChange={(value) => setActiveTab(value as RoundTab)}>
+                  <div className="flex flex-wrap items-center gap-3">
+                    <TabsList className="h-8">
+                      {availableTabs.includes('artifacts') ? <TabsTrigger value="artifacts" className="h-6 px-2.5">{t('roundDetail.artifactTab', { count: selectedNodeStreamGroups.artifacts.length })}</TabsTrigger> : null}
+                      {availableTabs.includes('attachments') ? <TabsTrigger value="attachments" className="h-6 px-2.5">{t('roundDetail.attachmentTab', { count: selectedNodeStreamGroups.attachments.length })}</TabsTrigger> : null}
+                    </TabsList>
+                    {selectedNodeId ? <span className="min-w-0 truncate text-xs text-muted-foreground">{t('roundDetail.selectedNode', { node: formatCurrentNode(t, vm.graph, selectedNodeId) })}</span> : null}
+                  </div>
+                </Tabs>
+              </CardHeader>
+              <CardContent className="min-h-0 flex-1 px-0 py-0"><ScrollArea className="h-full"><div className="space-y-2 p-1.5">{activeTabItems.map((item) => <StreamItem item={item} key={item.id} onOpenDetail={openStreamDetail} />)}{activeTabItems.length === 0 ? <EmptyState>{t('common.empty')}</EmptyState> : null}</div></ScrollArea></CardContent>
+            </AppCard>
+          ) : null}
         </div>
         </div>
+        <RequirementDetailSheet
+          open={requirementOpen}
+          title={t('common.fullRequirement')}
+          description={t('common.fullRequirementDescription')}
+          requirement={requirement}
+          closeLabel={t('common.close')}
+          onOpenChange={setRequirementOpen}
+        />
         {detailOpen && detailPinned ? (
           <aside className="min-h-0 min-w-0 border-l bg-card">
             <RoundDetailPanelContent content={vm.detail} emptyLabel={t('common.empty')} pinned={detailPinned} onClose={closeDetail} onPinnedChange={pinDetail} />
@@ -158,7 +213,7 @@ function RoundDetailSheet({ content, emptyLabel, open, pinned, onOpenChange, onP
   const { t } = useTranslation();
   return (
     <Sheet modal={false} open={open} onOpenChange={onOpenChange}>
-      <SheetContent className="w-[520px] max-w-[calc(100vw-2rem)] gap-0 overflow-hidden border-border bg-card p-0 sm:max-w-[520px]" closeLabel={t('common.close')} showOverlay={false}>
+      <SheetContent className="w-[520px] max-w-[calc(100vw-2rem)] gap-0 overflow-hidden border-border bg-card p-0 data-[state=closed]:duration-150 data-[state=open]:duration-200 sm:max-w-[520px]" closeLabel={t('common.close')} showOverlay={false}>
         <RoundDetailPanelContent content={content} emptyLabel={emptyLabel} pinned={pinned} onClose={() => onOpenChange(false)} onPinnedChange={onPinnedChange} />
       </SheetContent>
     </Sheet>
@@ -175,7 +230,7 @@ function RoundDetailPanelContent({ content, emptyLabel, pinned, onClose, onPinne
             <h2 className="truncate text-base font-semibold text-foreground">{t('common.detail')}</h2>
             <p className="sr-only">{t('roundDetail.detailDrawerDescription')}</p>
           </div>
-          {content ? <span className="shrink-0 font-mono text-xs text-muted-foreground">{content.kind}</span> : null}
+          {content ? <span className="shrink-0 text-xs text-muted-foreground">{content.kind}</span> : null}
         </div>
         <div className="flex flex-wrap gap-2">
           <Button className="w-fit" variant="outline" size="sm" onClick={() => onPinnedChange(!pinned)}>
@@ -192,17 +247,13 @@ function RoundDetailPanelContent({ content, emptyLabel, pinned, onClose, onPinne
   );
 }
 
-function Legend({ tone, label }: { tone: string; label: string }) {
-  return <span className="inline-flex items-center gap-1.5"><i className={cn('size-2 rounded-full', tone === 'success' && 'bg-gold-success', tone === 'running' && 'bg-gold-running', tone === 'pending' && 'bg-muted-foreground', tone === 'artifact' && 'bg-gold-warning', tone === 'attachment' && 'bg-slate-400')} />{label}</span>;
-}
-
 function StreamItem({ item, onOpenDetail }: { item: StreamItemVm; onOpenDetail: (selection: RoundSelection) => void }) {
   const target = streamTarget(item);
   return (
     <Button variant="outline" className={cn('h-auto w-full flex-col items-stretch justify-start gap-2 p-3 text-left', toneSurfaceClass(item.tone), !target && 'opacity-60')} onClick={() => target && onOpenDetail(target)} disabled={!target}>
       <span className="flex items-start justify-between gap-3">
         <strong className="line-clamp-1 text-sm">{item.title}</strong>
-        <Badge variant="secondary" className="shrink-0 font-mono text-[10px]">{item.kind}</Badge>
+        <Badge variant="secondary" className="shrink-0 text-[10px]">{item.kind}</Badge>
       </span>
       <p className="line-clamp-4 whitespace-pre-wrap text-sm leading-6 text-muted-foreground">{item.content}</p>
     </Button>
@@ -211,7 +262,8 @@ function StreamItem({ item, onOpenDetail }: { item: StreamItemVm; onOpenDetail: 
 
 function groupStream(items: StreamItemVm[]) {
   return {
-    requirement: items.filter((item) => item.kind === 'requirement' || item.kind === 'round' || item.kind === 'node'),
+    requirement: items.find((item) => item.kind === 'requirement'),
+    round: items.find((item) => item.kind === 'round'),
     events: items.filter((item) => item.kind === 'event'),
     progress: items.filter((item) => item.kind === 'log'),
     artifacts: items.filter((item) => item.kind === 'artifact'),
@@ -219,12 +271,16 @@ function groupStream(items: StreamItemVm[]) {
   };
 }
 
-function tabItems(tab: RoundTab, groups: ReturnType<typeof groupStream>) {
-  if (tab === 'events') return groups.events;
-  if (tab === 'progress') return groups.progress;
-  if (tab === 'artifacts') return groups.artifacts;
+function filterNodeStreamGroups(groups: ReturnType<typeof groupStream>, selectedNodeIds: Set<string>) {
+  return {
+    artifacts: groups.artifacts.filter((item) => item.nodeId ? selectedNodeIds.has(item.nodeId) : false),
+    attachments: groups.attachments.filter((item) => item.nodeId ? selectedNodeIds.has(item.nodeId) : false),
+  };
+}
+
+function tabItems(tab: RoundTab, groups: ReturnType<typeof filterNodeStreamGroups>) {
   if (tab === 'attachments') return groups.attachments;
-  return groups.requirement;
+  return groups.artifacts;
 }
 
 function canonicalNodeId(node: GraphNodeVm) {
@@ -244,6 +300,13 @@ function selectedNodeIdFromSelection(selection: RoundSelection) {
 function withCurrentNodeContext(nextSelection: RoundSelection, currentSelection: RoundSelection) {
   const contextNodeId = nextSelection.contextNodeId ?? selectedNodeIdFromSelection(nextSelection) ?? selectedNodeIdFromSelection(currentSelection);
   return contextNodeId ? { ...nextSelection, contextNodeId } : nextSelection;
+}
+
+function roundLogSelection(item?: StreamItemVm): RoundSelection | null {
+  if (!item) return null;
+  if (item.kind === 'event') return { kind: 'event', id: item.id };
+  if (item.kind === 'log') return { kind: 'log', id: item.id };
+  return streamTarget(item);
 }
 
 function streamTarget(item: StreamItemVm): RoundSelection | null {

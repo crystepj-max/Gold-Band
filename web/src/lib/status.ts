@@ -17,7 +17,7 @@ export function normalizeTone(value?: string | null, explicitTone?: string | nul
 export function statusBadgeClass(value?: string | null, explicitTone?: string | null) {
   const tone = normalizeTone(value, explicitTone);
   return cn(
-    'font-mono uppercase tracking-[0.12em]',
+    'font-semibold uppercase tracking-[0.12em]',
     tone === 'running' && 'border-gold-running/35 bg-gold-running/10 text-gold-running',
     tone === 'success' && 'border-gold-success/35 bg-gold-success/10 text-gold-success',
     tone === 'warning' && 'border-gold-warning/35 bg-gold-warning/10 text-gold-warning',

@@ -246,21 +246,22 @@ export function App() {
       }}
       onChooseWorkspace={() => setWorkspacePickerOpen(true)}
     >
-      {!workspacePickerOpen && primaryModule === 'task-orchestration' && taskPage.kind !== 'task-list' ? <Breadcrumbs page={taskPage} onNavigate={navigate} /> : null}
       {error ? <Alert variant="destructive" className="mx-8 mt-4"><AlertDescription>{error}</AlertDescription></Alert> : null}
       {content}
     </Shell>
   );
 
   function renderTaskContent() {
+    const pageBreadcrumbs = <Breadcrumbs page={taskPage} onNavigate={navigate} />;
     if (taskPage.kind === 'task-list') {
-      return <TaskListPage vm={taskList} loading={loading} onNavigate={navigate} onRefresh={() => void refresh('manual')} />;
+      return <TaskListPage vm={taskList} loading={loading} breadcrumbs={pageBreadcrumbs} onNavigate={navigate} onRefresh={() => void refresh('manual')} />;
     }
     if (taskPage.kind === 'workflow') {
       return (
         <WorkflowPage
           vm={workflow}
           busy={busy}
+          breadcrumbs={pageBreadcrumbs}
           onNavigate={navigate}
           onStartRun={(taskId) => void runAction(() => startRun(taskId))}
           onContinueRun={(taskId, runId) => void runAction(() => continueRun(taskId, runId))}
@@ -268,6 +269,6 @@ export function App() {
         />
       );
     }
-    return <RoundDetailPage vm={roundDetail} selection={roundSelection} onSelect={setRoundSelection} />;
+    return <RoundDetailPage vm={roundDetail} breadcrumbs={pageBreadcrumbs} selection={roundSelection} onSelect={setRoundSelection} />;
   }
 }

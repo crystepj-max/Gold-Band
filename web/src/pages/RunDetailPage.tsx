@@ -41,7 +41,7 @@ export function RunDetailPage({ vm, labels, busy, taskId, onNavigate, onContinue
               <div className="space-y-2 p-3">
                 {vm.rounds.map((round) => (
                   <Button className="h-auto w-full justify-between p-4" variant="outline" key={round.id} onClick={() => onNavigate({ kind: 'round-detail', taskId, runId: vm.run.id, roundId: round.id })}>
-                    <span className="min-w-0 text-left"><strong className="block truncate font-mono">{round.id}</strong><small className="text-muted-foreground">{labels.openRound}</small></span>
+                    <span className="min-w-0 text-left"><strong className="block truncate">{round.id}</strong><small className="text-muted-foreground">{labels.openRound}</small></span>
                     <span className="flex gap-2"><StatusBadge value={round.status} /><StatusBadge value={round.outcome} /></span>
                   </Button>
                 ))}

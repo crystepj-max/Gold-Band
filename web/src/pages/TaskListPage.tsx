@@ -1,47 +1,46 @@
 import { type ReactNode, useEffect, useMemo, useState } from 'react';
-import { ArrowLeft, RefreshCw } from 'lucide-react';
+import type { TFunction } from 'i18next';
+import { Check, Copy, RefreshCw } from 'lucide-react';
 import { useTranslation } from 'react-i18next';
 import type { TaskListVm, TaskPage, TaskRowVm } from '../types';
 import { displayStatus } from '../i18n';
 import { StatusBadge } from '../components/StatusBadge';
 import { AppCard } from '@/components/AppCard';
-import { CodeBlock, EmptyState, ModuleBar, Page } from '@/components/PageScaffold';
-import { RequirementTeaser, fullRequirementText } from '@/components/RequirementDisclosure';
+import { CodeBlock, EmptyState, Page, PageHeader } from '@/components/PageScaffold';
+import { fullRequirementText } from '@/components/RequirementDisclosure';
 import { TaskTableSkeleton } from '@/components/LoadingState';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
-import { CardContent } from '@/components/ui/card';
 import { ScrollArea } from '@/components/ui/scroll-area';
-import { Sheet, SheetContent, SheetDescription, SheetHeader, SheetTitle } from '@/components/ui/sheet';
+import { Sheet, SheetContent, SheetDescription, SheetFooter, SheetHeader, SheetTitle } from '@/components/ui/sheet';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { Tabs, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Skeleton } from '@/components/ui/skeleton';
 import { cn } from '@/lib/utils';
-import { normalizeTone } from '@/lib/status';
 
 type TaskListLoading = 'initial' | 'manual' | null;
 
 interface TaskListPageProps {
   vm: TaskListVm | null;
   loading: TaskListLoading;
+  breadcrumbs?: ReactNode;
   onNavigate: (page: TaskPage) => void;
   onRefresh: () => void;
 }
 
-type TaskFilter = 'all' | 'running' | 'completed';
-type TaskSortKey = 'id' | 'title' | 'status' | 'workflow' | 'latest' | 'assets';
+type TaskFilter = 'all' | 'running' | 'completed' | 'resumable' | 'failed' | 'invalid';
+type TaskSortKey = 'id' | 'title' | 'status' | 'workflow' | 'latest';
 type SortDir = 'asc' | 'desc';
-type PreviewMode = 'summary' | 'requirement';
 
 const pageSizes = [10, 20, 50];
 
-export function TaskListPage({ vm, loading, onNavigate, onRefresh }: TaskListPageProps) {
+export function TaskListPage({ vm, loading, breadcrumbs, onNavigate, onRefresh }: TaskListPageProps) {
   const { t } = useTranslation();
   const [previewTaskId, setPreviewTaskId] = useState<string | null>(null);
-  const [previewMode, setPreviewMode] = useState<PreviewMode>('summary');
   const [isPreviewOpen, setIsPreviewOpen] = useState(false);
   const [filter, setFilter] = useState<TaskFilter>('all');
+  const [searchTerm, setSearchTerm] = useState('');
   const [sortKey, setSortKey] = useState<TaskSortKey>('id');
   const [sortDir, setSortDir] = useState<SortDir>('asc');
   const [pageIndex, setPageIndex] = useState(0);
@@ -50,11 +49,11 @@ export function TaskListPage({ vm, loading, onNavigate, onRefresh }: TaskListPag
   const isManualRefreshing = loading === 'manual' && vm !== null;
 
   const filteredTasks = useMemo(() => {
-    const tasks = vm?.tasks ?? [];
-    if (filter === 'running') return tasks.filter((task) => task.displayStatus === 'running' || task.latestRun?.status === 'running');
-    if (filter === 'completed') return tasks.filter((task) => task.displayStatus === 'completed' || task.latestRun?.outcome === 'success');
-    return tasks;
-  }, [filter, vm]);
+    const tasks = (vm?.tasks ?? []).filter((task) => matchesTaskFilter(task, filter));
+    const query = searchTerm.trim().toLowerCase();
+    if (!query) return tasks;
+    return tasks.filter((task) => taskSearchText(task, t).includes(query));
+  }, [filter, searchTerm, t, vm]);
 
   const sortedTasks = useMemo(() => {
     return [...filteredTasks].sort((left, right) => compareTasks(left, right, sortKey, sortDir));
@@ -76,7 +75,6 @@ export function TaskListPage({ vm, loading, onNavigate, onRefresh }: TaskListPag
     if (!previewTaskId) return;
     if (sortedTasks.some((task) => task.id === previewTaskId)) return;
     setPreviewTaskId(null);
-    setPreviewMode('summary');
     setIsPreviewOpen(false);
   }, [previewTaskId, sortedTasks]);
 
@@ -89,31 +87,35 @@ export function TaskListPage({ vm, loading, onNavigate, onRefresh }: TaskListPag
     }
   };
 
+  const updateFilter = (value: TaskFilter) => {
+    setFilter(value);
+    setPageIndex(0);
+  };
+
+  const updateSearchTerm = (value: string) => {
+    setSearchTerm(value);
+    setPageIndex(0);
+  };
+
+  const quickFilterValue = filter === 'running' || filter === 'completed' ? filter : 'all';
+  const statusFilterValue = filter === 'resumable' || filter === 'failed' || filter === 'invalid' ? filter : 'all';
+
   const closePreview = () => {
     setIsPreviewOpen(false);
     setPreviewTaskId(null);
-    setPreviewMode('summary');
   };
 
   const openPreview = (taskId: string) => {
     setPreviewTaskId(taskId);
-    setPreviewMode('summary');
     setIsPreviewOpen(true);
   };
 
   return (
     <Page flush className="flex flex-col" onContextMenu={(event) => event.preventDefault()}>
-      <ModuleBar
+      <PageHeader
+        breadcrumbs={breadcrumbs}
         title={t('taskList.title')}
-        tabs={(
-          <Tabs value={filter} onValueChange={(value) => { setFilter(value as TaskFilter); setPageIndex(0); }}>
-            <TabsList>
-              <TabsTrigger value="all">{t('taskList.allTasks')}</TabsTrigger>
-              <TabsTrigger value="running">{t('taskList.runningTasks')}</TabsTrigger>
-              <TabsTrigger value="completed">{t('taskList.completedTasks')}</TabsTrigger>
-            </TabsList>
-          </Tabs>
-        )}
+        subtitle={t('taskList.subtitle')}
         actions={(
           <>
             <Button variant="outline" disabled={isInitialLoading || isManualRefreshing} onClick={onRefresh}>
@@ -131,26 +133,51 @@ export function TaskListPage({ vm, loading, onNavigate, onRefresh }: TaskListPag
         <div className="min-h-0 flex-1 p-5 xl:p-6">
           <ScrollArea className="h-full min-h-0 min-w-0">
             <div className="space-y-5 pr-1">
-              <div className="space-y-1">
-                <p className="font-mono text-xs uppercase tracking-[0.18em] text-primary">{t('taskList.workspacePath')}</p>
-                <p className="max-w-4xl text-sm leading-6 text-muted-foreground">{t('taskList.subtitle')}</p>
-              </div>
-              <div className="grid grid-cols-2 gap-3 lg:grid-cols-3 xl:grid-cols-5">
-                {vm.cards.map((card) => <SummaryCard card={card} key={card.key ?? card.label} />)}
-              </div>
-
               <AppCard className="relative overflow-hidden py-0 shadow-none">
                 {isManualRefreshing ? <div className="absolute inset-x-0 top-0 z-10 h-px bg-border" /> : null}
+                <div className="flex flex-col gap-3 border-b px-4 py-3 lg:flex-row lg:items-center lg:justify-between">
+                  <div className="min-w-0">
+                    <h2 className="truncate text-base font-semibold text-foreground">{t('taskList.taskList')}</h2>
+                  </div>
+                  <div className="flex min-w-0 flex-1 flex-wrap items-center gap-2 lg:justify-end">
+                    <Tabs value={quickFilterValue} onValueChange={(value) => updateFilter(value as TaskFilter)}>
+                      <TabsList>
+                        <TabsTrigger value="all">{t('taskList.allTasks')}</TabsTrigger>
+                        <TabsTrigger value="running">{t('taskList.runningTasks')}</TabsTrigger>
+                        <TabsTrigger value="completed">{t('taskList.completedTasks')}</TabsTrigger>
+                      </TabsList>
+                    </Tabs>
+                    <Select value={statusFilterValue} onValueChange={(value) => updateFilter(value as TaskFilter)}>
+                      <SelectTrigger className="w-[148px]" aria-label={t('taskList.statusFilter')}>
+                        <SelectValue />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="all">{t('taskList.allStatuses')}</SelectItem>
+                        <SelectItem value="resumable">{displayStatus(t, 'resumable')}</SelectItem>
+                        <SelectItem value="failed">{displayStatus(t, 'failed')}</SelectItem>
+                        <SelectItem value="invalid">{t('taskList.configIssues')}</SelectItem>
+                      </SelectContent>
+                    </Select>
+                    <label className="min-w-[220px] flex-1 lg:max-w-sm">
+                      <span className="sr-only">{t('taskList.search')}</span>
+                      <input
+                        className="h-9 w-full rounded-md border border-input bg-transparent px-3 text-sm text-foreground shadow-sm outline-none transition-colors placeholder:text-muted-foreground focus-visible:border-ring focus-visible:ring-[3px] focus-visible:ring-ring/50"
+                        value={searchTerm}
+                        onChange={(event) => updateSearchTerm(event.target.value)}
+                        placeholder={t('taskList.searchPlaceholder')}
+                      />
+                    </label>
+                  </div>
+                </div>
                 <div className="overflow-x-auto">
                   <Table className="w-full min-w-[820px] table-fixed">
                     <colgroup>
                       <col className="w-[12%]" />
-                      <col className="w-[36%]" />
+                      <col className="w-[40%]" />
+                      <col className="w-[13%]" />
                       <col className="w-[12%]" />
-                      <col className="w-[11%]" />
-                      <col className="w-[12%]" />
-                      <col className="w-[8%]" />
-                      <col className="w-[9%]" />
+                      <col className="w-[13%]" />
+                      <col className="w-[10%]" />
                     </colgroup>
                     <TableHeader>
                       <TableRow>
@@ -159,8 +186,7 @@ export function TaskListPage({ vm, loading, onNavigate, onRefresh }: TaskListPag
                         <SortableHead label={t('common.status')} sortKey="status" activeKey={sortKey} dir={sortDir} onSort={toggleSort} />
                         <SortableHead label={t('common.workflow')} sortKey="workflow" activeKey={sortKey} dir={sortDir} onSort={toggleSort} />
                         <SortableHead label={t('taskList.latest')} sortKey="latest" activeKey={sortKey} dir={sortDir} onSort={toggleSort} />
-                        <SortableHead label={t('common.assets')} sortKey="assets" activeKey={sortKey} dir={sortDir} onSort={toggleSort} />
-                        <TableHead className="text-right">{t('common.action')}</TableHead>
+                        <TableHead className="pr-4 text-right">{t('common.action')}</TableHead>
                       </TableRow>
                     </TableHeader>
                     <TableBody>
@@ -172,24 +198,23 @@ export function TaskListPage({ vm, loading, onNavigate, onRefresh }: TaskListPag
                           onClick={() => openPreview(task.id)}
                           onDoubleClick={() => onNavigate({ kind: 'workflow', taskId: task.id })}
                         >
-                          <TableCell className="truncate font-mono text-xs text-muted-foreground">{task.id}</TableCell>
+                          <TableCell className="truncate text-xs font-medium text-muted-foreground">{task.id}</TableCell>
                           <TableCell className="min-w-0">
                             <strong className="block truncate text-sm">{task.title}</strong>
                             <small className="block truncate text-muted-foreground">{task.requirementPreview || task.description}</small>
                           </TableCell>
                           <TableCell className="truncate"><StatusBadge value={task.displayStatus} label={displayStatus(t, task.displayStatus)} /></TableCell>
                           <TableCell className="truncate"><WorkflowState task={task} /></TableCell>
-                          <TableCell className="truncate font-mono text-xs text-muted-foreground">{task.latestRun?.id ?? t('taskList.noRun')}</TableCell>
-                          <TableCell className="truncate text-muted-foreground">A{task.artifactCount} / P{task.attachmentCount}</TableCell>
-                          <TableCell className="text-right">
-                            <Button variant="link" size="sm" onClick={(event) => { event.stopPropagation(); onNavigate({ kind: 'workflow', taskId: task.id }); }}>{t('taskList.enter')}</Button>
+                          <TableCell className="truncate text-xs font-medium text-muted-foreground">{task.latestRun?.id ?? t('taskList.noRun')}</TableCell>
+                          <TableCell className="pr-4 text-right">
+                            <Button variant="link" size="sm" className="px-0" onClick={(event) => { event.stopPropagation(); onNavigate({ kind: 'workflow', taskId: task.id }); }}>{t('taskList.enter')}</Button>
                           </TableCell>
                         </TableRow>
                       ))}
                     </TableBody>
                   </Table>
                 </div>
-                {sortedTasks.length === 0 ? <div className="p-5"><EmptyState>{t('taskList.noTasks')}</EmptyState></div> : null}
+                {sortedTasks.length === 0 ? <div className="p-5"><EmptyState>{vm.tasks.length === 0 ? t('taskList.noTasks') : t('taskList.noMatchingTasks')}</EmptyState></div> : null}
                 <div className="flex flex-wrap items-center justify-between gap-3 border-t px-4 py-3 text-sm text-muted-foreground">
                   <span className="shrink-0">{t('common.pageRange', { start: sortedTasks.length ? safePageIndex * pageSize + 1 : 0, end: Math.min(sortedTasks.length, (safePageIndex + 1) * pageSize), total: sortedTasks.length })}</span>
                   <div className="flex flex-wrap items-center gap-2">
@@ -205,7 +230,7 @@ export function TaskListPage({ vm, loading, onNavigate, onRefresh }: TaskListPag
               </AppCard>
             </div>
           </ScrollArea>
-          <TaskPreviewSheet task={previewTask} mode={previewMode} open={isPreviewOpen && previewTask !== null} onOpenChange={(open) => { if (open) setIsPreviewOpen(true); else closePreview(); }} onNavigate={onNavigate} onOpenRequirement={() => setPreviewMode('requirement')} onBack={() => setPreviewMode('summary')} />
+          <TaskPreviewSheet task={previewTask} open={isPreviewOpen && previewTask !== null} onOpenChange={(open) => { if (open) setIsPreviewOpen(true); else closePreview(); }} onNavigate={onNavigate} />
         </div>
       ) : null}
     </Page>
@@ -222,10 +247,54 @@ function compareTasks(left: TaskRowVm, right: TaskRowVm, key: TaskSortKey, dir: 
 function taskSortValue(task: TaskRowVm, key: TaskSortKey) {
   if (key === 'title') return task.title;
   if (key === 'status') return task.displayStatus;
-  if (key === 'workflow') return task.workflowValid ? 'valid' : task.workflowExists ? 'invalid' : 'missing';
+  if (key === 'workflow') return workflowStatusValue(task);
   if (key === 'latest') return task.latestRun?.id ?? '';
-  if (key === 'assets') return String(task.artifactCount + task.attachmentCount).padStart(8, '0');
   return task.id;
+}
+
+function matchesTaskFilter(task: TaskRowVm, filter: TaskFilter) {
+  const display = normalizeStatusValue(task.displayStatus);
+  const runStatus = normalizeStatusValue(task.latestRun?.status);
+  const runOutcome = normalizeStatusValue(task.latestRun?.outcome);
+  if (filter === 'running') return display === 'running' || runStatus === 'running';
+  if (filter === 'completed') return ['completed', 'complete', 'success', 'succeeded'].includes(display) || ['success', 'succeeded'].includes(runOutcome);
+  if (filter === 'resumable') return display === 'resumable' || Boolean(task.resumableRunId) || Boolean(task.latestRun?.resumable);
+  if (filter === 'failed') return ['failed', 'failure'].includes(display) || ['failed', 'failure'].includes(runOutcome);
+  if (filter === 'invalid') return ['invalid', 'missing-workflow', 'missing'].includes(display) || !task.workflowExists || !task.workflowValid;
+  return true;
+}
+
+function taskSearchText(task: TaskRowVm, t: TFunction) {
+  const workflowStatus = workflowStatusValue(task);
+  return [
+    task.id,
+    task.title,
+    task.description,
+    task.requirementPreview,
+    task.requirement,
+    task.displayStatus,
+    displayStatus(t, task.displayStatus),
+    task.workflowError,
+    workflowStatus,
+    displayStatus(t, workflowStatus),
+    task.latestRun?.id,
+    task.latestRun?.status,
+    task.latestRun?.outcome,
+    task.resumableRunId,
+  ]
+    .filter(Boolean)
+    .join('\n')
+    .toLowerCase();
+}
+
+function workflowStatusValue(task: TaskRowVm) {
+  if (!task.workflowExists) return 'missing-workflow';
+  if (!task.workflowValid) return 'invalid';
+  return 'valid';
+}
+
+function normalizeStatusValue(value?: string | null) {
+  return value?.toLowerCase() ?? '';
 }
 
 function SortableHead({ label, sortKey, activeKey, dir, onSort }: { label: string; sortKey: TaskSortKey; activeKey: TaskSortKey; dir: SortDir; onSort: (key: TaskSortKey) => void }) {
@@ -250,42 +319,18 @@ function TaskListSkeletonPage() {
     <div className="min-h-0 flex-1 p-5 xl:p-6">
       <div className="space-y-5">
         <Skeleton className="h-16 w-2/3" />
-        <div className="grid grid-cols-2 gap-3 lg:grid-cols-3 xl:grid-cols-5">{Array.from({ length: 5 }, (_, index) => <Skeleton className="h-24" key={index} />)}</div>
         <TaskTableSkeleton />
       </div>
     </div>
   );
 }
 
-function SummaryCard({ card }: { card: TaskListVm['cards'][number] }) {
-  const { t } = useTranslation();
-  const tone = normalizeTone(card.tone);
-  return (
-    <AppCard className="gap-2 overflow-hidden py-0 shadow-none">
-      <CardContent className="relative px-4 py-4">
-        <span
-          className={cn(
-            'absolute inset-y-4 left-0 w-1 rounded-r-full',
-            tone === 'running' && 'bg-gold-running',
-            tone === 'success' && 'bg-gold-success',
-            tone === 'warning' && 'bg-gold-warning',
-            tone === 'danger' && 'bg-gold-danger',
-            tone === 'neutral' && 'bg-border',
-          )}
-        />
-        <span className="block truncate pl-2 text-xs uppercase tracking-[0.14em] text-muted-foreground">{t(`taskList.cards.${card.key}`, { defaultValue: card.label })}</span>
-        <strong className="mt-3 block pl-2 text-2xl font-semibold text-foreground">{card.value}</strong>
-      </CardContent>
-    </AppCard>
-  );
-}
-
-function TaskPreviewSheet({ task, mode, open, onOpenChange, onNavigate, onOpenRequirement, onBack }: { task: TaskRowVm | null; mode: PreviewMode; open: boolean; onOpenChange: (open: boolean) => void; onNavigate: (page: TaskPage) => void; onOpenRequirement: () => void; onBack: () => void }) {
+function TaskPreviewSheet({ task, open, onOpenChange, onNavigate }: { task: TaskRowVm | null; open: boolean; onOpenChange: (open: boolean) => void; onNavigate: (page: TaskPage) => void }) {
   const { t } = useTranslation();
   return (
     <Sheet modal={false} open={open} onOpenChange={onOpenChange}>
       <SheetContent
-        className={cn('max-w-[calc(100vw-2rem)] gap-0 overflow-hidden p-0', mode === 'requirement' ? 'w-[560px] sm:max-w-[560px]' : 'w-[420px] sm:max-w-[420px]')}
+        className="w-[440px] max-w-[calc(100vw-2rem)] gap-0 overflow-hidden p-0 sm:max-w-[440px]"
         closeLabel={t('common.close')}
         onInteractOutside={(event) => {
           const target = event.target as HTMLElement | null;
@@ -293,80 +338,50 @@ function TaskPreviewSheet({ task, mode, open, onOpenChange, onNavigate, onOpenRe
         }}
         showOverlay={false}
       >
-        {task && mode === 'requirement' ? <TaskRequirementContent task={task} onBack={onBack} /> : null}
-        {task && mode === 'summary' ? <TaskPreviewContent task={task} onNavigate={onNavigate} onOpenRequirement={onOpenRequirement} /> : null}
+        {task ? <TaskPreviewContent task={task} onNavigate={onNavigate} /> : null}
       </SheetContent>
     </Sheet>
   );
 }
 
-function TaskPreviewContent({ task, onNavigate, onOpenRequirement }: { task: TaskRowVm; onNavigate: (page: TaskPage) => void; onOpenRequirement: () => void }) {
+function TaskPreviewContent({ task, onNavigate }: { task: TaskRowVm; onNavigate: (page: TaskPage) => void }) {
   const { t } = useTranslation();
+  const [copied, setCopied] = useState(false);
   const requirement = fullRequirementText(task.requirement, task.requirementPreview || task.description, t('common.empty'));
+
+  const copyRequirement = async () => {
+    await navigator.clipboard.writeText(requirement);
+    setCopied(true);
+    window.setTimeout(() => setCopied(false), 1200);
+  };
+
   return (
     <>
       <SheetHeader className="shrink-0 gap-3 border-b px-5 py-4 text-left">
-        <p className="font-mono text-xs uppercase tracking-[0.18em] text-primary">{t('taskList.taskPreview')}</p>
+        <p className="text-xs font-semibold uppercase tracking-[0.18em] text-primary">{t('taskList.taskPreview')}</p>
         <SheetDescription className="sr-only">{t('taskList.taskPreviewDescription')}</SheetDescription>
         <div className="flex min-w-0 flex-wrap gap-2 pr-8">
-          <Badge variant="secondary" className="max-w-full truncate font-mono">{task.id}</Badge>
+          <Badge variant="secondary" className="max-w-full truncate">{task.id}</Badge>
           <StatusBadge value={task.displayStatus} label={displayStatus(t, task.displayStatus)} />
         </div>
         <SheetTitle className="line-clamp-2 break-words text-xl">{task.title}</SheetTitle>
       </SheetHeader>
-      <ScrollArea className="min-h-0 flex-1">
-        <div className="space-y-5 p-5">
-          <section className="space-y-2 rounded-lg border-l-2 border-primary bg-primary/5 p-4">
-            <h3 className="font-semibold">{t('common.requirement')}</h3>
-            <RequirementTeaser text={requirement} detailLabel={t('common.viewFullRequirement')} quote onOpenDetail={onOpenRequirement} />
-          </section>
-          <section className="space-y-3">
-            <h3 className="font-semibold">{t('taskList.executionStats')}</h3>
-            <dl className="grid gap-2 text-sm">
-              <Stat label={t('taskList.latestRun')} value={task.latestRun?.id ?? '-'} mono />
-              <Stat label={t('common.artifacts')} value={task.artifactCount} mono />
-              <Stat label={t('common.attachments')} value={task.attachmentCount} mono />
-              <Stat label={t('common.workflow')} value={task.workflowValid ? displayStatus(t, 'valid') : task.workflowExists ? displayStatus(t, 'invalid') : displayStatus(t, 'missing-workflow')} />
-            </dl>
-          </section>
-          <div className="flex flex-col gap-2">
-            {task.resumableRunId ? <Button className="w-full min-w-0"><span className="truncate">{t('taskList.continueExecution', { runId: task.resumableRunId })}</span></Button> : null}
-            <Button className="w-full" variant="outline" onClick={() => onNavigate({ kind: 'workflow', taskId: task.id })}>{t('common.workflow')}</Button>
-            <Button className="w-full" variant="outline" disabled>{t('taskList.viewArtifacts')}</Button>
+      <div className="min-h-0 flex-1 p-5">
+        <section className="flex h-full min-h-0 flex-col overflow-hidden rounded-xl border border-primary/30 bg-primary/5">
+          <div className="flex shrink-0 items-center justify-between gap-3 border-b border-primary/15 px-4 py-3">
+            <h3 className="font-semibold">{t('common.fullRequirement')}</h3>
+            <Button variant="ghost" size="icon" className="h-8 w-8" aria-label={t('common.copy')} onClick={copyRequirement}>
+              {copied ? <Check className="h-4 w-4 text-primary" /> : <Copy className="h-4 w-4" />}
+            </Button>
           </div>
-        </div>
-      </ScrollArea>
+          <ScrollArea className="min-h-0 flex-1">
+            <CodeBlock className="m-4 whitespace-pre-wrap font-sans text-sm leading-7">{requirement}</CodeBlock>
+          </ScrollArea>
+        </section>
+      </div>
+      <SheetFooter className="shrink-0 border-t bg-background/95 p-5">
+        <Button className="w-full" variant="outline" onClick={() => onNavigate({ kind: 'workflow', taskId: task.id })}>{t('common.workflow')}</Button>
+      </SheetFooter>
     </>
-  );
-}
-
-function TaskRequirementContent({ task, onBack }: { task: TaskRowVm; onBack: () => void }) {
-  const { t } = useTranslation();
-  const requirement = fullRequirementText(task.requirement, task.requirementPreview || task.description, t('common.empty'));
-  return (
-    <>
-      <SheetHeader className="shrink-0 gap-3 border-b px-5 py-4 text-left">
-        <Button variant="ghost" size="sm" className="h-8 w-fit px-2 text-muted-foreground" onClick={onBack}>
-          <ArrowLeft className="h-4 w-4" />
-          {t('common.back')}
-        </Button>
-        <SheetDescription className="sr-only">{t('common.fullRequirementDescription')}</SheetDescription>
-        <SheetTitle className="break-words text-xl">{task.title} · {t('common.fullRequirement')}</SheetTitle>
-      </SheetHeader>
-      <ScrollArea className="min-h-0 flex-1">
-        <div className="p-5">
-          <CodeBlock className="whitespace-pre-wrap text-sm leading-7">{requirement}</CodeBlock>
-        </div>
-      </ScrollArea>
-    </>
-  );
-}
-
-function Stat({ label, value, mono = false }: { label: string; value: ReactNode; mono?: boolean }) {
-  return (
-    <div className="min-w-0 rounded-lg border bg-muted/20 px-3 py-2">
-      <dt className="truncate text-xs text-muted-foreground">{label}</dt>
-      <dd className={cn('mt-1 min-w-0 break-words text-sm text-foreground', mono && 'font-mono')}>{value}</dd>
-    </div>
   );
 }

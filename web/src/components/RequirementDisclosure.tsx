@@ -21,17 +21,17 @@ export function clippedRequirementText(text: string) {
   return `${compact.slice(0, requirementPreviewLimit)}…`;
 }
 
-export function RequirementTeaser({ text, detailLabel, onOpenDetail, className, quote = false }: { text: string; detailLabel: string; onOpenDetail: () => void; className?: string; quote?: boolean }) {
+export function RequirementTeaser({ text, detailLabel, onOpenDetail, className, quote = false, compact = false }: { text: string; detailLabel: string; onOpenDetail: () => void; className?: string; quote?: boolean; compact?: boolean }) {
   const clipped = isRequirementClipped(text);
   return (
-    <div className={cn('min-w-0 space-y-1', className)}>
-      <p className="line-clamp-1 break-words text-sm leading-6 text-muted-foreground">
+    <div className={cn('min-w-0', compact ? 'flex items-center gap-3 overflow-hidden' : 'space-y-1', className)}>
+      <p className={cn('line-clamp-1 min-w-0 break-words text-sm text-muted-foreground', compact ? 'leading-5 text-muted-foreground/85' : 'leading-6')}>
         {quote ? '“' : null}{clippedRequirementText(text)}{quote ? '”' : null}
       </p>
       {clipped ? (
         <button
           type="button"
-          className="text-sm font-medium text-primary underline-offset-4 hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/55"
+          className={cn('shrink-0 font-medium text-primary underline-offset-4 hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/55', compact ? 'text-xs' : 'text-sm')}
           onClick={onOpenDetail}
         >
           {detailLabel}
@@ -66,7 +66,7 @@ export function RequirementDetailSheet({ open, title, description, requirement, 
         </SheetHeader>
         <ScrollArea className="min-h-0 flex-1">
           <div className="p-5">
-            <CodeBlock className="whitespace-pre-wrap text-sm leading-7">{requirement}</CodeBlock>
+            <CodeBlock className="whitespace-pre-wrap font-sans text-sm leading-7">{requirement}</CodeBlock>
           </div>
         </ScrollArea>
       </SheetContent>

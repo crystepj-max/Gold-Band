@@ -203,7 +203,6 @@ export function SettingsPage({ preferences, onSave }: SettingsPageProps) {
             onClick={() => chooseFont(defaultFontOption.id)}
           >
             <div className="text-sm font-semibold">{t(defaultFontOption.labelKey)}</div>
-            <div className="mt-1 text-xs text-muted-foreground">{t(defaultFontOption.descriptionKey)}</div>
             <FontPreviewSample sample={defaultFontOption.preview} fontFamily={defaultFontOption.stack} />
           </button>
           <div className={cn('max-w-xl rounded-lg border border-border/35 bg-transparent p-3', selectedLocalFont && 'border-primary/45 bg-primary/[0.04]')}>

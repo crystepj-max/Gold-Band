@@ -14,16 +14,23 @@ export function PageScroll({ children, className }: { children: ReactNode; class
   return <ScrollArea className={cn('h-full', className)}>{children}</ScrollArea>;
 }
 
-export function PageHeader({ eyebrow, title, subtitle, actions, className }: { eyebrow?: ReactNode; title: ReactNode; subtitle?: ReactNode; actions?: ReactNode; className?: string }) {
+export function PageHeader({ breadcrumbs, eyebrow, title, badges, subtitle, actions, metrics, className }: { breadcrumbs?: ReactNode; eyebrow?: ReactNode; title: ReactNode; badges?: ReactNode; subtitle?: ReactNode; actions?: ReactNode; metrics?: ReactNode; className?: string }) {
   return (
-    <div className={cn('flex items-start justify-between gap-6', className)}>
-      <div className="min-w-0 space-y-2">
-        {eyebrow ? <p className="font-mono text-xs uppercase tracking-[0.22em] text-primary">{eyebrow}</p> : null}
-        <h1 className="truncate text-3xl font-semibold tracking-tight text-foreground">{title}</h1>
-        {subtitle ? <div className="max-w-4xl text-sm leading-6 text-muted-foreground">{subtitle}</div> : null}
+    <header className={cn('shrink-0 space-y-5 border-b bg-background/60 px-5 py-4 backdrop-blur xl:px-6', className)}>
+      {breadcrumbs ? <div className="min-w-0">{breadcrumbs}</div> : null}
+      <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
+        <div className="min-w-0 space-y-3">
+          {eyebrow ? <p className="truncate text-xs font-semibold uppercase tracking-[0.22em] text-primary">{eyebrow}</p> : null}
+          <div className="flex min-w-0 flex-wrap items-center gap-3">
+            <h1 className="min-w-0 truncate text-3xl font-semibold tracking-tight text-foreground">{title}</h1>
+            {badges ? <div className="flex shrink-0 flex-wrap items-center gap-2">{badges}</div> : null}
+          </div>
+          {subtitle ? <div className="max-w-4xl text-sm leading-6 text-muted-foreground">{subtitle}</div> : null}
+        </div>
+        {actions ? <Actions className="lg:pt-1">{actions}</Actions> : null}
       </div>
-      {actions ? <Actions>{actions}</Actions> : null}
-    </div>
+      {metrics ? <div className="min-w-0">{metrics}</div> : null}
+    </header>
   );
 }
 
@@ -50,7 +57,7 @@ export function MetricsBar({ children, className }: { children: ReactNode; class
 
 export function Metric({ label, value, compact = false, className }: { label: ReactNode; value: ReactNode; compact?: boolean; className?: string }) {
   return (
-    <Card className={cn('gap-2 border-border/80 bg-muted/35 py-4', compact && 'py-3', className)}>
+    <Card className={cn('gap-2 border-border/45 bg-card/45 py-4 shadow-none', compact && 'py-3', className)}>
       <CardContent className={cn('space-y-1 px-4', compact && 'px-3')}>
         <span className="block text-xs uppercase tracking-[0.16em] text-muted-foreground">{label}</span>
         <strong className="block truncate text-sm text-foreground">{value}</strong>
