@@ -261,7 +261,7 @@ pub fn bootstrap_vm(app: &App, recent_workspaces: Vec<String>) -> AppBootstrapVm
         preferences: preferences_vm(
             app.config.desktop_theme,
             app.config.desktop_language,
-            app.config.desktop_font,
+            app.config.desktop_font.clone(),
         ),
     }
 }

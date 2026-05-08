@@ -11,7 +11,7 @@ import type {
   WorkflowVm,
 } from './types';
 
-const preferences: PreferencesVm = { theme: 'system', language: 'zh-cn', font: 'geist' };
+const preferences: PreferencesVm = { theme: 'system', language: 'zh-cn', font: 'app-default' };
 
 const latestRun: RunSummaryVm = {
   id: 'run-003',

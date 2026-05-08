@@ -82,7 +82,10 @@
 - 2026-05-07：任务工作流页删除无效 Tabs、继续运行、停止 Run 和禁用态查看需求按钮；Workflow 与 Task Preview 的需求展示统一为单行 / 100 字截断预览，且仅在确实截断时显示完整需求入口；任务列表在当前右侧 Sheet 内切换到完整需求视图并提供返回图标。
 - 2026-05-07：统一压缩桌面端卡片 header 与内容之间的过大空白；Round 详情左下信息流、Workflow 运行记录、Workspace 最近列表、Settings 表单卡片和遗留 Task/Run 详情页均移除 Card 默认 gap、覆盖 border header 大底部 padding，并降低内容区内边距。
 - 2026-05-07：Settings 页面移除标题副文案、范围提示块，以及外观/语言卡片的辅助说明文案，保留主题切换与语言选择两组本地偏好控件。
-- 2026-05-07：Settings 主题选择器升级为 `Sync with OS` 开关 + 条件化主题摘要 + 抽屉式主题选择；`desktopTheme` 扩展为 `system`、`light`、`light-warm`、`dark`、`black`，默认浅色调整为白蓝配色，Gold Band 深色升级为石墨香槟方向，保留暖金浅色并新增终端黑主题；`system` 会保留用户最近选择的浅色/深色变体；新增 `desktopFont` 偏好，默认 Geist，并提供 Inter、IBM Plex 精选字体；前端验证继续通过 `/settings` deep link 使用 agent-browser 完成。
+- 2026-05-07：Settings 主题选择器升级为 `Sync with OS` 开关 + 条件化主题摘要 + 抽屉式主题选择；`desktopTheme` 扩展为 `system`、`light`、`light-warm`、`dark`、`black`，默认浅色调整为白蓝配色，Gold Band 深色升级为石墨香槟方向，保留暖金浅色并新增终端黑主题；`system` 会保留用户最近选择的浅色/深色变体；新增 `desktopFont` 偏好，浏览器调试模式优先使用 `queryLocalFonts()`，桌面端通过 Tauri `get_system_fonts` 枚举系统字体；前端验证继续通过 `/settings` deep link 使用 agent-browser 完成。
+- 2026-05-08：字体选择模型从三套 CJK 预设收敛为一个内置默认字体 `app-default`（MiSans）+ 一个本机字体下拉列表；前端通过 `web/public/fonts/misans/*.woff2` 内置 `Gold Band MiSans`，默认字体预览保留彩色 sample，本机字体继续走系统枚举与浏览器 fallback 检测。
+- 2026-05-07：任务编排首页移除页面级 summary cards 和 ModuleBar 状态 tabs，全部任务 / 运行中 / 已完成改为表格内快捷筛选，可恢复 / 失败 / 配置异常改为状态筛选，并新增任务 ID、标题、需求与最新 Run 的关键字搜索；首页定位从运行态数据看板收敛为任务工作台。
+- 2026-05-07：桌面端 UI 框架层级收敛为少卡片工作台规则：AppCard 与 Metric 弱化边框和阴影，Settings 页由三张独立卡片改为单主面板 + section 分隔，主题摘要、字体选项和本地字体预览降级为低对比选项行；各主题共享同一布局层级，Tauri command、view model 和偏好保存契约不变。
 - 启动：`npm run dev`；构建：`npm run build`。
 
 ---

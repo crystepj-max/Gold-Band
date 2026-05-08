@@ -101,26 +101,7 @@ pub enum DesktopLanguage {
     En,
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
-#[serde(rename_all = "kebab-case")]
-pub enum DesktopFontPreference {
-    Geist,
-    Inter,
-    IbmPlex,
-}
-
-impl FromStr for DesktopFontPreference {
-    type Err = anyhow::Error;
-
-    fn from_str(value: &str) -> Result<Self> {
-        match value {
-            "geist" => Ok(Self::Geist),
-            "inter" => Ok(Self::Inter),
-            "ibm-plex" => Ok(Self::IbmPlex),
-            _ => Err(anyhow!("unsupported desktop font: {value}")),
-        }
-    }
-}
+pub type DesktopFontPreference = String;
 
 impl FromStr for DesktopLanguage {
     type Err = anyhow::Error;
@@ -175,7 +156,7 @@ impl Default for RuntimeConfig {
             console_theme: ConsoleThemeName::GoldBand,
             desktop_theme: DesktopThemePreference::System,
             desktop_language: DesktopLanguage::ZhCn,
-            desktop_font: DesktopFontPreference::Geist,
+            desktop_font: "app-default".to_string(),
         }
     }
 }
@@ -206,8 +187,8 @@ impl RuntimeConfig {
         if let Some(desktop_language) = user_config.desktop_language {
             self.desktop_language = desktop_language;
         }
-        if let Some(desktop_font) = user_config.desktop_font {
-            self.desktop_font = desktop_font;
+        if let Some(desktop_font) = &user_config.desktop_font {
+            self.desktop_font = desktop_font.clone();
         }
         self
     }
@@ -216,8 +197,8 @@ impl RuntimeConfig {
 #[cfg(test)]
 mod tests {
     use super::{
-        ConsoleThemeName, DesktopFontPreference, DesktopLanguage, DesktopThemePreference,
-        RuntimeConfig, RuntimeLogLevel, UserConfig,
+        ConsoleThemeName, DesktopLanguage, DesktopThemePreference, RuntimeConfig, RuntimeLogLevel,
+        UserConfig,
     };
     use std::str::FromStr;
 
@@ -283,18 +264,6 @@ mod tests {
             DesktopLanguage::from_str("en").unwrap(),
             DesktopLanguage::En
         ));
-        assert!(matches!(
-            DesktopFontPreference::from_str("geist").unwrap(),
-            DesktopFontPreference::Geist
-        ));
-        assert!(matches!(
-            DesktopFontPreference::from_str("inter").unwrap(),
-            DesktopFontPreference::Inter
-        ));
-        assert!(matches!(
-            DesktopFontPreference::from_str("ibm-plex").unwrap(),
-            DesktopFontPreference::IbmPlex
-        ));
     }
 
     #[test]
@@ -306,7 +275,7 @@ mod tests {
             DesktopThemePreference::System
         ));
         assert!(matches!(config.desktop_language, DesktopLanguage::ZhCn));
-        assert!(matches!(config.desktop_font, DesktopFontPreference::Geist));
+        assert_eq!(config.desktop_font, "app-default");
     }
 
     #[test]
@@ -315,14 +284,14 @@ mod tests {
             console_theme: Some(ConsoleThemeName::Nord),
             desktop_theme: Some(DesktopThemePreference::Dark),
             desktop_language: Some(DesktopLanguage::En),
-            desktop_font: Some(DesktopFontPreference::IbmPlex),
+            desktop_font: Some("Microsoft YaHei UI".to_string()),
             log_level: Some(RuntimeLogLevel::Trace),
             ..UserConfig::default()
         });
         assert_eq!(config.console_theme, ConsoleThemeName::Nord);
         assert_eq!(config.desktop_theme, DesktopThemePreference::Dark);
         assert_eq!(config.desktop_language, DesktopLanguage::En);
-        assert_eq!(config.desktop_font, DesktopFontPreference::IbmPlex);
+        assert_eq!(config.desktop_font, "Microsoft YaHei UI");
         assert!(matches!(config.log_level, RuntimeLogLevel::Trace));
     }
 
@@ -332,7 +301,7 @@ mod tests {
         assert_eq!(config.console_theme, ConsoleThemeName::GoldBand);
         assert_eq!(config.desktop_theme, DesktopThemePreference::System);
         assert_eq!(config.desktop_language, DesktopLanguage::ZhCn);
-        assert_eq!(config.desktop_font, DesktopFontPreference::Geist);
+        assert_eq!(config.desktop_font, "app-default");
         assert!(matches!(config.log_level, RuntimeLogLevel::Debug));
     }
 }

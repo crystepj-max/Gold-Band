@@ -1,3 +1,5 @@
+use std::collections::BTreeSet;
+
 use camino::Utf8PathBuf;
 use gold_band::config::{DesktopFontPreference, DesktopLanguage, DesktopThemePreference, RuntimeConfig};
 use tauri::State;
@@ -12,6 +14,19 @@ use crate::view_models::{
 };
 
 pub type CommandResult<T> = Result<T, String>;
+
+#[tauri::command]
+pub fn get_system_fonts() -> Vec<String> {
+    let mut database = fontdb::Database::new();
+    database.load_system_fonts();
+    let mut families = BTreeSet::new();
+    for face in database.faces() {
+        for (family, _) in &face.families {
+            families.insert(family.clone());
+        }
+    }
+    families.into_iter().collect()
+}
 
 #[tauri::command]
 pub fn get_app_bootstrap(state: State<'_, DesktopState>) -> CommandResult<AppBootstrapVm> {
@@ -208,7 +223,7 @@ pub fn save_desktop_preferences(
     let context = state.context().map_err(command_error)?;
     let app = context.app();
     let user_config = app
-        .set_user_desktop_preferences(theme, language, font)
+        .set_user_desktop_preferences(theme, language, font.clone())
         .map_err(command_error)?;
     let config = RuntimeConfig::default().apply_user_config(&user_config);
     state.update_config(config).map_err(command_error)?;

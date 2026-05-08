@@ -37,6 +37,7 @@ Gold Band 桌面客户端是面向本地项目的 AI workflow 编排与观测工
 当前 MVP 只实现：
 - 任务编排
 - 设置中的主题切换
+- 设置中的字体选择
 - 设置中的语言选择
 - 工作空间选择、切换与最近 workspace 记忆
 
@@ -117,6 +118,16 @@ UI 不应根据日志直接推断 workflow 终局，终局状态以 canonical st
 - 哪些节点产生了 artifacts / attachments
 - validation 是否通过
 - 失败时可从哪里恢复
+
+### 5.5 工作台优先于数据看板
+任务编排首页是任务工作台入口，不是运行态 KPI dashboard。
+
+状态聚合能力应进入：
+- 任务表格内的快捷筛选
+- 状态筛选和关键字搜索
+- 具体任务、run、round 的上下文信息
+
+不在首页首屏展示页面级任务状态统计气泡或大数字 summary cards。
 
 ---
 
@@ -231,13 +242,33 @@ MVP 范围：
 
 ---
 
-## 16. 2026-05-07 设置页主题选择器记录
+## 16. 2026-05-07 任务列表工作台化记录
+
+本轮将任务编排首页从状态 summary cards 收敛为表格工作台：
+- 移除页面级任务状态统计气泡，避免首页变成数据看板。
+- `全部任务 / 运行中 / 已完成` 从 ModuleBar 移入任务表格工具条。
+- 可恢复、失败、配置异常作为状态筛选出现，关键字搜索支持 ID、标题、需求和最新 Run。
+- Workflow 和 Round 页面保留必要上下文摘要，但不把首页设计成 KPI dashboard。
+
+---
+
+## 17. 2026-05-07 UI 框架层级收敛记录
+
+本轮将桌面端 UI 从多卡片、多色块拼贴收敛为更克制的工作台层级：
+- 页面主体优先采用一个主工作面，内部用 section、低对比分隔线和留白组织内容。
+- 卡片只用于真正独立的对象；设置项、字体选项、主题摘要和指标项不默认做成完整卡片。
+- 所有主题共享同一套布局层级，主题 token 只负责换色，不改变页面结构。
+- AppCard 与 Metric 默认弱化边框和阴影，减少浅黑色方块堆叠。
+
+---
+
+## 18. 2026-05-07 设置页主题选择器记录
 
 本轮将设置页主题选择从 segmented Light / Dark / System 升级为 `Sync with OS` 开关 + 条件化主题摘要 + 抽屉式主题选择：
 - `Sync with OS` 开启时保存 `desktopTheme = system`，并随操作系统浅色/深色变化自动解析到用户最近选择的对应模式主题。
 - Light 分组提供白蓝默认浅色和暖色浅色；白蓝配色成为新的浅色默认。
 - Dark 分组提供石墨香槟 Gold Band 深色和新增终端黑主题。
-- 主题和字体 token 继续沿用 Tailwind CSS v4 + shadcn/ui 的 semantic CSS variables；默认字体为 Geist，并保留 Inter、IBM Plex 作为精选选项，不引入 command bar、terminal input 或聊天入口。
+- 主题和字体 token 继续沿用 Tailwind CSS v4 + shadcn/ui 的 semantic CSS variables；字体模型收敛为一个内置默认字体 `app-default`（MiSans）加一个本机字体下拉列表，不引入 command bar、terminal input 或聊天入口。
 
 ---
 

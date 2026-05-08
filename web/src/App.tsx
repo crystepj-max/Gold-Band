@@ -37,7 +37,7 @@ import type {
   WorkflowVm,
 } from './types';
 
-const defaultPreferences: PreferencesVm = { theme: 'system', language: 'zh-cn', font: 'geist' };
+const defaultPreferences: PreferencesVm = { theme: 'system', language: 'zh-cn', font: 'app-default' };
 type RefreshMode = 'initial' | 'manual' | 'background';
 type VisibleRefreshMode = Exclude<RefreshMode, 'background'>;
 

@@ -24,6 +24,7 @@ export interface DesktopFontOption {
   labelKey: string;
   descriptionKey: string;
   preview: string;
+  stack: string;
 }
 
 export const desktopThemeOptions = [
@@ -34,8 +35,8 @@ export const desktopThemeOptions = [
     descriptionKey: 'settings.themeDefaultLightDescription',
     preview: {
       background: '#f7faff',
-      surface: '#ffffff',
-      border: '#d9e4f2',
+      surface: '#fbfdff',
+      border: '#d4deeb',
       primary: '#3157d5',
       foreground: '#111827',
       muted: '#667085',
@@ -50,8 +51,8 @@ export const desktopThemeOptions = [
     descriptionKey: 'settings.themeWarmLightDescription',
     preview: {
       background: '#f7f2e8',
-      surface: '#fffdf8',
-      border: '#e3d7c3',
+      surface: '#fffaf1',
+      border: '#dccfba',
       primary: '#9a6b1f',
       foreground: '#211d16',
       muted: '#756d60',
@@ -66,8 +67,8 @@ export const desktopThemeOptions = [
     descriptionKey: 'settings.themeGoldDarkDescription',
     preview: {
       background: '#0b0d10',
-      surface: '#14171b',
-      border: '#2a2e35',
+      surface: '#101215',
+      border: '#242832',
       primary: '#d6b36a',
       foreground: '#f4efe6',
       muted: '#9b9488',
@@ -82,8 +83,8 @@ export const desktopThemeOptions = [
     descriptionKey: 'settings.themeBlackDescription',
     preview: {
       background: '#050814',
-      surface: '#0a1020',
-      border: '#1b2940',
+      surface: '#080c17',
+      border: '#172236',
       primary: '#6ea8fe',
       foreground: '#edf4ff',
       muted: '#98a6bd',
@@ -95,22 +96,11 @@ export const desktopThemeOptions = [
 
 export const desktopFontOptions = [
   {
-    id: 'geist',
-    labelKey: 'settings.fontGeist',
-    descriptionKey: 'settings.fontGeistDescription',
-    preview: 'Gold Band / AI Workflow',
-  },
-  {
-    id: 'inter',
-    labelKey: 'settings.fontInter',
-    descriptionKey: 'settings.fontInterDescription',
-    preview: 'Gold Band / AI Workflow',
-  },
-  {
-    id: 'ibm-plex',
-    labelKey: 'settings.fontIbmPlex',
-    descriptionKey: 'settings.fontIbmPlexDescription',
-    preview: 'Gold Band / AI Workflow',
+    id: 'app-default',
+    labelKey: 'settings.fontDefault',
+    descriptionKey: 'settings.fontDefaultDescription',
+    preview: '任务编排 / AI Workflow',
+    stack: '"Gold Band MiSans", "MiSans", "Microsoft YaHei UI", "PingFang SC", "Noto Sans CJK SC", "Source Han Sans SC", system-ui, sans-serif',
   },
 ] as const satisfies readonly DesktopFontOption[];
 
@@ -172,6 +162,16 @@ export function applyTheme(theme: DesktopThemePreference) {
   root.classList.toggle('dark', desktopThemeMode(resolved) === 'dark');
 }
 
+export function fontFamilyForPreference(font: DesktopFontPreference) {
+  return desktopFontOptions.find((option) => option.id === font)?.stack ?? `${quoteFontFamily(font)}, "Gold Band MiSans", "MiSans", "Microsoft YaHei UI", "PingFang SC", system-ui, sans-serif`;
+}
+
 export function applyFont(font: DesktopFontPreference) {
-  document.documentElement.dataset.font = font;
+  const root = document.documentElement;
+  root.dataset.font = desktopFontOptions.some((option) => option.id === font) ? font : 'local';
+  root.style.setProperty('--app-font-sans', fontFamilyForPreference(font));
+}
+
+function quoteFontFamily(font: string) {
+  return `"${font.replaceAll('"', '\\"')}"`;
 }

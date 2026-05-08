@@ -1,7 +1,7 @@
 export type DesktopThemePreference = 'system' | 'light' | 'light-warm' | 'dark' | 'black';
 export type ConcreteDesktopTheme = Exclude<DesktopThemePreference, 'system'>;
 export type DesktopThemeMode = 'light' | 'dark';
-export type DesktopFontPreference = 'geist' | 'inter' | 'ibm-plex';
+export type DesktopFontPreference = string;
 export type DesktopLanguage = 'zh-cn' | 'en';
 
 export interface PreferencesVm {

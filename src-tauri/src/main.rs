@@ -6,7 +6,8 @@ mod view_models;
 use anyhow::Context;
 use commands::{
     choose_workspace, continue_run, get_app_bootstrap, get_round_detail, get_run_detail,
-    get_task_detail, get_task_list, get_workflow, kill_run, retry_run, save_desktop_preferences,
+    get_system_fonts, get_task_detail, get_task_list, get_workflow, kill_run, retry_run,
+    save_desktop_preferences,
     select_recent_workspace, show_artifact, show_attachment, show_worker_ref, start_run,
 };
 use state::{DesktopContext, DesktopState};
@@ -24,6 +25,7 @@ fn run() -> anyhow::Result<()> {
         .manage(DesktopState::new(context))
         .invoke_handler(tauri::generate_handler![
             get_app_bootstrap,
+            get_system_fonts,
             get_task_list,
             choose_workspace,
             select_recent_workspace,
