@@ -40,7 +40,7 @@ type WorkflowLifecycle = {
 };
 
 const pageSizes = [5, 10, 20];
-const collapsedRunRowMinHeight = 72;
+const collapsedRunRowMinHeight = 64;
 const historyRowGridClass = 'grid gap-3 md:grid-cols-[minmax(180px,0.9fr)_minmax(112px,0.36fr)_minmax(220px,1fr)_minmax(180px,0.72fr)_minmax(72px,auto)] md:items-center';
 
 function historyBodyMinHeightFor(pageSize: number) {
@@ -81,8 +81,8 @@ export function WorkflowPage({ vm, busy, breadcrumbs, onNavigate, onStartRun }: 
         breadcrumbs={breadcrumbs}
         title={vm.task.title}
         subtitle={(
-          <div className="flex min-w-0 items-center gap-2 overflow-hidden rounded-lg border border-border/35 bg-muted/10 px-3 py-1.5 text-xs">
-            <span className="shrink-0 font-medium text-muted-foreground">{t('common.requirement')}</span>
+          <div className="flex min-w-0 items-center gap-2 overflow-hidden text-xs">
+            <span className="shrink-0 font-medium text-foreground">{t('common.requirement')}</span>
             <RequirementTeaser compact className="flex-1" text={requirement} detailLabel={t('common.viewFullRequirement')} onOpenDetail={() => setRequirementOpen(true)} />
           </div>
         )}
@@ -96,25 +96,25 @@ export function WorkflowPage({ vm, busy, breadcrumbs, onNavigate, onStartRun }: 
         )}
       />
       <ScrollArea className="min-h-0 flex-1">
-        <div className="space-y-4 p-4 xl:p-5">
+        <div className="space-y-3 p-3 xl:p-4">
           <AppCard className="flex min-h-0 flex-col gap-0 py-0">
-            <CardHeader className="gap-3 border-b bg-muted/10 px-4 py-3 !pb-3">
-              <div className="flex flex-wrap items-center justify-between gap-3">
-                <CardTitle>{t('workflow.historyTitle')}</CardTitle>
-                <Button disabled={busy || !vm.task.workflowValid} onClick={() => onStartRun(vm.task.id)}>{t('common.startRun')}</Button>
+            <CardHeader className="flex flex-row items-center justify-between gap-3 border-b bg-muted/10 px-4 py-2.5 !pb-2.5">
+              <div className="flex min-w-0 flex-1 flex-wrap items-center gap-3">
+                <CardTitle className="shrink-0">{t('workflow.historyTitle')}</CardTitle>
+                <div className="flex min-w-0 flex-wrap items-center gap-2 text-sm text-muted-foreground">
+                  <span className="shrink-0">{t('common.filterByStatus')}</span>
+                  <Select value={statusFilter} onValueChange={(value) => { setStatusFilter(value as StatusFilter); setPageIndex(0); }}>
+                    <SelectTrigger className="h-9 w-32"><SelectValue /></SelectTrigger>
+                    <SelectContent>
+                      {(['all', 'running', 'paused', 'completed', 'failed', 'resumable'] as StatusFilter[]).map((value) => <SelectItem value={value} key={value}>{value === 'all' ? t('common.all') : displayStatus(t, value)}</SelectItem>)}
+                    </SelectContent>
+                  </Select>
+                  <Button variant="outline" size="sm" onClick={() => setSortDir((value) => value === 'asc' ? 'desc' : 'asc')}>{t('common.sort')} {sortDir === 'asc' ? '↑' : '↓'}</Button>
+                </div>
               </div>
-              <div className="flex flex-wrap items-center gap-2 text-sm text-muted-foreground">
-                <span>{t('common.filterByStatus')}</span>
-                <Select value={statusFilter} onValueChange={(value) => { setStatusFilter(value as StatusFilter); setPageIndex(0); }}>
-                  <SelectTrigger className="w-36"><SelectValue /></SelectTrigger>
-                  <SelectContent>
-                    {(['all', 'running', 'paused', 'completed', 'failed', 'resumable'] as StatusFilter[]).map((value) => <SelectItem value={value} key={value}>{value === 'all' ? t('common.all') : displayStatus(t, value)}</SelectItem>)}
-                  </SelectContent>
-                </Select>
-                <Button variant="outline" size="sm" onClick={() => setSortDir((value) => value === 'asc' ? 'desc' : 'asc')}>{t('common.sort')} {sortDir === 'asc' ? '↑' : '↓'}</Button>
-              </div>
+              <Button className="shrink-0" disabled={busy || !vm.task.workflowValid} onClick={() => onStartRun(vm.task.id)}>{t('common.startRun')}</Button>
             </CardHeader>
-            <CardContent className="flex min-h-0 flex-1 flex-col px-3 py-3">
+            <CardContent className="flex min-h-0 flex-1 flex-col px-3 py-2">
               <div className="min-h-0 flex-1" style={{ minHeight: historyBodyMinHeight }}>
                 {pagedRuns.length ? (
                   <div className="overflow-hidden rounded-xl border bg-card/55 shadow-sm shadow-background/10">
@@ -144,7 +144,7 @@ export function WorkflowPage({ vm, busy, breadcrumbs, onNavigate, onStartRun }: 
                   </div>
                 ) : <EmptyState className="h-full min-h-full">{emptyMessage}</EmptyState>}
               </div>
-              <div className="mt-3 flex flex-wrap items-center justify-between gap-3 text-sm text-muted-foreground">
+              <div className="mt-2 flex flex-wrap items-center justify-between gap-3 text-sm text-muted-foreground">
                 <span>{t('workflow.groupsRange', { start: sortedRuns.length ? safePageIndex * pageSize + 1 : 0, end: Math.min(sortedRuns.length, (safePageIndex + 1) * pageSize), total: sortedRuns.length })}</span>
                 <div className="flex items-center gap-2">
                   <span>{t('common.pageSize')}</span>
@@ -247,7 +247,7 @@ function RunGroupRow({ group, graph, expanded, onToggle, onOpenRound, t }: {
   return (
     <section className={cn('bg-background/20 transition-colors', expanded && 'bg-muted/15')}>
       <div
-        className={cn(historyRowGridClass, 'min-h-[72px] cursor-pointer border-l-2 border-transparent px-4 py-3 transition-colors hover:bg-muted/20 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/50', expanded && 'border-l-border bg-card/65')}
+        className={cn(historyRowGridClass, 'min-h-16 cursor-pointer border-l-2 border-transparent px-4 py-2.5 transition-colors hover:bg-muted/20 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/50', expanded && 'border-l-border bg-card/65')}
         role="button"
         tabIndex={0}
         aria-expanded={expanded}

@@ -120,9 +120,9 @@ export function RoundDetailPage({ vm, breadcrumbs, selection, onSelect }: RoundD
         breadcrumbs={breadcrumbs}
         title={`${vm.run.id}/${vm.round.id}`}
         subtitle={(
-          <div className="flex min-w-0 items-start gap-2">
+          <div className="flex min-w-0 items-center gap-2 overflow-hidden text-xs">
             <span className="shrink-0 font-medium text-foreground">{t('common.requirement')}</span>
-            <RequirementTeaser text={requirement} detailLabel={t('common.viewFullRequirement')} onOpenDetail={() => setRequirementOpen(true)} />
+            <RequirementTeaser compact className="flex-1" text={requirement} detailLabel={t('common.viewFullRequirement')} onOpenDetail={() => setRequirementOpen(true)} />
           </div>
         )}
         badges={(

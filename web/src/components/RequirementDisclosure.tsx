@@ -1,4 +1,5 @@
-import { ArrowLeft } from 'lucide-react';
+import { useState } from 'react';
+import { ArrowLeft, Check, Copy } from 'lucide-react';
 import { CodeBlock } from '@/components/PageScaffold';
 import { Button } from '@/components/ui/button';
 import { ScrollArea } from '@/components/ui/scroll-area';
@@ -51,6 +52,14 @@ export function RequirementDetailSheet({ open, title, description, requirement, 
   onBack?: () => void;
   onOpenChange: (open: boolean) => void;
 }) {
+  const [copied, setCopied] = useState(false);
+
+  const copyRequirement = async () => {
+    await navigator.clipboard.writeText(requirement);
+    setCopied(true);
+    window.setTimeout(() => setCopied(false), 1200);
+  };
+
   return (
     <Sheet modal={false} open={open} onOpenChange={onOpenChange}>
       <SheetContent className="w-[560px] max-w-[calc(100vw-2rem)] gap-0 overflow-hidden p-0 sm:max-w-[560px]" closeLabel={closeLabel} showOverlay={false}>
@@ -62,13 +71,18 @@ export function RequirementDetailSheet({ open, title, description, requirement, 
             </Button>
           ) : null}
           <SheetDescription className="sr-only">{description}</SheetDescription>
-          <SheetTitle className="break-words text-xl">{title}</SheetTitle>
-        </SheetHeader>
-        <ScrollArea className="min-h-0 flex-1">
-          <div className="p-5">
-            <CodeBlock className="whitespace-pre-wrap font-sans text-sm leading-7">{requirement}</CodeBlock>
+          <div className="flex items-center justify-between gap-3 pr-10">
+            <SheetTitle className="break-words text-xl">{title}</SheetTitle>
+            <Button variant="ghost" size="icon" className="h-8 w-8 shrink-0 text-muted-foreground hover:text-foreground" aria-label="复制" onClick={copyRequirement}>
+              {copied ? <Check className="h-4 w-4 text-primary" /> : <Copy className="h-4 w-4" />}
+            </Button>
           </div>
-        </ScrollArea>
+        </SheetHeader>
+        <div className="flex min-h-0 flex-1 flex-col p-5">
+          <ScrollArea className="min-h-0 flex-1">
+            <CodeBlock className="whitespace-pre-wrap font-sans text-sm leading-7">{requirement}</CodeBlock>
+          </ScrollArea>
+        </div>
       </SheetContent>
     </Sheet>
   );

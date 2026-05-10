@@ -366,21 +366,19 @@ function TaskPreviewContent({ task, onNavigate }: { task: TaskRowVm; onNavigate:
         </div>
         <SheetTitle className="line-clamp-2 break-words text-xl">{task.title}</SheetTitle>
       </SheetHeader>
-      <div className="min-h-0 flex-1 p-5">
-        <section className="flex h-full min-h-0 flex-col overflow-hidden rounded-xl border border-primary/30 bg-primary/5">
-          <div className="flex shrink-0 items-center justify-between gap-3 border-b border-primary/15 px-4 py-3">
-            <h3 className="font-semibold">{t('common.fullRequirement')}</h3>
-            <Button variant="ghost" size="icon" className="h-8 w-8" aria-label={t('common.copy')} onClick={copyRequirement}>
-              {copied ? <Check className="h-4 w-4 text-primary" /> : <Copy className="h-4 w-4" />}
-            </Button>
-          </div>
-          <ScrollArea className="min-h-0 flex-1">
-            <CodeBlock className="m-4 whitespace-pre-wrap font-sans text-sm leading-7">{requirement}</CodeBlock>
-          </ScrollArea>
-        </section>
+      <div className="flex min-h-0 flex-1 flex-col p-5">
+        <div className="flex shrink-0 items-center justify-between gap-3 pb-4">
+          <h3 className="font-semibold text-foreground">{t('common.fullRequirement')}</h3>
+          <Button variant="ghost" size="icon" className="h-8 w-8 text-muted-foreground hover:text-foreground" aria-label={t('common.copy')} onClick={copyRequirement}>
+            {copied ? <Check className="h-4 w-4 text-primary" /> : <Copy className="h-4 w-4" />}
+          </Button>
+        </div>
+        <ScrollArea className="min-h-0 flex-1">
+          <CodeBlock className="whitespace-pre-wrap font-sans text-sm leading-7">{requirement}</CodeBlock>
+        </ScrollArea>
       </div>
       <SheetFooter className="shrink-0 border-t bg-background/95 p-5">
-        <Button className="w-full" variant="outline" onClick={() => onNavigate({ kind: 'workflow', taskId: task.id })}>{t('common.workflow')}</Button>
+        <Button className="w-full shadow-sm" onClick={() => onNavigate({ kind: 'workflow', taskId: task.id })}>{t('common.workflow')}</Button>
       </SheetFooter>
     </>
   );
