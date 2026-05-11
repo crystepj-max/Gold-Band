@@ -145,7 +145,7 @@ round 详情
 MVP 中应用壳由 `web/src/components/Shell.tsx` 实现：
 - 左侧固定展示 Gold Band、workspace 路径/切换入口、任务编排、知识库占位、模型管理占位、设置。
 - 右侧由 React 状态维护任务编排页面栈，面包屑只在右侧显示。
-- 工作空间选择页由 `web/src/pages/WorkspaceSelectPage.tsx` 实现，展示原生选择按钮和最近 workspace 列表。
+- 工作空间选择页由 `web/src/pages/WorkspaceSelectPage.tsx` 实现，展示原生选择按钮和最近 workspace 列表；主视觉入口使用与侧边栏一致的 Gold Band logo，不使用临时菱形占位图标。
 - Tauri commands `choose_workspace` / `select_recent_workspace` 负责切换 workspace，并将最近列表写入用户级配置。
 - Tauri window 默认尺寸为 1280x800，最小尺寸为 1040x680。
 - 应用壳不提供命令输入、slash command、terminal input 或 chat input。

@@ -164,7 +164,7 @@ export function RoundDetailPage({ vm, breadcrumbs, selection, refreshing, onRefr
             <CardHeader className="border-b px-4 py-2.5">
               <CardTitle>{t('roundDetail.graph')}</CardTitle>
             </CardHeader>
-            <CardContent className="min-h-0 flex-1 p-3"><GraphView graph={vm.graph} variant="actual" selectedNodeId={selectedNodeId} onNodeSelect={selectGraphNode} onNodeContextMenuStart={prepareGraphNodeContextMenu} onNodeOpenDetail={openGraphNodeDetail} onNodeOpenSession={openGraphSession} onNodeOpenLog={openGraphNodeLog} /></CardContent>
+            <CardContent className="min-h-0 flex-1 p-3"><GraphView graph={vm.graph} variant="actual" selectedNodeId={selectedNodeId} activeNodeId={vm.round.currentNode ?? vm.run.currentNode} activeStatus={vm.round.status} onNodeSelect={selectGraphNode} onNodeContextMenuStart={prepareGraphNodeContextMenu} onNodeOpenDetail={openGraphNodeDetail} onNodeOpenSession={openGraphSession} onNodeOpenLog={openGraphNodeLog} /></CardContent>
           </AppCard>
           {showNodePanel ? (
             <AppCard className="flex min-h-0 min-w-0 flex-col gap-0 overflow-hidden py-0">

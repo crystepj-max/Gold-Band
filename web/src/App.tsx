@@ -160,14 +160,16 @@ export function App() {
     pushRoute('task-orchestration', page);
   };
 
-  const runAction = async (action: () => Promise<unknown>) => {
+  const runAction = async <T,>(action: () => Promise<T>) => {
     setBusy(true);
     setError(null);
     try {
-      await action();
+      const result = await action();
       await refresh('background');
+      return result;
     } catch (err) {
       setError(String(err));
+      return undefined;
     } finally {
       setBusy(false);
     }
@@ -270,7 +272,7 @@ export function App() {
           breadcrumbs={pageBreadcrumbs}
           onNavigate={navigate}
           onRefresh={() => void refresh('manual')}
-          onStartRun={(taskId) => void runAction(() => startRun(taskId))}
+          onStartRun={(taskId) => runAction(() => startRun(taskId))}
           onContinueRun={(taskId, runId) => void runAction(() => continueRun(taskId, runId))}
           onKillRun={onKillRun}
         />

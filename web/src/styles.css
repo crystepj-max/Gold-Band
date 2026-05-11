@@ -327,3 +327,95 @@
 .workflow-graph .react-flow__controls-button svg {
   fill: currentColor;
 }
+
+.workflow-running-dot {
+  display: inline-block;
+  width: 0.45rem;
+  height: 0.45rem;
+  flex-shrink: 0;
+  border-radius: 9999px;
+}
+
+.workflow-node-running::before {
+  position: absolute;
+  inset: -1px;
+  pointer-events: none;
+  content: "";
+  border-radius: inherit;
+  background: linear-gradient(110deg, transparent 0%, color-mix(in srgb, var(--gold-running) 22%, transparent) 42%, transparent 68%);
+  opacity: 0.8;
+  transform: translateX(-70%);
+}
+
+.workflow-edge-running .react-flow__edge-path {
+  stroke-dasharray: 7 9;
+}
+
+.workflow-timeline-dot-running {
+  box-shadow: 0 0 0 5px color-mix(in srgb, var(--gold-running) 13%, transparent);
+}
+
+@media (prefers-reduced-motion: no-preference) {
+  .workflow-node-running {
+    animation: workflow-running-halo 1.8s ease-in-out infinite;
+  }
+
+  .workflow-node-running::before {
+    animation: workflow-node-sheen 2.4s ease-in-out infinite;
+  }
+
+  .workflow-running-dot,
+  .workflow-running-mark,
+  .workflow-timeline-dot-running {
+    animation: workflow-running-pulse 1.35s ease-in-out infinite;
+  }
+
+  .workflow-edge-running .react-flow__edge-path {
+    animation: workflow-edge-flow 1.1s linear infinite;
+  }
+
+  .workflow-run-active {
+    animation: workflow-row-enter 220ms ease-out both;
+  }
+}
+
+@keyframes workflow-running-halo {
+  0%, 100% {
+    box-shadow: 0 0 0 1px color-mix(in srgb, var(--gold-running) 18%, transparent), 0 12px 30px color-mix(in srgb, var(--gold-running) 10%, transparent);
+  }
+  50% {
+    box-shadow: 0 0 0 3px color-mix(in srgb, var(--gold-running) 34%, transparent), 0 16px 40px color-mix(in srgb, var(--gold-running) 22%, transparent);
+  }
+}
+
+@keyframes workflow-node-sheen {
+  0%, 35% { transform: translateX(-80%); opacity: 0; }
+  50% { opacity: 0.85; }
+  85%, 100% { transform: translateX(80%); opacity: 0; }
+}
+
+@keyframes workflow-running-pulse {
+  0%, 100% {
+    opacity: 0.55;
+    transform: scale(0.82);
+  }
+  50% {
+    opacity: 1;
+    transform: scale(1.15);
+  }
+}
+
+@keyframes workflow-edge-flow {
+  to { stroke-dashoffset: -16; }
+}
+
+@keyframes workflow-row-enter {
+  from {
+    opacity: 0.72;
+    transform: translateY(-3px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}

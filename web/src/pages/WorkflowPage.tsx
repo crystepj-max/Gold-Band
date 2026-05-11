@@ -2,7 +2,7 @@ import { useMemo, useState, type ReactNode } from 'react';
 import { useTranslation } from 'react-i18next';
 import type { TFunction } from 'i18next';
 import { ChevronDown, ChevronRight, RefreshCw } from 'lucide-react';
-import type { GraphVm, RoundSummaryVm, RunGroupVm, TaskPage, TaskRowVm, WorkflowVm } from '../types';
+import type { GraphVm, RoundSummaryVm, RunGroupVm, RunSummaryVm, TaskPage, TaskRowVm, WorkflowVm } from '../types';
 import { displayPolicy, displayStatus } from '../i18n';
 import { GraphView } from '../components/GraphView';
 import { StatusBadge } from '../components/StatusBadge';
@@ -26,7 +26,7 @@ interface WorkflowPageProps {
   breadcrumbs?: ReactNode;
   onNavigate: (page: TaskPage) => void;
   onRefresh: () => void;
-  onStartRun: (taskId: string) => void;
+  onStartRun: (taskId: string) => Promise<RunSummaryVm | undefined>;
   onContinueRun: (taskId: string, runId: string) => void;
   onKillRun: (taskId: string, runId: string) => void;
 }
@@ -43,13 +43,13 @@ type WorkflowLifecycle = {
 
 const pageSizes = [5, 10, 20];
 const collapsedRunRowMinHeight = 64;
-const historyRowGridClass = 'grid gap-3 md:grid-cols-[minmax(180px,0.9fr)_minmax(112px,0.36fr)_minmax(220px,1fr)_minmax(180px,0.72fr)_minmax(72px,auto)] md:items-center';
+const historyRowGridClass = 'grid gap-3 md:grid-cols-[minmax(180px,0.92fr)_minmax(112px,0.34fr)_minmax(150px,0.48fr)_minmax(320px,1.18fr)_minmax(96px,auto)] md:items-center';
 
 function historyBodyMinHeightFor(pageSize: number) {
   return Math.max(320, pageSize * collapsedRunRowMinHeight);
 }
 
-export function WorkflowPage({ vm, busy, refreshing, breadcrumbs, onNavigate, onRefresh, onStartRun }: WorkflowPageProps) {
+export function WorkflowPage({ vm, busy, refreshing, breadcrumbs, onNavigate, onRefresh, onStartRun, onKillRun }: WorkflowPageProps) {
   const { t } = useTranslation();
   const [requirementOpen, setRequirementOpen] = useState(false);
   const [statusFilter, setStatusFilter] = useState<StatusFilter>('all');
@@ -57,14 +57,28 @@ export function WorkflowPage({ vm, busy, refreshing, breadcrumbs, onNavigate, on
   const [pageIndex, setPageIndex] = useState(0);
   const [pageSize, setPageSize] = useState(5);
   const [workflowDrawerMode, setWorkflowDrawerMode] = useState<WorkflowDrawerMode | null>(null);
-  const [runExpansion, setRunExpansion] = useState<Record<string, boolean>>({});
+  const [expandedRunId, setExpandedRunId] = useState<string | null>(null);
 
   const toggleRun = (runId: string, expanded: boolean) => {
-    setRunExpansion((current) => ({ ...current, [runId]: !expanded }));
+    setExpandedRunId(expanded ? null : runId);
   };
 
   if (!vm) return <Page><EmptyState>{t('common.loading')}</EmptyState></Page>;
+  const handleStartRun = async () => {
+    const run = await onStartRun(vm.task.id);
+    if (!run) return;
+    setStatusFilter('all');
+    setSortDir('desc');
+    setPageIndex(0);
+    setExpandedRunId(run.id);
+  };
+
   const latestRun = vm.runs[0]?.run;
+  const startBlockedByActiveRun = Boolean(latestRun && !isTerminalRun(latestRun));
+  const startRunDisabled = busy || !vm.task.workflowValid || startBlockedByActiveRun;
+  const startRunTitle = startBlockedByActiveRun ? t('workflow.startRunBlockedByActiveRun', { runId: latestRun?.id }) : undefined;
+  const activeRun = vm.runs.find((group) => normalizeTone(group.run.status) === 'running')?.run;
+  const activeWorkflowNodeId = activeRun?.currentNode ?? null;
   const filteredRuns = vm.runs.filter((group) => matchesRunFilter(group, statusFilter));
   const sortedRuns = [...filteredRuns].sort((left, right) => left.run.id.localeCompare(right.run.id, undefined, { numeric: true }) * (sortDir === 'asc' ? 1 : -1));
   const pageCount = Math.max(1, Math.ceil(sortedRuns.length / pageSize));
@@ -120,7 +134,7 @@ export function WorkflowPage({ vm, busy, refreshing, breadcrumbs, onNavigate, on
                   <Button variant="outline" size="sm" onClick={() => setSortDir((value) => value === 'asc' ? 'desc' : 'asc')}>{t('common.sort')} {sortDir === 'asc' ? '↑' : '↓'}</Button>
                 </div>
               </div>
-              <Button className="shrink-0" disabled={busy || !vm.task.workflowValid} onClick={() => onStartRun(vm.task.id)}>{t('common.startRun')}</Button>
+              <Button className="shrink-0" disabled={startRunDisabled} title={startRunTitle} onClick={handleStartRun}>{t('common.startRun')}</Button>
             </CardHeader>
             <CardContent className="flex min-h-0 flex-1 flex-col px-3 py-2">
               <div className="min-h-0 flex-1" style={{ minHeight: historyBodyMinHeight }}>
@@ -135,7 +149,7 @@ export function WorkflowPage({ vm, busy, refreshing, breadcrumbs, onNavigate, on
                     </div>
                     <div className="divide-y divide-border/80">
                       {pagedRuns.map((group) => {
-                        const expanded = runExpansion[group.run.id] ?? false;
+                        const expanded = expandedRunId === group.run.id;
                         return (
                           <RunGroupRow
                             key={group.run.id}
@@ -144,6 +158,7 @@ export function WorkflowPage({ vm, busy, refreshing, breadcrumbs, onNavigate, on
                             expanded={expanded}
                             onToggle={() => toggleRun(group.run.id, expanded)}
                             onOpenRound={(roundId) => onNavigate({ kind: 'round-detail', taskId: vm.task.id, runId: group.run.id, roundId })}
+                            onKillRun={() => onKillRun(vm.task.id, group.run.id)}
                             t={t}
                           />
                         );
@@ -197,7 +212,7 @@ export function WorkflowPage({ vm, busy, refreshing, breadcrumbs, onNavigate, on
                   <ControlPill label={t('workflow.onAcceptanceFailure')} value={displayPolicy(t, vm.control.onAcceptanceFailure)} />
                 </div>
               ) : null}
-              {vm.task.workflowExists ? <GraphView graph={vm.graph} variant="workflow" /> : <EmptyState>{t('workflow.noWorkflow')}</EmptyState>}
+              {vm.task.workflowExists ? <GraphView graph={vm.graph} variant="workflow" activeNodeId={activeWorkflowNodeId} activeStatus={activeRun?.status} /> : <EmptyState>{t('workflow.noWorkflow')}</EmptyState>}
             </div>
           </ScrollArea>
         </SheetContent>
@@ -239,23 +254,25 @@ function ControlPill({ label, value }: { label: string; value: ReactNode }) {
   );
 }
 
-function RunGroupRow({ group, graph, expanded, onToggle, onOpenRound, t }: {
+function RunGroupRow({ group, graph, expanded, onToggle, onOpenRound, onKillRun, t }: {
   group: RunGroupVm;
   graph: GraphVm;
   expanded: boolean;
   onToggle: () => void;
   onOpenRound: (roundId: string) => void;
+  onKillRun: () => void;
   t: TFunction;
 }) {
   const rounds = useMemo(() => [...group.rounds].sort((left, right) => right.index - left.index), [group.rounds]);
   const regionId = `run-rounds-${group.run.id}`;
   const currentNode = formatCurrentNode(t, graph, group.run.currentNode);
   const pauseReason = group.run.pauseReason ? displayStatus(t, group.run.pauseReason) : null;
+  const running = normalizeTone(group.run.status) === 'running';
 
   return (
-    <section className={cn('bg-background/20 transition-colors', expanded && 'bg-muted/15')}>
+    <section className={cn('bg-background/20 transition-colors', expanded && 'bg-muted/15', running && 'workflow-run-active')}>
       <div
-        className={cn(historyRowGridClass, 'min-h-16 cursor-pointer border-l-2 border-transparent px-4 py-2.5 transition-colors hover:bg-muted/20 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/50', expanded && 'border-l-border bg-card/65')}
+        className={cn(historyRowGridClass, 'min-h-16 cursor-pointer border-l-2 border-transparent px-4 py-2.5 transition-colors hover:bg-muted/20 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/50', expanded && 'border-l-border bg-card/65', running && 'border-l-gold-running bg-gold-running/5')}
         role="button"
         tabIndex={0}
         aria-expanded={expanded}
@@ -288,8 +305,16 @@ function RunGroupRow({ group, graph, expanded, onToggle, onOpenRound, t }: {
         </div>
         <div className="min-w-0"><StatusBadge value={summaryStatusValue(group.run.status, group.run.outcome)} label={displayStatus(t, summaryStatusValue(group.run.status, group.run.outcome))} /></div>
         <HistoryCell label={t('workflow.currentRound')} value={group.run.currentRound ?? '-'} />
-        <HistoryCell label={pauseReason ? t('workflow.pauseReason') : t('workflow.currentNode')} value={pauseReason ?? currentNode} title={pauseReason ?? currentNode} />
-        <span className="hidden text-right text-sm text-muted-foreground md:block">—</span>
+        <HistoryCell label={pauseReason ? t('workflow.pauseReason') : t('workflow.currentNode')} value={running ? <span className="inline-flex min-w-0 items-center gap-2"><span className="workflow-running-dot bg-gold-running" /> <span className="truncate">{currentNode}</span></span> : pauseReason ?? currentNode} title={pauseReason ?? currentNode} />
+        <div className="flex min-w-0 justify-start md:justify-end">
+          {running && group.run.currentRound ? (
+            <div className="inline-flex h-8 items-center overflow-hidden rounded-lg border bg-background/75 shadow-sm">
+              <Button variant="ghost" size="sm" className="h-8 rounded-none px-3 text-xs shadow-none" onClick={(event) => { event.stopPropagation(); onOpenRound(group.run.currentRound!); }}>{t('workflow.openRound')}</Button>
+              <span className="h-4 w-px bg-border" aria-hidden="true" />
+              <Button variant="ghost" size="sm" className="h-8 rounded-none px-3 text-xs text-destructive shadow-none hover:bg-destructive/10 hover:text-destructive" onClick={(event) => { event.stopPropagation(); onKillRun(); }}>{t('common.stopRun')}</Button>
+            </div>
+          ) : null}
+        </div>
       </div>
       {expanded ? <RoundList id={regionId} runId={group.run.id} graph={graph} rounds={rounds} onOpenRound={onOpenRound} t={t} /> : null}
     </section>
@@ -325,16 +350,17 @@ function RoundList({ id, runId, graph, rounds, onOpenRound, t }: {
 
 function RoundRow({ runId, graph, round, onOpen, t }: { runId: string; graph: GraphVm; round: RoundSummaryVm; onOpen: () => void; t: TFunction }) {
   const currentNode = formatCurrentNode(t, graph, round.currentNode);
+  const running = normalizeTone(round.status) === 'running';
 
   return (
     <div className={cn(historyRowGridClass, 'relative min-h-[58px] rounded-lg border border-border/55 bg-background/55 px-3 py-2.5 shadow-sm transition-colors hover:bg-card/75')}>
-      <span className={cn('absolute -left-[27px] top-1/2 h-3 w-3 -translate-y-1/2 rounded-full border-2 ring-4 ring-muted/20', timelineDotClass(round.outcome ?? round.status))} />
+      <span className={cn('absolute -left-[27px] top-1/2 h-3 w-3 -translate-y-1/2 rounded-full border-2 ring-4 ring-muted/20', timelineDotClass(round.outcome ?? round.status), running && 'workflow-timeline-dot-running')} />
       <div className="flex min-w-0 items-center gap-2 pl-1">
         <strong className="truncate text-sm text-foreground">{round.id}</strong>
         <Badge variant="secondary" className="text-[11px]">#{round.index}</Badge>
       </div>
       <div className="min-w-0"><StatusBadge value={summaryStatusValue(round.status, round.outcome)} label={displayStatus(t, summaryStatusValue(round.status, round.outcome))} /></div>
-      <HistoryCell label={t('workflow.currentNode')} value={currentNode} title={currentNode} />
+      <HistoryCell label={t('workflow.currentNode')} value={running ? <span className="inline-flex min-w-0 items-center gap-2"><span className="workflow-running-dot bg-gold-running" /> <span className="truncate">{currentNode}</span></span> : currentNode} title={currentNode} />
       <HistoryCell label={t('workflow.currentRound')} value={`#${round.index}`} />
       <Button variant="outline" size="sm" className="justify-self-start md:justify-self-end" onClick={onOpen} aria-label={t('workflow.openRoundA11y', { runId, roundId: round.id })}>{t('workflow.openRound')}</Button>
     </div>
@@ -343,6 +369,10 @@ function RoundRow({ runId, graph, round, onOpen, t }: { runId: string; graph: Gr
 
 function summaryStatusValue(status?: string | null, outcome?: string | null) {
   return outcome ?? status ?? null;
+}
+
+function isTerminalRun(run: RunSummaryVm) {
+  return run.status === 'completed' || Boolean(run.outcome);
 }
 
 function timelineDotClass(value?: string | null) {

@@ -11,8 +11,8 @@ use crate::artifacts::{
     validate_exec_result, validate_verify_result,
 };
 use crate::config::{
-    ConsoleThemeName, DesktopFontPreference, DesktopLanguage, DesktopThemePreference, RuntimeConfig,
-    UserConfig,
+    ConsoleThemeName, DesktopFontPreference, DesktopLanguage, DesktopThemePreference,
+    RuntimeConfig, UserConfig,
 };
 use crate::control::{ControlDecision, decide_next_step};
 use crate::domain::{NodeOutcome, RunOutcome};
@@ -32,11 +32,12 @@ use camino::{Utf8Path, Utf8PathBuf};
 use serde::de::DeserializeOwned;
 use std::fs;
 use std::io::{Read, Seek, SeekFrom};
+use std::process::Command as ProcessCommand;
 
 use self::ids::now_rfc3339_like;
 use self::orchestrator::{
     run_continue as orchestrator_run_continue, run_retry as orchestrator_run_retry,
-    run_start as orchestrator_run_start,
+    run_start as orchestrator_run_start, run_start_background as orchestrator_run_start_background,
 };
 use self::profile_resolver::resolve_workflow_profiles;
 
@@ -52,6 +53,28 @@ fn tail_text(text: &str, limit: usize) -> String {
 
 fn logical_artifact_name(name: &str) -> &str {
     name.strip_suffix(".json").unwrap_or(name)
+}
+
+fn kill_process_tree(pid: u32) -> Result<()> {
+    #[cfg(windows)]
+    {
+        let status = ProcessCommand::new("taskkill")
+            .args(["/PID", &pid.to_string(), "/T", "/F"])
+            .status()?;
+        if !status.success() {
+            bail!("failed to kill provider process tree for pid {pid}");
+        }
+    }
+    #[cfg(not(windows))]
+    {
+        let status = ProcessCommand::new("kill")
+            .args(["-TERM", &pid.to_string()])
+            .status()?;
+        if !status.success() {
+            bail!("failed to kill provider process for pid {pid}");
+        }
+    }
+    Ok(())
 }
 
 #[derive(Debug, Clone, serde::Serialize)]
@@ -636,6 +659,7 @@ impl App {
 
     pub fn run_kill(&self, task_id: &str, run_id: &str) -> Result<RunState> {
         let mut run = self.run_status(task_id, run_id)?;
+        self.kill_current_provider_process_best_effort(task_id, run_id, &run);
         run.status = RunStatus::Completed;
         run.outcome = Some(RunOutcome::Killed);
         run.pause_reason = None;
@@ -667,6 +691,31 @@ impl App {
         }
 
         Ok(run)
+    }
+
+    fn kill_current_provider_process_best_effort(
+        &self,
+        task_id: &str,
+        run_id: &str,
+        run: &RunState,
+    ) {
+        let (Some(round_id), Some(node_id), Some(attempt_id)) =
+            (&run.current_round, &run.current_node, &run.current_attempt)
+        else {
+            return;
+        };
+        let pid_path = self
+            .paths
+            .attempt_dir(task_id, run_id, round_id, node_id, attempt_id)
+            .join("provider.pid");
+        let Ok(pid_text) = fs::read_to_string(pid_path.as_std_path()) else {
+            return;
+        };
+        let Ok(pid) = pid_text.trim().parse::<u32>() else {
+            return;
+        };
+        let _ = kill_process_tree(pid);
+        let _ = fs::remove_file(pid_path.as_std_path());
     }
 
     pub fn run_open_session(
@@ -716,6 +765,14 @@ impl App {
         workflow_override: Option<&Utf8Path>,
     ) -> Result<RunState> {
         orchestrator_run_start(self, task_id, workflow_override)
+    }
+
+    pub fn run_start_background(
+        &self,
+        task_id: &str,
+        workflow_override: Option<&Utf8Path>,
+    ) -> Result<RunState> {
+        orchestrator_run_start_background(self, task_id, workflow_override)
     }
 
     pub fn decide(

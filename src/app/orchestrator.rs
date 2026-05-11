@@ -1,3 +1,5 @@
+use std::thread;
+
 use anyhow::{Result, bail};
 use camino::Utf8Path;
 use camino::Utf8PathBuf;
@@ -28,11 +30,86 @@ use super::transition_context::{
     find_latest_worker_ref_for_transition,
 };
 
+struct PreparedRun {
+    validated: ValidatedWorkflow,
+    resolved_profiles: super::profile_resolver::ResolvedWorkflowMetadata,
+    run: RunState,
+    round: RoundState,
+    node: NodeState,
+}
+
 pub(crate) fn run_start(
     app: &App,
     task_id: &str,
     workflow_override: Option<&Utf8Path>,
 ) -> Result<RunState> {
+    let PreparedRun {
+        validated,
+        resolved_profiles,
+        mut run,
+        mut round,
+        node,
+    } = prepare_run(app, task_id, workflow_override)?;
+    drive_from_node(
+        app,
+        task_id,
+        &validated,
+        &resolved_profiles,
+        &mut run,
+        &mut round,
+        node,
+    )?;
+    Ok(run)
+}
+
+pub(crate) fn run_start_background(
+    app: &App,
+    task_id: &str,
+    workflow_override: Option<&Utf8Path>,
+) -> Result<RunState> {
+    let prepared = prepare_run(app, task_id, workflow_override)?;
+    let initial_run = prepared.run.clone();
+    let repo_root = app.paths.repo_root.clone();
+    let config = app.config.clone();
+    let task_id = task_id.to_string();
+
+    thread::spawn(move || {
+        let app = App::with_config(repo_root, config);
+        let PreparedRun {
+            validated,
+            resolved_profiles,
+            mut run,
+            mut round,
+            node,
+        } = prepared;
+        if let Err(err) = drive_from_node(
+            &app,
+            &task_id,
+            &validated,
+            &resolved_profiles,
+            &mut run,
+            &mut round,
+            node,
+        ) {
+            let _ = std::fs::create_dir_all(app.paths.runs_dir(&task_id).as_std_path());
+            let _ = std::fs::write(
+                app.paths
+                    .runs_dir(&task_id)
+                    .join("desktop-start-error.txt")
+                    .as_std_path(),
+                err.to_string(),
+            );
+        }
+    });
+
+    Ok(initial_run)
+}
+
+fn prepare_run(
+    app: &App,
+    task_id: &str,
+    workflow_override: Option<&Utf8Path>,
+) -> Result<PreparedRun> {
     let workflow_path = workflow_override
         .map(|path| path.to_owned())
         .unwrap_or_else(|| app.paths.workflow_file(task_id));
@@ -50,7 +127,7 @@ pub(crate) fn run_start(
     let attempt_id = "attempt-001".to_string();
     let now = now_rfc3339_like();
 
-    let mut run = RunState {
+    let run = RunState {
         version: VERSION.to_string(),
         id: run_id.clone(),
         task_id: task_id.to_string(),
@@ -72,7 +149,7 @@ pub(crate) fn run_start(
         &workflow,
     )?;
 
-    let mut round = RoundState {
+    let round = RoundState {
         version: VERSION.to_string(),
         id: round_id.clone(),
         run_id: run_id.clone(),
@@ -139,7 +216,7 @@ pub(crate) fn run_start(
         task_id,
         &run.id,
         "run_started",
-        now.clone(),
+        now,
         run_event_data(
             &ctx,
             Some(ProgressStage::Starting),
@@ -158,16 +235,14 @@ pub(crate) fn run_start(
                 .as_path(),
         ),
     );
-    drive_from_node(
-        app,
-        task_id,
-        &validated,
-        &resolved_profiles,
-        &mut run,
-        &mut round,
+
+    Ok(PreparedRun {
+        validated,
+        resolved_profiles,
+        run,
+        round,
         node,
-    )?;
-    Ok(run)
+    })
 }
 
 pub(crate) fn run_continue(app: &App, task_id: &str, run_id: &str) -> Result<RunState> {
@@ -360,6 +435,11 @@ fn edge_outcome_label(outcome: NodeOutcome) -> String {
     }
 }
 
+fn run_is_killed(app: &App, task_id: &str, run_id: &str) -> Result<bool> {
+    let run: RunState = read_json(&app.paths.run_file(task_id, run_id))?;
+    Ok(run.status == RunStatus::Completed && run.outcome == Some(RunOutcome::Killed))
+}
+
 pub(crate) fn drive_from_node(
     app: &App,
     task_id: &str,
@@ -375,6 +455,9 @@ pub(crate) fn drive_from_node(
     let mut verify_result_path: Option<Utf8PathBuf> = None;
 
     loop {
+        if run_is_killed(app, task_id, &run.id)? {
+            return Ok(());
+        }
         let current_attempt_id = node.attempt_id.clone();
         let current_node_id = node.node_id.clone();
         let ctx = ExecutionContext::for_run(task_id, &run.id)
@@ -435,6 +518,9 @@ pub(crate) fn drive_from_node(
                 ) {
                     Ok(node) => node,
                     Err(err) => {
+                        if run_is_killed(app, task_id, &run.id)? {
+                            return Ok(());
+                        }
                         let error_summary = format!(
                             "run {} blocked at {}/{}/{}: {}",
                             run.id, round.id, current_node_id, current_attempt_id, err
@@ -479,6 +565,9 @@ pub(crate) fn drive_from_node(
                 match execute_exec_node(app, task_id, &run.id, &round.id, workflow, node.clone()) {
                     Ok(node) => node,
                     Err(err) => {
+                        if run_is_killed(app, task_id, &run.id)? {
+                            return Ok(());
+                        }
                         let error_summary = format!(
                             "run {} blocked at {}/{}/{}: {}",
                             run.id, round.id, current_node_id, current_attempt_id, err

@@ -36,8 +36,11 @@ type GraphMode = 'readonly' | 'interactive';
 type WorkflowNodeData = {
   node: GraphNodeVm;
   selected: boolean;
+  active: boolean;
+  running: boolean;
   mode: GraphMode;
   currentLabel: string;
+  runningLabel: string;
   statusLabel: string;
   artifactLabel: string;
   attachmentLabel: string;
@@ -46,6 +49,8 @@ type WorkflowNodeData = {
 interface GraphViewProps {
   graph: GraphVm;
   selectedNodeId?: string | null;
+  activeNodeId?: string | null;
+  activeStatus?: string | null;
   onNodeSelect?: (node: GraphNodeVm) => void;
   onNodeOpenDetail?: (node: GraphNodeVm) => void;
   onNodeOpenSession?: (node: GraphNodeVm) => void;
@@ -58,10 +63,10 @@ const nodeTypes = {
   workflowNode: WorkflowNode,
 };
 
-export function GraphView({ graph, selectedNodeId, onNodeSelect, onNodeOpenDetail, onNodeOpenSession, onNodeOpenLog, onNodeContextMenuStart, variant = 'grid' }: GraphViewProps) {
+export function GraphView({ graph, selectedNodeId, activeNodeId, activeStatus, onNodeSelect, onNodeOpenDetail, onNodeOpenSession, onNodeOpenLog, onNodeContextMenuStart, variant = 'grid' }: GraphViewProps) {
   const { t } = useTranslation();
   const mode: GraphMode = variant === 'actual' ? 'interactive' : 'readonly';
-  const { nodes, edges } = useMemo(() => createLayoutedGraph(graph, selectedNodeId, mode, t), [graph, selectedNodeId, mode, t]);
+  const { nodes, edges } = useMemo(() => createLayoutedGraph(graph, selectedNodeId, activeNodeId, activeStatus, mode, t), [graph, selectedNodeId, activeNodeId, activeStatus, mode, t]);
   const [menu, setMenu] = useState<{ x: number; y: number; node: GraphNodeVm } | null>(null);
   const [containerElement, setContainerElement] = useState<HTMLDivElement | null>(null);
   const contextMenuTimerRef = useRef<number | null>(null);
@@ -211,7 +216,7 @@ function calculateCenteredViewport(bounds: { x: number; y: number; width: number
   };
 }
 
-function createLayoutedGraph(graph: GraphVm, selectedNodeId: string | null | undefined, mode: GraphMode, t: TFunction) {
+function createLayoutedGraph(graph: GraphVm, selectedNodeId: string | null | undefined, activeNodeId: string | null | undefined, activeStatus: string | null | undefined, mode: GraphMode, t: TFunction) {
   const dagreGraph = new dagre.graphlib.Graph();
   dagreGraph.setDefaultEdgeLabel(() => ({}));
   dagreGraph.setGraph({ rankdir: 'LR', nodesep: NODE_GAP_Y, ranksep: NODE_GAP_X, marginx: 40, marginy: 36 });
@@ -224,8 +229,13 @@ function createLayoutedGraph(graph: GraphVm, selectedNodeId: string | null | und
   });
   dagre.layout(dagreGraph);
 
+  const activeNode = graph.nodes.find((node) => matchesNodeId(node, activeNodeId));
+  const runningActiveNode = normalizeTone(activeStatus ?? activeNode?.status ?? activeNode?.outcome) === 'running';
+  const activeNodeKey = activeNode?.id ?? activeNode?.nodeId ?? activeNodeId ?? null;
   const nodes: Node<WorkflowNodeData>[] = graph.nodes.map((node) => {
     const layout = dagreGraph.node(node.id);
+    const active = matchesNodeId(node, activeNodeId) || (node.current && normalizeTone(node.status ?? node.outcome) === 'running');
+    const running = active && (runningActiveNode || normalizeTone(node.status ?? node.outcome) === 'running');
     return {
       id: node.id,
       type: 'workflowNode',
@@ -236,9 +246,12 @@ function createLayoutedGraph(graph: GraphVm, selectedNodeId: string | null | und
       data: {
         node,
         selected: selectedNodeId === node.id || selectedNodeId === node.nodeId,
+        active,
+        running,
         mode,
         currentLabel: t('graph.current'),
-        statusLabel: displayStatus(t, node.status ?? node.outcome),
+        runningLabel: displayStatus(t, 'running'),
+        statusLabel: displayStatus(t, node.status ?? node.outcome ?? activeStatus),
         artifactLabel: t('common.artifacts'),
         attachmentLabel: t('common.attachments'),
       },
@@ -247,25 +260,33 @@ function createLayoutedGraph(graph: GraphVm, selectedNodeId: string | null | und
     };
   });
 
-  const edges: Edge[] = graph.edges.map((edge, index) => ({
-    id: `${edge.from}-${edge.to}-${index}`,
-    source: edge.from,
-    target: edge.to,
-    label: edge.label || undefined,
-    type: 'smoothstep',
-    markerEnd: { type: MarkerType.ArrowClosed, width: 18, height: 18 },
-    style: { stroke: 'var(--muted-foreground)', strokeWidth: 1.8 },
-    labelStyle: { fill: 'var(--muted-foreground)', fontFamily: 'var(--font-mono)', fontSize: 11, letterSpacing: '0.04em' },
-    labelBgStyle: { fill: 'var(--card)', fillOpacity: 0.92 },
-    labelBgPadding: [8, 4],
-    labelBgBorderRadius: 999,
-  }));
+  const edges: Edge[] = graph.edges.map((edge, index) => {
+    const activeEdge = runningActiveNode && activeNodeKey && edge.to === activeNodeKey;
+    return {
+      id: `${edge.from}-${edge.to}-${index}`,
+      source: edge.from,
+      target: edge.to,
+      label: edge.label || undefined,
+      type: 'smoothstep',
+      markerEnd: { type: MarkerType.ArrowClosed, width: 18, height: 18, color: activeEdge ? 'var(--gold-running)' : 'var(--muted-foreground)' },
+      style: { stroke: activeEdge ? 'var(--gold-running)' : 'var(--muted-foreground)', strokeWidth: activeEdge ? 2.4 : 1.8 },
+      className: activeEdge ? 'workflow-edge-running' : undefined,
+      labelStyle: { fill: activeEdge ? 'var(--gold-running)' : 'var(--muted-foreground)', fontFamily: 'var(--font-mono)', fontSize: 11, letterSpacing: '0.04em' },
+      labelBgStyle: { fill: 'var(--card)', fillOpacity: 0.92 },
+      labelBgPadding: [8, 4],
+      labelBgBorderRadius: 999,
+    };
+  });
 
   return { nodes, edges };
 }
 
+function matchesNodeId(node: GraphNodeVm, id?: string | null) {
+  return Boolean(id && (node.id === id || node.nodeId === id));
+}
+
 function WorkflowNode({ data }: NodeProps<Node<WorkflowNodeData>>) {
-  const { node, selected, mode, currentLabel, statusLabel, artifactLabel, attachmentLabel } = data;
+  const { node, selected, active, running, mode, currentLabel, runningLabel, statusLabel, artifactLabel, attachmentLabel } = data;
   const hasStatus = Boolean(node.status ?? node.outcome);
   const tone = normalizeTone(node.status ?? node.outcome);
   return (
@@ -273,6 +294,8 @@ function WorkflowNode({ data }: NodeProps<Node<WorkflowNodeData>>) {
       className={cn(
         'relative flex h-[138px] w-[226px] flex-col overflow-hidden rounded-xl border border-border/65 bg-card text-card-foreground shadow-sm transition-shadow',
         selected && 'border-primary/80 bg-primary/5 ring-2 ring-primary/25 shadow-[0_0_0_1px_rgba(245,158,11,0.26),0_10px_28px_rgba(245,158,11,0.12)]',
+        active && !running && 'border-primary/60 bg-primary/5',
+        running && 'workflow-node-running border-gold-running/70 bg-gold-running/10 shadow-[0_0_0_1px_color-mix(in_srgb,var(--gold-running)_24%,transparent),0_14px_34px_color-mix(in_srgb,var(--gold-running)_16%,transparent)]',
         mode === 'interactive' && 'cursor-pointer hover:border-primary/45 hover:shadow-md',
       )}
     >
@@ -283,11 +306,11 @@ function WorkflowNode({ data }: NodeProps<Node<WorkflowNodeData>>) {
           {node.artifactCount > 0 ? <Badge variant="secondary" className="h-5 px-1.5 text-[10px]">{artifactLabel}:{node.artifactCount}</Badge> : null}
           {node.attachmentCount > 0 ? <Badge variant="secondary" className="h-5 px-1.5 text-[10px]">{attachmentLabel}:{node.attachmentCount}</Badge> : null}
         </div>
-        {node.current ? <Badge className="h-5 shrink-0 px-1.5 text-[10px]">{currentLabel}</Badge> : null}
+        {running ? <Badge className="h-5 shrink-0 gap-1.5 bg-gold-running px-1.5 text-[10px] text-white"><span className="workflow-running-dot bg-white" />{runningLabel}</Badge> : node.current ? <Badge className="h-5 shrink-0 px-1.5 text-[10px]">{currentLabel}</Badge> : null}
       </div>
       <div className="flex min-h-0 flex-1 items-center gap-3 px-4 pb-1 pt-1">
         {hasStatus ? (
-          <span aria-label={statusLabel} title={statusLabel} className={cn('flex size-7 shrink-0 items-center justify-center rounded-full text-sm font-semibold text-white shadow-sm', statusMarkClass(tone))}>
+          <span aria-label={statusLabel} title={statusLabel} className={cn('flex size-7 shrink-0 items-center justify-center rounded-full text-sm font-semibold text-white shadow-sm', statusMarkClass(tone), running && 'workflow-running-mark')}>
             {statusMark(tone)}
           </span>
         ) : null}

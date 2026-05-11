@@ -107,7 +107,7 @@ pub fn get_round_detail(
 #[tauri::command]
 pub fn start_run(state: State<'_, DesktopState>, task_id: String) -> CommandResult<RunSummaryVm> {
     let app = state.app().map_err(command_error)?;
-    app.run_start(&task_id, None)
+    app.run_start_background(&task_id, None)
         .map(run_summary_vm)
         .map_err(command_error)
 }

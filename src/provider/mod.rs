@@ -239,6 +239,9 @@ impl ProviderAdapter for ClaudeCodeProvider {
             debug!(path = %path, "prepared raw stream file");
         }
         let mut child = command.spawn().map_err(|err| provider_spawn_error(err))?;
+        let pid_path = req.attempt_dir.join("provider.pid");
+        ensure_parent_dir(&pid_path)?;
+        std::fs::write(pid_path.as_std_path(), child.id().to_string())?;
 
         let stdout = child
             .stdout
@@ -289,6 +292,7 @@ impl ProviderAdapter for ClaudeCodeProvider {
         };
 
         let status = child.wait()?;
+        let _ = std::fs::remove_file(pid_path.as_std_path());
         let exit_code = status.code();
         let stderr_text = stderr_handle
             .join()

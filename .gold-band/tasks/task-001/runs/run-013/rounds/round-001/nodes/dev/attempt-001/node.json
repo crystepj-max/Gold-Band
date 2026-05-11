@@ -5,10 +5,10 @@
   "run_id": "run-013",
   "round_id": "round-001",
   "attempt_id": "attempt-001",
-  "status": "paused",
-  "outcome": null,
+  "status": "completed",
+  "outcome": "killed",
   "started_at": "1775549209Z",
-  "finished_at": "1775549261Z",
+  "finished_at": "1778507744Z",
   "resolved_config": {
     "primaryArtifact": "exec-plan",
     "profile": "developer",
