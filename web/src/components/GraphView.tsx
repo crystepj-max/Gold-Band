@@ -117,8 +117,12 @@ export function GraphView({ graph, selectedNodeId, activeNodeId, activeStatus, o
   }, []);
 
   const handleNodeClick = useCallback((_: React.MouseEvent, node: Node<WorkflowNodeData>) => {
+    if (mode === 'interactive' && onNodeOpenDetail) {
+      onNodeOpenDetail(node.data.node);
+      return;
+    }
     onNodeSelect?.(node.data.node);
-  }, [onNodeSelect]);
+  }, [mode, onNodeOpenDetail, onNodeSelect]);
 
   const handleNodeDoubleClick = useCallback((_: React.MouseEvent, node: Node<WorkflowNodeData>) => {
     onNodeOpenDetail?.(node.data.node);
@@ -294,7 +298,7 @@ function WorkflowNode({ data }: NodeProps<Node<WorkflowNodeData>>) {
       className={cn(
         'relative flex h-[138px] w-[226px] flex-col overflow-hidden rounded-xl border border-border/65 bg-card text-card-foreground shadow-sm transition-shadow',
         selected && 'border-primary/80 bg-primary/5 ring-2 ring-primary/25 shadow-[0_0_0_1px_rgba(245,158,11,0.26),0_10px_28px_rgba(245,158,11,0.12)]',
-        active && !running && 'border-primary/60 bg-primary/5',
+        active && !running && !selected && 'border-border/80 bg-card shadow-sm',
         running && 'workflow-node-running border-gold-running/70 bg-gold-running/10 shadow-[0_0_0_1px_color-mix(in_srgb,var(--gold-running)_24%,transparent),0_14px_34px_color-mix(in_srgb,var(--gold-running)_16%,transparent)]',
         mode === 'interactive' && 'cursor-pointer hover:border-primary/45 hover:shadow-md',
       )}
@@ -306,7 +310,7 @@ function WorkflowNode({ data }: NodeProps<Node<WorkflowNodeData>>) {
           {node.artifactCount > 0 ? <Badge variant="secondary" className="h-5 px-1.5 text-[10px]">{artifactLabel}:{node.artifactCount}</Badge> : null}
           {node.attachmentCount > 0 ? <Badge variant="secondary" className="h-5 px-1.5 text-[10px]">{attachmentLabel}:{node.attachmentCount}</Badge> : null}
         </div>
-        {running ? <Badge className="h-5 shrink-0 gap-1.5 bg-gold-running px-1.5 text-[10px] text-white"><span className="workflow-running-dot bg-white" />{runningLabel}</Badge> : node.current ? <Badge className="h-5 shrink-0 px-1.5 text-[10px]">{currentLabel}</Badge> : null}
+        {running ? <Badge className="h-5 shrink-0 gap-1.5 bg-gold-running px-1.5 text-[10px] text-white"><span className="workflow-running-dot bg-white" />{runningLabel}</Badge> : node.current ? <Badge variant="secondary" className="h-5 shrink-0 border border-primary/35 bg-primary/10 px-1.5 text-[10px] text-primary shadow-[0_0_0_1px_color-mix(in_srgb,var(--primary)_10%,transparent)]">{currentLabel}</Badge> : null}
       </div>
       <div className="flex min-h-0 flex-1 items-center gap-3 px-4 pb-1 pt-1">
         {hasStatus ? (
