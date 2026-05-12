@@ -595,6 +595,10 @@ function rawObject(value: unknown): Record<string, unknown> | null {
   return value && typeof value === 'object' && !Array.isArray(value) ? value as Record<string, unknown> : null;
 }
 
+function arrayValue(value: unknown): unknown[] | null {
+  return Array.isArray(value) ? value : null;
+}
+
 function mergeRaw(previous: unknown, next: unknown) {
   const previousObject = rawObject(previous);
   const nextObject = rawObject(next);
@@ -639,6 +643,8 @@ function toolDetails(event: AcpUiEventVm) {
   const raw = rawObject(event.raw);
   const toolCall = rawObject(raw?.toolCall) ?? rawObject(raw?.content) ?? raw;
   const fields = rawObject(toolCall?.fields);
+  const rawInput = rawObject(toolCall?.rawInput) ?? rawObject(raw?.rawInput);
+  const locations = arrayValue(toolCall?.locations) ?? arrayValue(raw?.locations);
   const meta = rawObject(raw?._meta);
   const claudeCode = rawObject(meta?.claudeCode);
   const title = stringValue(toolCall?.title) ?? event.title;
@@ -648,15 +654,29 @@ function toolDetails(event: AcpUiEventVm) {
   return {
     name,
     output,
-    queryBlocks: queryBlocksFromTool(title),
+    queryBlocks: queryBlocksFromTool(title, rawInput, locations),
   };
 }
 
-function queryBlocksFromTool(title: string | null | undefined) {
+function queryBlocksFromTool(title: string | null | undefined, rawInput?: Record<string, unknown> | null, locations?: unknown[] | null) {
   const parsedTitle = parseToolTitle(title);
   const blocks: Array<{ labelKey: string; value: string }> = [];
-  if (parsedTitle.scope) blocks.push({ labelKey: 'acp.toolPath', value: parsedTitle.scope });
-  if (parsedTitle.query) blocks.push({ labelKey: 'acp.toolQuery', value: parsedTitle.query });
+  const push = (labelKey: string, value?: string | null) => {
+    const normalized = value?.trim();
+    if (!normalized || blocks.some((block) => block.value === normalized)) return;
+    blocks.push({ labelKey, value: normalized });
+  };
+
+  push('acp.toolPath', parsedTitle.scope);
+  push('acp.toolQuery', parsedTitle.query);
+  push('acp.toolPath', stringValue(rawInput?.file_path));
+  push('acp.toolPath', stringValue(rawInput?.path));
+  push('acp.toolPath', stringValue(rawInput?.cwd));
+  push('acp.toolQuery', stringValue(rawInput?.pattern));
+  push('acp.toolQuery', stringValue(rawInput?.query));
+  push('acp.toolQuery', stringValue(rawInput?.glob));
+  push('acp.toolQuery', stringValue(rawInput?.command));
+  push('acp.toolPath', firstLocationPath(locations));
   return blocks;
 }
 
@@ -665,13 +685,24 @@ function toolSummary(blocks: Array<{ value: string }>) {
   return values.length > 0 ? values.join(' · ') : undefined;
 }
 
+function firstLocationPath(locations?: unknown[] | null) {
+  if (!locations) return null;
+  for (const location of locations) {
+    const path = stringValue(rawObject(location)?.path);
+    if (path) return path;
+  }
+  return null;
+}
+
 function parseToolTitle(title: string | null | undefined) {
   if (!title) return { name: null, scope: null, query: null };
   const [name] = title.split(' ');
   const quoted = [...title.matchAll(/`([^`]+)`/g)].map((match) => match[1]);
+  const rest = title.slice(name.length).trim();
+  const plainScope = rest && rest.toLowerCase() !== 'file' ? rest : null;
   return {
     name: name || title,
-    scope: quoted[0] ?? null,
+    scope: quoted[0] ?? plainScope,
     query: quoted[1] ?? null,
   };
 }
