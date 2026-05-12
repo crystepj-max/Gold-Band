@@ -317,7 +317,7 @@ export function ACPEventRenderer({ event, onLayoutChange }: { event: AcpTimeline
 function AssistantTimelineRow({ children }: { children: React.ReactNode }) {
   return (
     <Message className="min-w-0 items-start justify-start gap-2">
-      <MessageAvatar tone="assistant" />
+      <div className="size-7 shrink-0" aria-hidden="true" />
       <div className="w-full min-w-0 max-w-[82%] flex-1">{children}</div>
     </Message>
   );
@@ -329,7 +329,7 @@ function AcpProcessingStatus({ kind, active, startAt, totalStartAt }: { kind: Ac
   const totalSeconds = useElapsedSeconds(active, totalStartAt ?? startAt);
   const label = processingLabel(t, kind);
   return (
-    <div className="min-w-0 rounded-2xl border border-primary/20 bg-primary/5 px-4 py-3 text-sm text-muted-foreground shadow-sm shadow-background/20">
+    <div className="min-w-0 rounded-xl border border-primary/20 bg-primary/5 px-3.5 py-2 text-sm text-muted-foreground shadow-sm shadow-background/20">
       <div className="flex min-w-0 flex-wrap items-center gap-2">
         <Loader2 className="size-4 shrink-0 animate-spin text-primary" />
         <span className="font-medium text-foreground">{label}</span>
@@ -383,7 +383,7 @@ export function ThoughtBlock({ event }: { event: AcpTimelineEvent }) {
   if (!event.content?.trim()) return null;
   const duration = formatThinkingDuration(t, event.durationMs);
   return (
-    <ChainOfThought className="min-w-0 max-w-full overflow-hidden rounded-2xl border border-border/60 bg-muted/15 px-4 py-3 shadow-sm shadow-background/20">
+    <ChainOfThought className="min-w-0 max-w-full overflow-hidden rounded-xl border border-border/60 bg-muted/15 px-3.5 py-2 shadow-sm shadow-background/20">
       <ChainOfThoughtStep>
         <ChainOfThoughtTrigger leftIcon={<Clock className="size-4" />} className="w-full min-w-0 justify-between">
           <span className="flex min-w-0 flex-wrap items-center gap-2">
@@ -409,6 +409,7 @@ export function ToolCallCard({ event, onLayoutChange }: { event: AcpTimelineEven
     state: toolState(event.status),
     input,
     output: details.output ?? undefined,
+    summary: toolSummary(details.queryBlocks),
     toolCallId: event.toolCallId ?? undefined,
     errorText: event.status && toolStatusTone(event.status) === 'danger' ? event.content ?? undefined : undefined,
   };
@@ -657,6 +658,11 @@ function queryBlocksFromTool(title: string | null | undefined) {
   if (parsedTitle.scope) blocks.push({ labelKey: 'acp.toolPath', value: parsedTitle.scope });
   if (parsedTitle.query) blocks.push({ labelKey: 'acp.toolQuery', value: parsedTitle.query });
   return blocks;
+}
+
+function toolSummary(blocks: Array<{ value: string }>) {
+  const values = blocks.map((block) => block.value.trim()).filter(Boolean);
+  return values.length > 0 ? values.join(' · ') : undefined;
 }
 
 function parseToolTitle(title: string | null | undefined) {

@@ -25,6 +25,7 @@ export type ToolPart = {
     | "output-error"
   input?: Record<string, unknown>
   output?: unknown
+  summary?: string
   toolCallId?: string
   errorText?: string
 }
@@ -50,7 +51,7 @@ export type ToolProps = {
 
 const Tool = ({ toolPart, labels, defaultOpen = false, className, icon, onOpenChange }: ToolProps) => {
   const [isOpen, setIsOpen] = useState(defaultOpen)
-  const { state, input, output } = toolPart
+  const { state, input, output, summary } = toolPart
 
   const getStateIcon = () => {
     if (icon) return icon
@@ -98,26 +99,31 @@ const Tool = ({ toolPart, labels, defaultOpen = false, className, icon, onOpenCh
   }
 
   return (
-    <div className={cn("border-border min-w-0 max-w-full overflow-hidden rounded-2xl border bg-card/75 shadow-sm shadow-background/30", className)}>
+    <div className={cn("border-border min-w-0 max-w-full overflow-hidden rounded-xl border bg-card/75 shadow-sm shadow-background/30", className)}>
       <Collapsible open={isOpen} onOpenChange={handleOpenChange}>
         <CollapsibleTrigger asChild>
-          <Button variant="ghost" className="h-auto w-full min-w-0 justify-between overflow-hidden rounded-none px-3.5 py-3 font-normal hover:bg-muted/20">
-            <div className="flex min-w-0 flex-1 items-center gap-2.5">
-              <span className="flex size-8 shrink-0 items-center justify-center rounded-xl bg-muted text-muted-foreground">{getStateIcon()}</span>
-              <span className="min-w-0 flex-1 truncate font-mono text-sm font-medium">{toolPart.type}</span>
-              {getStateBadge()}
+          <Button variant="ghost" className="h-auto w-full min-w-0 justify-between overflow-hidden rounded-none px-3 py-2 font-normal hover:bg-muted/20">
+            <div className="flex min-w-0 flex-1 items-center gap-2">
+              <span className="flex size-7 shrink-0 items-center justify-center rounded-lg bg-muted text-muted-foreground">{getStateIcon()}</span>
+              <span className="min-w-0 flex-1 truncate text-left font-mono text-sm">
+                <span className="font-semibold text-foreground">{toolPart.type}</span>
+                {summary ? <span className="ml-2 text-xs text-muted-foreground">{summary}</span> : null}
+              </span>
             </div>
-            <ChevronDown className={cn("size-4 shrink-0 text-muted-foreground transition-transform", isOpen && "rotate-180")} />
+            <span className="ml-3 flex shrink-0 items-center gap-3">
+              {getStateBadge()}
+              <ChevronDown className={cn("size-4 shrink-0 text-muted-foreground transition-transform", isOpen && "rotate-180")} />
+            </span>
           </Button>
         </CollapsibleTrigger>
         <CollapsibleContent className="border-border data-[state=closed]:animate-collapsible-up data-[state=open]:animate-collapsible-down min-w-0 max-w-full overflow-hidden border-t">
-          <div className="min-w-0 max-w-full space-y-3 overflow-hidden bg-background/50 p-3">
+          <div className="min-w-0 max-w-full space-y-2 overflow-hidden bg-background/50 p-2.5">
             {input && Object.keys(input).length > 0 ? (
               <div>
                 <h4 className="text-muted-foreground mb-2 text-xs font-medium uppercase tracking-wide">{labels.input}</h4>
                 <div className="grid min-w-0 max-w-full gap-2 sm:grid-cols-2">
                   {Object.entries(input).map(([key, value]) => (
-                    <div key={key} className="min-w-0 max-w-full overflow-hidden rounded-xl border bg-background/70 px-3 py-2 font-mono text-xs">
+                    <div key={key} className="min-w-0 max-w-full overflow-hidden rounded-lg border bg-background/70 px-2.5 py-1.5 font-mono text-xs">
                       <div className="text-muted-foreground mb-1 truncate">{key}</div>
                       <div className="break-all text-foreground [overflow-wrap:anywhere]">{formatValue(value)}</div>
                     </div>
@@ -129,7 +135,7 @@ const Tool = ({ toolPart, labels, defaultOpen = false, className, icon, onOpenCh
             {output ? (
               <div>
                 <h4 className="text-muted-foreground mb-2 text-xs font-medium uppercase tracking-wide">{labels.output}</h4>
-                <div className="max-h-60 max-w-full overflow-auto rounded-xl border bg-background/70 p-3 font-mono text-xs">
+                <div className="max-h-60 max-w-full overflow-auto rounded-lg border bg-background/70 p-2.5 font-mono text-xs">
                   <pre className="min-w-0 whitespace-pre-wrap break-words [overflow-wrap:anywhere]">{formatValue(output)}</pre>
                 </div>
               </div>
@@ -138,7 +144,7 @@ const Tool = ({ toolPart, labels, defaultOpen = false, className, icon, onOpenCh
             {state === "output-error" && toolPart.errorText ? (
               <div>
                 <h4 className="mb-2 text-xs font-medium uppercase tracking-wide text-destructive">{labels.error}</h4>
-                <div className="rounded-xl border border-destructive/30 bg-destructive/10 p-3 text-sm text-destructive break-words [overflow-wrap:anywhere]">
+                <div className="rounded-lg border border-destructive/30 bg-destructive/10 p-2.5 text-sm text-destructive break-words [overflow-wrap:anywhere]">
                   {toolPart.errorText}
                 </div>
               </div>
