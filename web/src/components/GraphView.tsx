@@ -20,7 +20,7 @@ import { Badge } from '@/components/ui/badge';
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip';
 import { EmptyState } from '@/components/PageScaffold';
 import { cn } from '@/lib/utils';
-import { normalizeTone } from '@/lib/status';
+import { normalizeTone, statusBadgeClass } from '@/lib/status';
 
 const NODE_WIDTH = 226;
 const NODE_HEIGHT = 138;
@@ -305,17 +305,17 @@ function WorkflowNode({ data }: NodeProps<Node<WorkflowNodeData>>) {
     >
       <Handle type="target" position={Position.Left} className="!size-2 !border-2 !border-card !bg-muted-foreground" />
       <Handle type="source" position={Position.Right} className="!size-2 !border-2 !border-card !bg-muted-foreground" />
-      <div className="flex items-start justify-between gap-2 px-3 pt-2">
+      <div className="pointer-events-none absolute left-3 right-3 top-2 z-10 flex items-start justify-between gap-2">
         <div className="flex min-w-0 flex-wrap gap-1.5">
           {node.artifactCount > 0 ? <Badge variant="secondary" className="h-5 px-1.5 text-[10px]">{artifactLabel}:{node.artifactCount}</Badge> : null}
           {node.attachmentCount > 0 ? <Badge variant="secondary" className="h-5 px-1.5 text-[10px]">{attachmentLabel}:{node.attachmentCount}</Badge> : null}
         </div>
-        {running ? <Badge className="h-5 shrink-0 gap-1.5 bg-gold-running px-1.5 text-[10px] text-white"><span className="workflow-running-dot bg-white" />{runningLabel}</Badge> : node.current ? <Badge variant="secondary" className="h-5 shrink-0 border border-primary/35 bg-primary/10 px-1.5 text-[10px] text-primary shadow-[0_0_0_1px_color-mix(in_srgb,var(--primary)_10%,transparent)]">{currentLabel}</Badge> : null}
+        {running ? <Badge className="h-5 shrink-0 gap-1.5 bg-gold-running px-1.5 text-[10px] text-white"><span className="workflow-running-dot bg-white" />{runningLabel}</Badge> : node.current ? <Badge variant="outline" className={cn('h-5 shrink-0 px-1.5 text-[10px]', node.status ? statusBadgeClass(node.status) : 'border-primary/35 bg-primary/10 text-primary')}>{node.status ? statusLabel : currentLabel}</Badge> : null}
       </div>
-      <div className="flex min-h-0 flex-1 items-center gap-3 px-4 pb-1 pt-1">
+      <div className="flex min-h-0 flex-1 items-center gap-3 px-4 py-1">
         {hasStatus ? (
           <span aria-label={statusLabel} title={statusLabel} className={cn('flex size-7 shrink-0 items-center justify-center rounded-full text-sm font-semibold text-white shadow-sm', statusMarkClass(tone), running && 'workflow-running-mark')}>
-            {statusMark(tone)}
+            {statusMark(node.status ?? node.outcome, tone)}
           </span>
         ) : null}
         <div className="min-w-0">
@@ -337,7 +337,9 @@ function WorkflowNode({ data }: NodeProps<Node<WorkflowNodeData>>) {
   );
 }
 
-function statusMark(tone: string) {
+function statusMark(value: string | null | undefined, tone: string) {
+  const status = value?.toLowerCase();
+  if (status === 'paused' || status === 'resumable') return 'Ⅱ';
   if (tone === 'success') return '✓';
   if (tone === 'danger') return '!';
   if (tone === 'running') return '•';

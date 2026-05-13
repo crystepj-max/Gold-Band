@@ -5,10 +5,11 @@ mod view_models;
 
 use anyhow::Context;
 use commands::{
-    choose_workspace, continue_run, get_app_bootstrap, get_round_detail, get_run_detail,
-    get_system_fonts, get_task_detail, get_task_list, get_workflow, kill_run, retry_run,
-    save_desktop_preferences,
-    select_recent_workspace, show_artifact, show_attachment, show_worker_ref, start_run,
+    cancel_acp_session, choose_workspace, continue_run, get_acp_raw_frames, get_acp_session,
+    get_app_bootstrap, get_log_page, get_round_detail, get_run_detail, get_system_fonts,
+    get_task_detail, get_task_list, get_workflow, kill_run, respond_acp_permission, retry_run,
+    save_desktop_preferences, select_recent_workspace, send_acp_prompt, show_artifact,
+    show_attachment, show_worker_ref, start_run,
 };
 use state::{DesktopContext, DesktopState};
 
@@ -33,6 +34,12 @@ fn run() -> anyhow::Result<()> {
             get_workflow,
             get_run_detail,
             get_round_detail,
+            get_log_page,
+            get_acp_session,
+            send_acp_prompt,
+            respond_acp_permission,
+            cancel_acp_session,
+            get_acp_raw_frames,
             start_run,
             continue_run,
             retry_run,

@@ -75,8 +75,8 @@ export interface RoundDetailVm {
   run: RunSummaryVm;
   round: RoundSummaryVm;
   graph: GraphVm;
-  stream: StreamItemVm[];
-  detail: ContentVm;
+  requirement: string;
+  selectedNodeDetail?: NodeDetailVm | null;
 }
 
 export interface RunGroupVm {
@@ -135,6 +135,171 @@ export interface GraphEdgeVm {
   from: string;
   to: string;
   label: string;
+}
+
+export interface NodeDetailVm {
+  id: string;
+  nodeId: string;
+  sequence?: number | null;
+  label: string;
+  nodeType: string;
+  status: string;
+  outcome?: string | null;
+  attemptId: string;
+  current: boolean;
+  startedAt: string;
+  finishedAt?: string | null;
+  artifactCount: number;
+  attachmentCount: number;
+  artifacts: AssetItemVm[];
+  attachments: AssetItemVm[];
+  hasProgressEvents: boolean;
+  hasRawStream: boolean;
+  hasWorkerRef: boolean;
+  acpSession?: AcpSessionVm | null;
+}
+
+export interface AcpSessionVm {
+  sessionId?: string | null;
+  provider: string;
+  adapterId?: string | null;
+  adapterDisplayName?: string | null;
+  cwd?: string | null;
+  status: string;
+  restored: boolean;
+  stopReason?: string | null;
+  config?: AcpSessionConfigVm | null;
+  events: AcpUiEventVm[];
+  pendingPermissions: AcpPermissionRequestVm[];
+  availableCommands?: unknown[] | null;
+  usage?: unknown | null;
+  diagnostics: AcpDiagnosticsVm;
+}
+
+export interface AcpSessionConfigVm {
+  currentModelId?: string | null;
+  currentModelName?: string | null;
+  currentModeId?: string | null;
+  currentModeName?: string | null;
+  models?: unknown | null;
+  modes?: unknown | null;
+  configOptions?: unknown | null;
+}
+
+export interface AcpUiEventVm {
+  id: string;
+  seq: number;
+  timestamp: string;
+  kind: string;
+  sessionId?: string | null;
+  content?: string | null;
+  title?: string | null;
+  toolCallId?: string | null;
+  status?: string | null;
+  raw?: unknown;
+}
+
+export interface AcpPermissionRequestVm {
+  requestId: string;
+  title: string;
+  toolCallId?: string | null;
+  options: AcpPermissionOptionVm[];
+  raw: unknown;
+}
+
+export interface AcpPermissionOptionVm {
+  optionId: string;
+  name: string;
+  kind: string;
+}
+
+export interface AcpDiagnosticsVm {
+  rawFrameCount: number;
+  eventCount: number;
+  errorCount: number;
+  lastError?: string | null;
+}
+
+export interface AcpRawFrameQueryInput {
+  page?: number;
+  pageSize?: number;
+  search?: string;
+  kind?: string;
+  direction?: string;
+}
+
+export interface AcpRawFrameVm {
+  id: string;
+  lineNumber: number;
+  timestamp?: string | null;
+  direction?: string | null;
+  kind: string;
+  content: string;
+  contentTruncated: boolean;
+}
+
+export interface AcpRawFramePageVm {
+  items: AcpRawFrameVm[];
+  page: number;
+  pageSize: number;
+  total: number;
+  hasPrevious: boolean;
+  hasNext: boolean;
+  order: string;
+  search?: string | null;
+  kind?: string | null;
+  direction?: string | null;
+}
+
+export interface AssetItemVm {
+  kind: 'artifact' | 'attachment' | string;
+  name: string;
+  title: string;
+  tone: string;
+  preview: string;
+  nodeId: string;
+  attemptId: string;
+}
+
+export interface LogEntryVm {
+  id: string;
+  timestamp: string;
+  entryType: string;
+  level?: string | null;
+  nodeId?: string | null;
+  attemptId?: string | null;
+  stage?: string | null;
+  summary: string;
+  source: string;
+  raw: unknown;
+}
+
+export interface LogPageVm {
+  items: LogEntryVm[];
+  page: number;
+  pageSize: number;
+  total: number;
+  hasPrevious: boolean;
+  hasNext: boolean;
+  tier: string;
+  hotLimit: number;
+  archiveRetentionDays: number;
+}
+
+export interface LogScopeInput {
+  taskId: string;
+  runId: string;
+  roundId?: string | null;
+  nodeId?: string | null;
+  attemptId?: string | null;
+}
+
+export interface LogQueryInput {
+  scope: LogScopeInput;
+  source?: 'system' | 'run-events' | 'progress-events' | 'raw-stream' | string;
+  page?: number;
+  pageSize?: number;
+  hotLimit?: number;
 }
 
 export interface StreamItemVm {

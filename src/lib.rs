@@ -1,3 +1,4 @@
+pub mod acp;
 pub mod app;
 pub mod artifacts;
 pub mod cli;

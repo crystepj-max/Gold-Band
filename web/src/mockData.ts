@@ -1,6 +1,9 @@
 import type {
   AppBootstrapVm,
   ContentVm,
+  LogPageVm,
+  LogQueryInput,
+  NodeDetailVm,
   PreferencesVm,
   RoundDetailVm,
   RoundSelection,
@@ -68,6 +71,62 @@ const failedAcceptanceGraph = {
   ],
   edges: [
     { from: 'dev', to: 'accept', label: 'observed' },
+  ],
+};
+
+const mockNodeDetail: NodeDetailVm = {
+  id: 'node-03 execute',
+  nodeId: 'node-03 execute',
+  sequence: 3,
+  label: 'Processing code logic...',
+  nodeType: 'exec',
+  status: 'running',
+  outcome: null,
+  attemptId: 'att-2-node03-rev1',
+  current: true,
+  startedAt: '2026-05-02 16:08',
+  finishedAt: null,
+  artifactCount: 3,
+  attachmentCount: 2,
+  hasProgressEvents: true,
+  hasRawStream: true,
+  hasWorkerRef: true,
+  acpSession: {
+    sessionId: 'acp-session-7f3',
+    provider: 'claude-acp',
+    adapterId: 'claude-agent-acp',
+    adapterDisplayName: 'Claude ACP',
+    cwd: 'D:\\Projects\\code\\ai\\Gold-Band',
+    status: 'running',
+    restored: true,
+    stopReason: null,
+    diagnostics: { rawFrameCount: 18, eventCount: 7, errorCount: 0, lastError: null },
+    pendingPermissions: [
+      {
+        requestId: 'perm-001',
+        title: '允许写入窗口管理文件',
+        toolCallId: 'tool-2',
+        options: [
+          { optionId: 'allow-once', name: '允许一次', kind: 'allow_once' },
+          { optionId: 'reject-once', name: '拒绝', kind: 'reject_once' },
+        ],
+        raw: {},
+      },
+    ],
+    events: [
+      { id: 'e1', seq: 1, timestamp: '2026-05-02 16:08', kind: 'textDelta', content: '我会先检查窗口管理相关文件。', sessionId: 'acp-session-7f3', raw: {} },
+      { id: 'e2', seq: 2, timestamp: '2026-05-02 16:09', kind: 'thoughtDelta', content: '需要确认 DPI 缩放和阴影配置是否共享状态。', sessionId: 'acp-session-7f3', raw: {} },
+      { id: 'e3', seq: 3, timestamp: '2026-05-02 16:10', kind: 'toolCall', title: 'Read window manager', toolCallId: 'tool-1', status: 'completed', sessionId: 'acp-session-7f3', raw: { toolCallId: 'tool-1', title: 'Read window manager', status: 'completed' } },
+      { id: 'e4', seq: 4, timestamp: '2026-05-02 16:11', kind: 'plan', sessionId: 'acp-session-7f3', raw: { entries: [{ content: '重构窗口状态', status: 'completed' }, { content: '修正 DPI 偏移', status: 'in_progress' }] } },
+      { id: 'e5', seq: 5, timestamp: '2026-05-02 16:12', kind: 'permissionRequest', title: '允许写入窗口管理文件', toolCallId: 'tool-2', status: 'pending', sessionId: 'acp-session-7f3', raw: { options: [{ optionId: 'allow-once', name: '允许一次', kind: 'allow_once' }, { optionId: 'reject-once', name: '拒绝', kind: 'reject_once' }] } },
+    ],
+  },
+  artifacts: [
+    { kind: 'artifact', name: 'window_manager_v2_core.rs', title: 'window_manager_v2_core.rs', tone: 'accent', preview: 'canonical artifact', nodeId: 'node-03 execute', attemptId: 'att-2-node03-rev1' },
+    { kind: 'artifact', name: 'layout_patch.json', title: 'layout_patch.json', tone: 'accent', preview: 'layout patch', nodeId: 'node-03 execute', attemptId: 'att-2-node03-rev1' },
+  ],
+  attachments: [
+    { kind: 'attachment', name: 'dpi_scaling_logs_win11.txt', title: 'dpi_scaling_logs_win11.txt', tone: 'neutral', preview: 'provider attachment', nodeId: 'node-03 execute', attemptId: 'att-2-node03-rev1' },
   ],
 };
 
@@ -162,7 +221,6 @@ export const mockRunDetail: RunDetailVm = {
 };
 
 export function mockRoundDetail(selection?: RoundSelection, route?: { taskId: string; runId: string; roundId: string }): RoundDetailVm {
-  const selected = selection?.kind ?? 'round';
   const isFailedAcceptanceRound = route?.runId === 'run-024' && route.roundId === 'round-001';
   const routeRun = isFailedAcceptanceRound ? { ...latestRun, id: 'run-024', status: 'completed', outcome: 'failure', currentRound: 'round-001', currentNode: 'accept', resumable: true } : latestRun;
   const routeRound = isFailedAcceptanceRound ? { ...rounds[0], id: 'round-001', runId: 'run-024', index: 1, status: 'completed', outcome: 'failure', trigger: 'initial', repairLoopsUsed: 0, currentNode: 'accept', artifactCount: 1, attachmentCount: 0 } : rounds[0];
@@ -170,16 +228,8 @@ export function mockRoundDetail(selection?: RoundSelection, route?: { taskId: st
     run: routeRun,
     round: routeRound,
     graph: isFailedAcceptanceRound ? failedAcceptanceGraph : graph,
-    stream: [
-      { id: 'requirement', title: 'Requirement', kind: 'requirement', tone: 'accent', content: task.requirementPreview },
-      { id: 'round-summary', title: 'Round Summary', kind: 'round', tone: 'success', content: '状态：已完成\n结果：成功\n触发：初始\n修复循环：0\n当前节点：accept' },
-      { id: 'node-03', title: 'Selected Node', kind: 'node', tone: 'running', nodeId: 'node-03 execute', content: '状态：运行中\nAttempt：att-2-node03-rev1\n已产出：3 个 artifact / 2 个 attachment' },
-      { id: 'artifact-a3', title: 'ARTIFACT A3', kind: 'artifact', tone: 'success', nodeId: 'node-03 execute', attemptId: 'att-2-node03-rev1', name: 'window_manager_v2_core.rs', content: 'window_manager_v2_core.rs updated 2m ago' },
-      { id: 'attachment-p2', title: 'ATTACHMENT P2', kind: 'attachment', tone: 'warning', nodeId: 'node-03 execute', attemptId: 'att-2-node03-rev1', name: 'dpi_scaling_logs_win11.txt', content: 'Captured 14m ago' },
-      { id: 'event-1', title: 'Provider started generation...', kind: 'event', tone: 'running', nodeId: 'node-03 execute', attemptId: 'att-2-node03-rev1', content: '14:22:05 provider started generation for node-03.' },
-      { id: 'log-1', title: 'Runtime Log', kind: 'log', tone: 'muted', nodeId: 'node-03 execute', attemptId: 'att-2-node03-rev1', content: 'node-03 execute stdout: compiling workspace and collecting artifacts.' },
-    ],
-    detail: mockRoundContent(selection),
+    requirement,
+    selectedNodeDetail: selection?.kind === 'node' || selection?.kind === 'artifact' || selection?.kind === 'attachment' || selection?.kind === 'worker-ref' || selection?.kind === 'log' ? { ...mockNodeDetail, nodeId: selection.nodeId ?? mockNodeDetail.nodeId } : null,
   };
 }
 
@@ -237,6 +287,40 @@ function mockRoundContent(selection?: RoundSelection): ContentVm {
     kind: selection.kind,
     content: JSON.stringify({ id: selection.id, message: selection.kind === 'log' ? 'mock runtime log detail' : 'mock run event detail' }, null, 2),
     metadata: { id: selection.id },
+  };
+}
+
+export function mockLogPage(query: LogQueryInput): LogPageVm {
+  const page = query.page ?? 0;
+  const pageSize = query.pageSize ?? 50;
+  const total = 126;
+  const source = query.source ?? 'system';
+  const start = page * pageSize;
+  const end = Math.min(total, start + pageSize);
+  return {
+    page,
+    pageSize,
+    total,
+    hasPrevious: page > 0,
+    hasNext: end < total,
+    tier: 'hot',
+    hotLimit: query.hotLimit ?? 1000,
+    archiveRetentionDays: 30,
+    items: Array.from({ length: Math.max(0, end - start) }, (_, offset) => {
+      const index = start + offset + 1;
+      return {
+        id: `${source}-${index}`,
+        timestamp: `2026-05-11 10:${String(index % 60).padStart(2, '0')}`,
+        entryType: source === 'raw-stream' ? 'stdout' : index % 3 === 0 ? 'node_started' : 'provider_event',
+        level: source === 'raw-stream' ? 'stdout' : null,
+        nodeId: query.scope.nodeId ?? 'node-03 execute',
+        attemptId: query.scope.attemptId ?? 'att-2-node03-rev1',
+        stage: index % 2 === 0 ? 'calling-provider' : 'streaming',
+        summary: source === 'raw-stream' ? `raw stream envelope ${index}` : `structured runtime event ${index}`,
+        source,
+        raw: { index, source },
+      };
+    }),
   };
 }
 

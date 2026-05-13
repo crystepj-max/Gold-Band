@@ -3,11 +3,11 @@
 ## 1. 一句话定义
 `worker-ref.json` 用来保存某个 attempt 对应的 **provider-specific worker 引用信息**。
 
-它的作用不是替代 provider 原始 transcript，而是让 Gold Band 能够：
-- 记录这次 attempt 实际调用了哪个 provider
-- 保存该 provider 返回的会话/继续引用
+它的作用不是替代 ACP session events / provider 原始 transcript，而是让 Gold Band 能够：
+- 记录这次 attempt 实际调用了哪个 provider / ACP adapter
+- 保存该 provider 返回的 ACP session id / 继续引用
 - 在需要时继续或打开原始 worker 会话
-- 将 provider-specific 差异收敛到一个清晰边界文件里
+- 将 provider-specific handoff 差异收敛到一个清晰边界文件里
 
 ## 2. 设计原则
 
@@ -22,7 +22,8 @@ provider adapter 可以返回 `worker-ref` 原材料，但 canonical 的 `worker
 
 ### 2.3 provider-specific 细节只能暴露在这里
 例如：
-- Claude Code 的 `session_id`
+- ACP 的 `session_id`
+- Claude Code legacy 的 `session_id`
 - 某个 provider 的 `conversation_id`
 - 某个 provider 的 continue token / session 引用
 - 对应的打开/继续命令模板
@@ -32,16 +33,20 @@ provider adapter 可以返回 `worker-ref` 原材料，但 canonical 的 `worker
 ```json
 {
   "version": "0.1",
-  "provider": "claude-code",
+  "provider": "claude-acp",
   "mode": "new",
   "supportsOpenSession": true,
   "supportsContinueSession": true,
   "continueRef": {
-    "sessionId": "4aefdd5f-1b5c-47d0-92a3-69005afb53f9"
+    "acpSessionId": "4aefdd5f-1b5c-47d0-92a3-69005afb53f9",
+    "adapterId": "claude-agent-acp",
+    "adapterDisplayName": "Claude ACP",
+    "cwd": "<workspace>",
+    "sessionFile": "<attempt>/acp.session.json",
+    "lastStopReason": "end_turn",
+    "restored": false
   },
-  "openCommand": {
-    "command": "claude -c 4aefdd5f-1b5c-47d0-92a3-69005afb53f9"
-  }
+  "openCommand": null
 }
 ```
 
@@ -102,4 +107,4 @@ rounds/<round-id>/nodes/<node-id>/attempt-<n>/worker-ref.json
 
 ## 8. 一句话总结
 
-> `worker-ref.json` 是 Gold Band 保存 provider-specific 会话引用的统一边界文件；它不参与控制流判断，只负责让 CLI / 插件能够在需要时继续或打开原始 worker 会话。
+> `worker-ref.json` 是 Gold Band 保存 ACP / provider-specific 会话引用的统一边界文件；它不参与控制流判断，只负责让应用、CLI 或插件能够在需要时继续或打开原始 worker 会话。

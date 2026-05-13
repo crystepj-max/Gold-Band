@@ -1,16 +1,27 @@
 use std::collections::BTreeSet;
 
+use gold_band::acp::client;
+use gold_band::acp::events::{append_ui_event, current_timestamp, permission_decision_event};
+use gold_band::acp::permission::write_permission_response;
+use gold_band::provider::PromptBundle;
+use gold_band::runtime::WorkerRefState;
+use gold_band::storage::read_json;
+
 use camino::Utf8PathBuf;
-use gold_band::config::{DesktopFontPreference, DesktopLanguage, DesktopThemePreference, RuntimeConfig};
+use gold_band::config::{
+    DesktopFontPreference, DesktopLanguage, DesktopThemePreference, RuntimeConfig,
+};
 use tauri::State;
 use tauri_plugin_dialog::DialogExt;
 
 use crate::i18n::Translator;
 use crate::state::DesktopState;
 use crate::view_models::{
-    AppBootstrapVm, ContentVm, PreferencesVm, RoundDetailVm, RoundSelectionInput, RunDetailVm,
-    RunSummaryVm, TaskDetailVm, TaskListVm, WorkflowVm, bootstrap_vm, preferences_vm,
-    round_detail_vm, run_detail_vm, run_summary_vm, task_detail_vm, task_list_vm, workflow_vm,
+    AcpRawFramePageVm, AcpRawFrameQueryInput, AcpSessionVm, AppBootstrapVm, ContentVm,
+    LogPageVm, LogQueryInput, PreferencesVm, RoundDetailVm, RoundSelectionInput, RunDetailVm,
+    RunSummaryVm, TaskDetailVm, TaskListVm, WorkflowVm, acp_raw_frame_page_vm,
+    acp_session_vm, bootstrap_vm, log_page_vm, preferences_vm, round_detail_vm, run_detail_vm,
+    run_summary_vm, task_detail_vm, task_list_vm, workflow_vm,
 };
 
 pub type CommandResult<T> = Result<T, String>;
@@ -41,7 +52,10 @@ pub fn get_task_list(state: State<'_, DesktopState>) -> CommandResult<TaskListVm
 }
 
 #[tauri::command]
-pub fn choose_workspace(app: tauri::AppHandle, state: State<'_, DesktopState>) -> CommandResult<Option<AppBootstrapVm>> {
+pub fn choose_workspace(
+    app: tauri::AppHandle,
+    state: State<'_, DesktopState>,
+) -> CommandResult<Option<AppBootstrapVm>> {
     let current = state.context().map_err(command_error)?.repo_root;
     let Some(path) = app
         .dialog()
@@ -57,11 +71,17 @@ pub fn choose_workspace(app: tauri::AppHandle, state: State<'_, DesktopState>) -
     let repo_root = Utf8PathBuf::from_path_buf(path)
         .map_err(|_| "selected workspace path is not valid UTF-8".to_string())?;
     let context = state.set_workspace(repo_root).map_err(command_error)?;
-    Ok(Some(bootstrap_vm(&context.app(), context.recent_workspaces)))
+    Ok(Some(bootstrap_vm(
+        &context.app(),
+        context.recent_workspaces,
+    )))
 }
 
 #[tauri::command]
-pub fn select_recent_workspace(state: State<'_, DesktopState>, workspace: String) -> CommandResult<AppBootstrapVm> {
+pub fn select_recent_workspace(
+    state: State<'_, DesktopState>,
+    workspace: String,
+) -> CommandResult<AppBootstrapVm> {
     let repo_root = Utf8PathBuf::from(workspace);
     let context = state.set_workspace(repo_root).map_err(command_error)?;
     Ok(bootstrap_vm(&context.app(), context.recent_workspaces))
@@ -168,6 +188,174 @@ pub fn show_artifact(
             metadata: serde_json::json!({ "nodeId": node_id, "attemptId": attempt_id }),
         })
         .map_err(command_error)
+}
+
+#[tauri::command]
+pub fn get_log_page(
+    state: State<'_, DesktopState>,
+    query: LogQueryInput,
+) -> CommandResult<LogPageVm> {
+    let app = state.app().map_err(command_error)?;
+    log_page_vm(&app, query).map_err(command_error)
+}
+
+#[tauri::command]
+pub fn get_acp_session(
+    state: State<'_, DesktopState>,
+    task_id: String,
+    run_id: String,
+    round_id: String,
+    node_id: String,
+    attempt_id: String,
+) -> CommandResult<Option<AcpSessionVm>> {
+    let app = state.app().map_err(command_error)?;
+    acp_session_vm(&app, &task_id, &run_id, &round_id, &node_id, &attempt_id).map_err(command_error)
+}
+
+#[tauri::command]
+pub async fn send_acp_prompt(
+    state: State<'_, DesktopState>,
+    task_id: String,
+    run_id: String,
+    round_id: String,
+    node_id: String,
+    attempt_id: String,
+    prompt: String,
+) -> CommandResult<Option<AcpSessionVm>> {
+    let app = state.app().map_err(command_error)?;
+    tauri::async_runtime::spawn_blocking(move || {
+        let attempt_dir =
+            app.paths
+                .attempt_dir(&task_id, &run_id, &round_id, &node_id, &attempt_id);
+        let worker_ref_path =
+            app.paths
+                .worker_ref_file(&task_id, &run_id, &round_id, &node_id, &attempt_id);
+        let continue_ref = if worker_ref_path.exists() {
+            read_json::<WorkerRefState>(&worker_ref_path)
+                .map_err(command_error)?
+                .continue_ref
+        } else {
+            None
+        };
+        client::run_prompt(
+            &app.config.acp_adapter,
+            app.paths.repo_root.clone(),
+            attempt_dir,
+            &PromptBundle {
+                system_prompt: String::new(),
+                user_prompt: prompt,
+            },
+            continue_ref,
+        )
+        .map_err(command_error)?;
+        acp_session_vm(&app, &task_id, &run_id, &round_id, &node_id, &attempt_id)
+            .map_err(command_error)
+    })
+    .await
+    .map_err(|error| error.to_string())?
+}
+
+#[tauri::command]
+pub fn respond_acp_permission(
+    state: State<'_, DesktopState>,
+    task_id: String,
+    run_id: String,
+    round_id: String,
+    node_id: String,
+    attempt_id: String,
+    request_id: String,
+    option_id: Option<String>,
+) -> CommandResult<Option<AcpSessionVm>> {
+    let app = state.app().map_err(command_error)?;
+    let attempt_dir = app
+        .paths
+        .attempt_dir(&task_id, &run_id, &round_id, &node_id, &attempt_id);
+    write_permission_response(
+        &attempt_dir,
+        &request_id,
+        option_id.clone(),
+        false,
+        current_timestamp(),
+    )
+    .map_err(command_error)?;
+    let events_path =
+        app.paths
+            .acp_events_file(&task_id, &run_id, &round_id, &node_id, &attempt_id);
+    let seq = next_acp_event_seq(&events_path);
+    append_ui_event(
+        &events_path,
+        &permission_decision_event(seq, request_id, option_id),
+    )
+    .map_err(command_error)?;
+    acp_session_vm(&app, &task_id, &run_id, &round_id, &node_id, &attempt_id).map_err(command_error)
+}
+
+fn next_acp_event_seq(path: &camino::Utf8Path) -> u64 {
+    if !path.exists() {
+        return 1;
+    }
+    std::fs::read_to_string(path.as_std_path())
+        .map(|content| {
+            content
+                .lines()
+                .filter(|line| !line.trim().is_empty())
+                .count() as u64
+                + 1
+        })
+        .unwrap_or(1)
+}
+
+#[tauri::command]
+pub fn cancel_acp_session(
+    state: State<'_, DesktopState>,
+    task_id: String,
+    run_id: String,
+    round_id: String,
+    node_id: String,
+    attempt_id: String,
+) -> CommandResult<Option<AcpSessionVm>> {
+    let app = state.app().map_err(command_error)?;
+    let marker = app
+        .paths
+        .attempt_dir(&task_id, &run_id, &round_id, &node_id, &attempt_id)
+        .join("acp.cancel-requested");
+    gold_band::storage::ensure_parent_dir(&marker).map_err(command_error)?;
+    std::fs::write(marker.as_std_path(), current_timestamp())
+        .map_err(|error| command_error(error.into()))?;
+    acp_session_vm(&app, &task_id, &run_id, &round_id, &node_id, &attempt_id).map_err(command_error)
+}
+
+#[tauri::command]
+pub async fn get_acp_raw_frames(
+    state: State<'_, DesktopState>,
+    task_id: String,
+    run_id: String,
+    round_id: String,
+    node_id: String,
+    attempt_id: String,
+    query: Option<AcpRawFrameQueryInput>,
+) -> CommandResult<AcpRawFramePageVm> {
+    let app = state.app().map_err(command_error)?;
+    tauri::async_runtime::spawn_blocking(move || {
+        acp_raw_frame_page_vm(
+            &app,
+            &task_id,
+            &run_id,
+            &round_id,
+            &node_id,
+            &attempt_id,
+            query.unwrap_or(AcpRawFrameQueryInput {
+                page: None,
+                page_size: None,
+                search: None,
+                kind: None,
+                direction: None,
+            }),
+        )
+        .map_err(command_error)
+    })
+    .await
+    .map_err(|error| error.to_string())?
 }
 
 #[tauri::command]

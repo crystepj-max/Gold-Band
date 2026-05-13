@@ -1,4 +1,4 @@
-use std::str::FromStr;
+use std::{collections::BTreeMap, str::FromStr};
 
 use anyhow::{Result, anyhow};
 use serde::{Deserialize, Serialize};
@@ -103,6 +103,31 @@ pub enum DesktopLanguage {
 
 pub type DesktopFontPreference = String;
 
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct AcpAdapterConfig {
+    pub command: String,
+    #[serde(default)]
+    pub args: Vec<String>,
+    pub display_name: String,
+    #[serde(default)]
+    pub env: BTreeMap<String, String>,
+}
+
+impl Default for AcpAdapterConfig {
+    fn default() -> Self {
+        Self {
+            command: "npx".to_string(),
+            args: vec![
+                "-y".to_string(),
+                "@agentclientprotocol/claude-agent-acp@latest".to_string(),
+            ],
+            display_name: "Claude ACP".to_string(),
+            env: BTreeMap::new(),
+        }
+    }
+}
+
 impl FromStr for DesktopLanguage {
     type Err = anyhow::Error;
 
@@ -128,6 +153,7 @@ pub struct UserConfig {
     pub desktop_language: Option<DesktopLanguage>,
     pub desktop_font: Option<DesktopFontPreference>,
     pub desktop_workspace: Option<String>,
+    pub acp_adapter: Option<AcpAdapterConfig>,
     #[serde(default)]
     pub recent_desktop_workspaces: Vec<String>,
 }
@@ -143,20 +169,22 @@ pub struct RuntimeConfig {
     pub desktop_theme: DesktopThemePreference,
     pub desktop_language: DesktopLanguage,
     pub desktop_font: DesktopFontPreference,
+    pub acp_adapter: AcpAdapterConfig,
 }
 
 impl Default for RuntimeConfig {
     fn default() -> Self {
         Self {
-            default_provider: "claude-code".to_string(),
+            default_provider: crate::domain::DEFAULT_PROVIDER.to_string(),
             log_level: RuntimeLogLevel::Debug,
             log_prompts: true,
             log_provider_command: true,
-            log_retention_days: 7,
+            log_retention_days: 30,
             console_theme: ConsoleThemeName::GoldBand,
             desktop_theme: DesktopThemePreference::System,
             desktop_language: DesktopLanguage::ZhCn,
             desktop_font: "app-default".to_string(),
+            acp_adapter: AcpAdapterConfig::default(),
         }
     }
 }
@@ -189,6 +217,9 @@ impl RuntimeConfig {
         }
         if let Some(desktop_font) = &user_config.desktop_font {
             self.desktop_font = desktop_font.clone();
+        }
+        if let Some(acp_adapter) = &user_config.acp_adapter {
+            self.acp_adapter = acp_adapter.clone();
         }
         self
     }

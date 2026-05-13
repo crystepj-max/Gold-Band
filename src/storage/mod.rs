@@ -238,6 +238,54 @@ impl GoldBandPaths {
         self.attempt_dir(task_id, run_id, round_id, node_id, attempt_id)
             .join("raw.stream.jsonl")
     }
+
+    pub fn acp_session_file(
+        &self,
+        task_id: &str,
+        run_id: &str,
+        round_id: &str,
+        node_id: &str,
+        attempt_id: &str,
+    ) -> Utf8PathBuf {
+        self.attempt_dir(task_id, run_id, round_id, node_id, attempt_id)
+            .join("acp.session.json")
+    }
+
+    pub fn acp_events_file(
+        &self,
+        task_id: &str,
+        run_id: &str,
+        round_id: &str,
+        node_id: &str,
+        attempt_id: &str,
+    ) -> Utf8PathBuf {
+        self.attempt_dir(task_id, run_id, round_id, node_id, attempt_id)
+            .join("acp.events.jsonl")
+    }
+
+    pub fn acp_raw_file(
+        &self,
+        task_id: &str,
+        run_id: &str,
+        round_id: &str,
+        node_id: &str,
+        attempt_id: &str,
+    ) -> Utf8PathBuf {
+        self.attempt_dir(task_id, run_id, round_id, node_id, attempt_id)
+            .join("acp.raw.jsonl")
+    }
+
+    pub fn acp_diagnostics_file(
+        &self,
+        task_id: &str,
+        run_id: &str,
+        round_id: &str,
+        node_id: &str,
+        attempt_id: &str,
+    ) -> Utf8PathBuf {
+        self.attempt_dir(task_id, run_id, round_id, node_id, attempt_id)
+            .join("acp.diagnostics.jsonl")
+    }
 }
 
 pub fn ensure_parent_dir(path: &Utf8Path) -> Result<()> {

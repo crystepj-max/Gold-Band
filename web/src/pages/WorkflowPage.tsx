@@ -43,7 +43,7 @@ type WorkflowLifecycle = {
 
 const pageSizes = [5, 10, 20];
 const collapsedRunRowMinHeight = 64;
-const historyRowGridClass = 'grid gap-3 md:grid-cols-[minmax(180px,0.92fr)_minmax(112px,0.34fr)_minmax(150px,0.48fr)_minmax(320px,1.18fr)_minmax(96px,auto)] md:items-center';
+const historyRowGridClass = 'grid min-w-0 gap-3 lg:grid-cols-[minmax(160px,0.92fr)_minmax(96px,0.34fr)_minmax(132px,0.48fr)_minmax(0,1.18fr)_minmax(84px,max-content)] lg:items-center';
 
 function historyBodyMinHeightFor(pageSize: number) {
   return Math.max(320, pageSize * collapsedRunRowMinHeight);
@@ -120,7 +120,7 @@ export function WorkflowPage({ vm, busy, refreshing, breadcrumbs, onNavigate, on
       <ScrollArea className="min-h-0 flex-1">
         <div className="space-y-3 p-3 xl:p-4">
           <AppCard className="flex min-h-0 flex-col gap-0 py-0">
-            <CardHeader className="flex flex-row items-center justify-between gap-3 border-b bg-muted/10 px-4 py-2.5 !pb-2.5">
+            <CardHeader className="flex flex-col items-stretch gap-3 border-b bg-muted/10 px-4 py-2.5 !pb-2.5 sm:flex-row sm:items-center sm:justify-between">
               <div className="flex min-w-0 flex-1 flex-wrap items-center gap-3">
                 <CardTitle className="shrink-0">{t('workflow.historyTitle')}</CardTitle>
                 <div className="flex min-w-0 flex-wrap items-center gap-2 text-sm text-muted-foreground">
@@ -134,13 +134,13 @@ export function WorkflowPage({ vm, busy, refreshing, breadcrumbs, onNavigate, on
                   <Button variant="outline" size="sm" onClick={() => setSortDir((value) => value === 'asc' ? 'desc' : 'asc')}>{t('common.sort')} {sortDir === 'asc' ? '↑' : '↓'}</Button>
                 </div>
               </div>
-              <Button className="shrink-0" disabled={startRunDisabled} title={startRunTitle} onClick={handleStartRun}>{t('common.startRun')}</Button>
+              <Button className="w-full shrink-0 sm:w-auto" disabled={startRunDisabled} title={startRunTitle} onClick={handleStartRun}>{t('common.startRun')}</Button>
             </CardHeader>
             <CardContent className="flex min-h-0 flex-1 flex-col px-3 py-2">
               <div className="min-h-0 flex-1" style={{ minHeight: historyBodyMinHeight }}>
                 {pagedRuns.length ? (
                   <div className="overflow-hidden rounded-xl border bg-card/55 shadow-sm shadow-background/10">
-                    <div className={cn(historyRowGridClass, 'border-b bg-muted/20 px-4 py-2 text-[11px] font-semibold uppercase tracking-[0.16em] text-muted-foreground')}>
+                    <div className={cn(historyRowGridClass, 'hidden border-b bg-muted/20 px-4 py-2 text-[11px] font-semibold uppercase tracking-[0.16em] text-muted-foreground lg:grid')}>
                       <span>{t('workflow.idGroup')}</span>
                       <span>{t('common.status')}</span>
                       <span>{t('workflow.historyProgress')}</span>
@@ -306,9 +306,9 @@ function RunGroupRow({ group, graph, expanded, onToggle, onOpenRound, onKillRun,
         <div className="min-w-0"><StatusBadge value={summaryStatusValue(group.run.status, group.run.outcome)} label={displayStatus(t, summaryStatusValue(group.run.status, group.run.outcome))} /></div>
         <HistoryCell label={t('workflow.currentRound')} value={group.run.currentRound ?? '-'} />
         <HistoryCell label={pauseReason ? t('workflow.pauseReason') : t('workflow.currentNode')} value={running ? <span className="inline-flex min-w-0 items-center gap-2"><span className="workflow-running-dot bg-gold-running" /> <span className="truncate">{currentNode}</span></span> : pauseReason ?? currentNode} title={pauseReason ?? currentNode} />
-        <div className="flex min-w-0 justify-start md:justify-end">
+        <div className="flex min-w-0 justify-start lg:justify-end">
           {running && group.run.currentRound ? (
-            <div className="inline-flex h-8 items-center overflow-hidden rounded-lg border bg-background/75 shadow-sm">
+            <div className="inline-flex h-8 max-w-full items-center overflow-hidden rounded-lg border bg-background/75 shadow-sm">
               <Button variant="ghost" size="sm" className="h-8 rounded-none px-3 text-xs shadow-none" onClick={(event) => { event.stopPropagation(); onOpenRound(group.run.currentRound!); }}>{t('workflow.openRound')}</Button>
               <span className="h-4 w-px bg-border" aria-hidden="true" />
               <Button variant="ghost" size="sm" className="h-8 rounded-none px-3 text-xs text-destructive shadow-none hover:bg-destructive/10 hover:text-destructive" onClick={(event) => { event.stopPropagation(); onKillRun(); }}>{t('common.stopRun')}</Button>
@@ -340,8 +340,8 @@ function RoundList({ id, runId, graph, rounds, onOpenRound, t }: {
 }) {
   if (!rounds.length) return <EmptyState className="mx-4 mb-4">{t('common.empty')}</EmptyState>;
   return (
-    <div id={id} className="border-t bg-muted/20 px-4 py-3">
-      <div className="ml-8 space-y-2 border-l-2 border-border/70 pl-5">
+    <div id={id} className="min-w-0 border-t bg-muted/20 px-3 py-3 sm:px-4">
+      <div className="ml-3 min-w-0 space-y-2 border-l-2 border-border/70 pl-4 lg:ml-8 lg:pl-5">
         {rounds.map((round) => <RoundRow key={round.id} runId={runId} graph={graph} round={round} onOpen={() => onOpenRound(round.id)} t={t} />)}
       </div>
     </div>
@@ -362,7 +362,7 @@ function RoundRow({ runId, graph, round, onOpen, t }: { runId: string; graph: Gr
       <div className="min-w-0"><StatusBadge value={summaryStatusValue(round.status, round.outcome)} label={displayStatus(t, summaryStatusValue(round.status, round.outcome))} /></div>
       <HistoryCell label={t('workflow.currentNode')} value={running ? <span className="inline-flex min-w-0 items-center gap-2"><span className="workflow-running-dot bg-gold-running" /> <span className="truncate">{currentNode}</span></span> : currentNode} title={currentNode} />
       <HistoryCell label={t('workflow.currentRound')} value={`#${round.index}`} />
-      <Button variant="outline" size="sm" className="justify-self-start md:justify-self-end" onClick={onOpen} aria-label={t('workflow.openRoundA11y', { runId, roundId: round.id })}>{t('workflow.openRound')}</Button>
+      <Button variant="outline" size="sm" className="w-full justify-self-start sm:w-auto lg:justify-self-end" onClick={onOpen} aria-label={t('workflow.openRoundA11y', { runId, roundId: round.id })}>{t('workflow.openRound')}</Button>
     </div>
   );
 }

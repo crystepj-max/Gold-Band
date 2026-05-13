@@ -12,13 +12,14 @@ Gold Band 全面切换到 ACP，不再维护 Claude Code legacy CLI fallback、d
 
 ACP 事件不再被蒸馏成 Gold Band 自研 `progress.events.jsonl`。后续会话详情直接围绕 ACP session events 建模和可视化，同时 Gold Band 继续使用 `run.json` / `round.json` / `node.json` / artifact contract 作为 runtime canonical state。
 
-Rust 层职责边界：
+Rust 层职责边界（当前实现对应 `src/acp/*` 与 `src/provider/mod.rs`）：
 
 - 发现并启动 ACP-compatible adapter。
 - 管理 stdio child process 生命周期。
 - 执行 ACP `initialize`、`session/new`、`session/load`、`session/prompt`、cancel、permission response。
 - 接收 `session/update` 并转发给会话详情 ViewModel。
-- 记录 ACP session id、adapter、capabilities、stop reason 和诊断 metadata。
+- 记录 ACP session id、adapter、capabilities、stop reason、adapter 返回的 session config 快照（`models` / `modes` / `configOptions`）和诊断 metadata。
+- 使用 `RuntimeConfig.acpAdapter` 配置 adapter command / args / displayName / env，默认命令为 `npx -y @agentclientprotocol/claude-agent-acp@latest`；Windows 运行时仅在启动进程前把 bare `npx` 映射为 `npx.cmd`。
 - 不解析 Claude Code CLI 文本输出。
 - 不从 terminal transcript 推导 UI 状态。
 - 不让 ACP session 替代 Gold Band 的 run / round / node / artifact canonical state。

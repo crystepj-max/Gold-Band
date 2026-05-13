@@ -1,0 +1,119 @@
+use std::{fs, thread, time::Duration};
+
+use anyhow::{Result, anyhow};
+use camino::{Utf8Path, Utf8PathBuf};
+use serde::{Deserialize, Serialize};
+use serde_json::Value;
+
+use crate::storage::{ensure_parent_dir, read_json, write_json};
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct PendingPermissionState {
+    pub request_id: String,
+    pub params: Value,
+    pub created_at: String,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct PermissionResponseState {
+    pub request_id: String,
+    pub option_id: Option<String>,
+    #[serde(default)]
+    pub cancelled: bool,
+    pub decided_at: String,
+}
+
+pub fn pending_permission_file(attempt_dir: &Utf8Path, request_id: &str) -> Utf8PathBuf {
+    attempt_dir.join(format!(
+        "acp.permission-request.{}.json",
+        sanitize_id(request_id)
+    ))
+}
+
+pub fn permission_response_file(attempt_dir: &Utf8Path, request_id: &str) -> Utf8PathBuf {
+    attempt_dir.join(format!(
+        "acp.permission-response.{}.json",
+        sanitize_id(request_id)
+    ))
+}
+
+pub fn write_pending_permission(
+    attempt_dir: &Utf8Path,
+    request_id: &str,
+    params: Value,
+    created_at: String,
+) -> Result<()> {
+    let path = pending_permission_file(attempt_dir, request_id);
+    write_json(
+        &path,
+        &PendingPermissionState {
+            request_id: request_id.to_string(),
+            params,
+            created_at,
+        },
+    )
+}
+
+pub fn write_permission_response(
+    attempt_dir: &Utf8Path,
+    request_id: &str,
+    option_id: Option<String>,
+    cancelled: bool,
+    decided_at: String,
+) -> Result<()> {
+    let path = permission_response_file(attempt_dir, request_id);
+    ensure_parent_dir(&path)?;
+    write_json(
+        &path,
+        &PermissionResponseState {
+            request_id: request_id.to_string(),
+            option_id,
+            cancelled,
+            decided_at,
+        },
+    )
+}
+
+pub fn wait_for_permission_response(
+    attempt_dir: &Utf8Path,
+    request_id: &str,
+) -> Result<PermissionResponseState> {
+    let path = permission_response_file(attempt_dir, request_id);
+    loop {
+        if path.exists() {
+            let response = read_json(&path)?;
+            let _ = fs::remove_file(path.as_std_path());
+            return Ok(response);
+        }
+        thread::sleep(Duration::from_millis(200));
+    }
+}
+
+pub fn acp_permission_response_result(response: PermissionResponseState) -> Result<Value> {
+    if response.cancelled {
+        return Ok(serde_json::json!({ "outcome": { "outcome": "cancelled" } }));
+    }
+    let option_id = response
+        .option_id
+        .ok_or_else(|| anyhow!("permission response requires optionId unless cancelled"))?;
+    Ok(serde_json::json!({
+        "outcome": {
+            "outcome": "selected",
+            "optionId": option_id,
+        }
+    }))
+}
+
+fn sanitize_id(id: &str) -> String {
+    id.chars()
+        .map(|ch| {
+            if ch.is_ascii_alphanumeric() || ch == '-' || ch == '_' {
+                ch
+            } else {
+                '_'
+            }
+        })
+        .collect()
+}

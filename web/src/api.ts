@@ -2,6 +2,7 @@ import { invoke } from '@tauri-apps/api/core';
 import {
   mockBootstrap,
   mockContent,
+  mockLogPage,
   mockRoundDetail,
   mockRunDetail,
   mockTaskDetail,
@@ -9,11 +10,16 @@ import {
   mockWorkflow,
 } from './mockData';
 import type {
+  AcpRawFramePageVm,
+  AcpRawFrameQueryInput,
+  AcpSessionVm,
   AppBootstrapVm,
   ContentVm,
   DesktopLanguage,
   DesktopFontPreference,
   DesktopThemePreference,
+  LogPageVm,
+  LogQueryInput,
   PreferencesVm,
   RoundDetailVm,
   RoundSelection,
@@ -212,6 +218,41 @@ export function retryRun(taskId: string, runId: string) {
 
 export function killRun(taskId: string, runId: string) {
   return command<RunSummaryVm>('kill_run', { taskId, runId }, { ...mockRunDetail.run, taskId, id: runId, status: 'completed', outcome: 'killed' });
+}
+
+export function getLogPage(query: LogQueryInput) {
+  return command<LogPageVm>('get_log_page', { query }, mockLogPage(query));
+}
+
+export function getAcpSession(taskId: string, runId: string, roundId: string, nodeId: string, attemptId: string, fallback?: AcpSessionVm | null) {
+  return command<AcpSessionVm | null>('get_acp_session', { taskId, runId, roundId, nodeId, attemptId }, fallback ?? null);
+}
+
+export function sendAcpPrompt(taskId: string, runId: string, roundId: string, nodeId: string, attemptId: string, prompt: string, fallback?: AcpSessionVm | null) {
+  return command<AcpSessionVm | null>('send_acp_prompt', { taskId, runId, roundId, nodeId, attemptId, prompt }, fallback ?? null);
+}
+
+export function respondAcpPermission(taskId: string, runId: string, roundId: string, nodeId: string, attemptId: string, requestId: string, optionId: string, fallback?: AcpSessionVm | null) {
+  return command<AcpSessionVm | null>('respond_acp_permission', { taskId, runId, roundId, nodeId, attemptId, requestId, optionId }, fallback ?? null);
+}
+
+export function cancelAcpSession(taskId: string, runId: string, roundId: string, nodeId: string, attemptId: string, fallback?: AcpSessionVm | null) {
+  return command<AcpSessionVm | null>('cancel_acp_session', { taskId, runId, roundId, nodeId, attemptId }, fallback ?? null);
+}
+
+export function getAcpRawFrames(taskId: string, runId: string, roundId: string, nodeId: string, attemptId: string, query?: AcpRawFrameQueryInput) {
+  return command<AcpRawFramePageVm>('get_acp_raw_frames', { taskId, runId, roundId, nodeId, attemptId, query }, {
+    items: [],
+    page: query?.page ?? 0,
+    pageSize: query?.pageSize ?? 100,
+    total: 0,
+    hasPrevious: false,
+    hasNext: false,
+    order: 'latest',
+    search: query?.search ?? null,
+    kind: query?.kind ?? null,
+    direction: query?.direction ?? null,
+  });
 }
 
 export function showArtifact(taskId: string, runId: string, roundId: string, nodeId: string, attemptId: string, name: string) {

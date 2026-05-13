@@ -44,9 +44,9 @@
   - `run open-session`
 
 ### 暂不做
-- 多 provider 真正接入
-- `progress.events` 精细事件模型
-- raw stream 复杂映射
+- 非 ACP provider 的长期独立可视化协议
+- `progress.events` 精细事件模型（已被 ACP-first 会话可视化方向取代）
+- raw stream 复杂映射（后续只作为 raw/debug viewer）
 - VSCode 插件
 - 复杂 doctor/test matrix
 - 高级调度 / 多 run 并发 orchestration
@@ -94,7 +94,9 @@
 - 2026-05-10：Workflow 运行记录改为单展开 accordion，同一时间最多展开一个 run，降低多条 run 同时展开时的视觉噪音；工作空间选择页主视觉图标改为复用 Gold Band logo；Run 分组行操作列没有操作时不再显示横线占位。
 - 2026-05-11：Workflow 运行中 Run 的操作列提供查看与停止；停止会终止当前 provider 进程树并把 run 终止为 killed；最新 Run 未终止时禁用新建 Run，避免同一任务并发启动多个 workflow。
 - 2026-05-11：Round 详情工作图交互破坏式升级：单击节点打开结构化详情抽屉，节点资源进入二级抽屉，会话按 `progress.events` / `raw.stream` 分离，日志从会话中独立为分页日志抽屉；默认只检索最近约 1000 条热日志，全量日志保留 30 天。
-- 2026-05-12：Round 详情工作图节点状态视觉收敛：未选中节点保持白底卡片，当前节点仅保留随主题联动的“当前”徽标，只有用户明确选中节点才使用卡片级蓝色边框 / 浅蓝底 primary 强调，避免当前态被误解为选中态。
+- 2026-05-12：ACP-first 重构决策：废弃新增自研 `progress.events.jsonl` 精细事件模型，后续通过 ACP 调用 agent/provider，直接使用 ACP 统一后的 session events 在 Round 节点会话详情中展示原始 agent 过程；legacy Claude Code direct / raw stream 仅作为 fallback/debug，不再驱动新的可视化协议。
+- 2026-05-12：Round 详情工作图节点状态视觉收敛：未选中节点保持白底卡片，当前节点仅保留随主题联动的状态徽标，暂停态显示“已暂停”而不是运行中，只有用户明确选中节点才使用卡片级蓝色边框 / 浅蓝底 primary 强调，避免当前态被误解为选中态。
+- 2026-05-12：修正任务工作流页和 Round 详情页窄客户端响应式：运行记录五列布局只在足够宽度启用，不足时改为纵向紧凑栅格；Round 工作图 Header 的选中节点说明限制在剩余宽度内截断，避免标题被挤成多行或内容向右溢出。
 - 2026-05-07：任务编排首页移除页面级 summary cards 和 ModuleBar 状态 tabs，全部任务 / 运行中 / 已完成改为表格内快捷筛选，可恢复 / 失败 / 配置异常改为状态筛选，并新增任务 ID、标题、需求与最新 Run 的关键字搜索；首页定位从运行态数据看板收敛为任务工作台。
 - 2026-05-07：桌面端 UI 框架层级收敛为少卡片工作台规则：AppCard 与 Metric 弱化边框和阴影，Settings 页由三张独立卡片改为单主面板 + section 分隔，主题摘要、字体选项和本地字体预览降级为低对比选项行；各主题共享同一布局层级，Tauri command、view model 和偏好保存契约不变。
 - 启动：`npm run dev`；构建：`npm run build`。

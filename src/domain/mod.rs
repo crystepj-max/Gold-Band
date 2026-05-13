@@ -2,7 +2,7 @@ use serde::{Deserialize, Serialize};
 use std::collections::BTreeMap;
 
 pub const VERSION: &str = "0.1";
-pub const DEFAULT_PROVIDER: &str = "claude-code";
+pub const DEFAULT_PROVIDER: &str = "claude-acp";
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "kebab-case")]
@@ -49,6 +49,8 @@ pub enum SessionMode {
 pub enum PauseReason {
     ProcessInterrupted,
     ErrorBlocked,
+    WaitingForUserInput,
+    PermissionRequested,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]

@@ -127,9 +127,9 @@ export function RoundDetailPage({ vm, breadcrumbs, selection, refreshing, onRefr
       <div className="min-h-0 flex-1 overflow-hidden p-4 xl:p-5">
         <AppCard className="flex h-full min-h-[420px] min-w-0 flex-col gap-0 overflow-hidden py-0">
           <CardHeader className="border-b px-4 py-2.5">
-            <div className="flex items-center justify-between gap-3">
-              <CardTitle>{t('roundDetail.graph')}</CardTitle>
-              {selectedNodeId ? <span className="min-w-0 truncate text-xs text-muted-foreground">{t('roundDetail.selectedNode', { node: formatCurrentNode(t, vm.graph, selectedNodeId) })}</span> : null}
+            <div className="flex min-w-0 flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
+              <CardTitle className="shrink-0 whitespace-nowrap">{t('roundDetail.graph')}</CardTitle>
+              {selectedNodeId ? <span className="min-w-0 truncate text-xs text-muted-foreground sm:flex-1 sm:text-right">{t('roundDetail.selectedNode', { node: formatCurrentNode(t, vm.graph, selectedNodeId) })}</span> : null}
             </div>
           </CardHeader>
           <CardContent className="min-h-0 flex-1 p-3">

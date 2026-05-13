@@ -1,5 +1,7 @@
 # Gold Band 日志 / 进度可观测性落地计划
 
+> 2026-05-12 更新：本文记录的是 ACP-first 重构前的日志 / raw stream 落地计划。新的 provider 会话可视化方向已切换为 ACP session events，`progress.events.jsonl` 不再作为新增目标；attempt 级会话观测应参考 `acp接入/acp-first-refactor-plan.md`。
+
 ## Context
 当前 `cargo run -- run start task-001` 在真实执行时几乎没有过程反馈：CLI 只会在命令返回后打印最终 JSON，而 provider 调用期间用户看不到“现在正在做什么”；同时仓库里虽然已经有 progress 设计文档（`raw.stream.jsonl`、`progress.events.jsonl`、`run-progress.json`），但代码层还没有真正把这些观测文件打通。用户明确要求这一轮优先解决“过程黑盒”问题：控制台要有关键进度提示，但核心日志应以文件落盘为主，而且希望整个系统运行过程也能被记录下来；在 `progress.events.jsonl` 尚未完全设计实现前，可以先优先落地 `raw.stream.jsonl`。
 

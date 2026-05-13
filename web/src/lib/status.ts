@@ -1,8 +1,8 @@
 import { cn } from '@/lib/utils';
 
-const runningTones = ['running', 'paused', 'resumable', 'in_progress', 'active'];
+const runningTones = ['running', 'in_progress', 'active'];
 const successTones = ['completed', 'complete', 'success', 'succeeded', 'valid', 'passed'];
-const warningTones = ['warning', 'pending', 'missing', 'missing-workflow', 'skipped'];
+const warningTones = ['warning', 'pending', 'paused', 'resumable', 'missing', 'missing-workflow', 'skipped'];
 const dangerTones = ['failed', 'failure', 'error', 'invalid', 'killed', 'cancelled', 'canceled'];
 
 export function normalizeTone(value?: string | null, explicitTone?: string | null) {

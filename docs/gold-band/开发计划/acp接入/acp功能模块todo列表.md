@@ -1,5 +1,15 @@
 # ACP 接入功能模块 Todo 列表
 
+## 当前实现状态
+
+- 默认 provider 已切换为 `claude-acp`，新运行路径通过 ACP stdio adapter 发送 `initialize` / `session/new|load` / `session/prompt`。
+- attempt 目录新增 `acp.session.json`、`acp.events.jsonl`、`acp.raw.jsonl`、`acp.diagnostics.jsonl`。
+- Round 节点详情的会话 Tab 已切换为 ACP Dialog / Chat UI，legacy progress/raw stream 不再作为主会话视图。
+- ACP Dialog / Chat UI 已接入 prompt-kit copy-in 组件：`ChatContainer`、`Message`、`PromptInput`、`Tool`、`ChainOfThought`。
+- 权限请求可落盘为 pending event，并通过 Tauri `respond_acp_permission` 写入 response 文件供 provider loop 恢复。
+- ACP prompt 会在发送 `session/prompt` 前持久化 synthetic `userTextDelta`，用于展示初始 prompt 和继续输入。
+- Raw frames 诊断读取已从普通 session 刷新路径中解耦，普通刷新只统计行数；详情视图按 JSONL 行做后端分页、关键词检索、direction 和 kind/method 过滤，默认打开最新页，不把全量 `acp.raw.jsonl` 传给前端。
+
 ## 设计原则
 
 - ACP 是 Gold Band 后续唯一的 Claude Agent / provider 接入路径。
@@ -211,8 +221,10 @@
 
 ### 主要任务
 
-- 实现 `ACPComposer` 的输入、发送、清空和等待态。
-- 将自由文本回答映射为下一次 `session/prompt`。
+- 使用 prompt-kit `PromptInput` 实现输入、发送、清空和等待态。
+- 点击发送后立即清空输入并乐观追加右侧用户气泡；`session/prompt` 请求中展示“发送中”，请求完成且消息已发出后等待首帧时切换为“处理中”，并保持 composer action 行与发送按钮间距。
+- 将自由文本回答映射为下一次 `session/prompt`，继续会话只发送用户文本，不追加固定内部续聊说明；system prompt 仅在新建 ACP session 时通过 `_meta.systemPrompt.append` 注入。
+- 在 ACP client 发送前写入 synthetic `userTextDelta`，确保初始 prompt 与继续输入都可回放。
 - 在 permission pending、adapter disconnected、node not ready 时禁用发送。
 - 展示发送失败并允许重试。
 
@@ -285,7 +297,8 @@
 ### 主要任务
 
 - 将 thought delta 聚合为 thought block。
-- 默认折叠展示。
+- 使用 prompt-kit `ChainOfThought` 默认折叠展示。
+- 标题展示由 ACP event timestamp 派生的思考耗时，不展示字符数。
 - 标识其为 agent 内部过程。
 - provider 不返回 thought 时隐藏该模块。
 
@@ -323,9 +336,10 @@
 
 ### 主要任务
 
-- 创建 tool call 卡片。
+- 使用 prompt-kit `Tool` 创建 tool call 卡片。
 - 将 update 原地合并到同一卡片。
-- 展示工具名、状态、参数摘要、输出摘要。
+- 展示工具名、国际化状态、参数摘要、输出摘要。
+- 卡片默认紧凑显示，展开后展示路径、查询等关键参数和输出。
 - 聚合 terminal metadata、cwd、exit code、文件位置。
 
 ### 不做什么
@@ -479,6 +493,8 @@
 ### 主要任务
 
 - 按 event kind 过滤 raw frame。
+- 普通 session ViewModel 只统计 raw frame 行数，不解析完整 raw JSONL。
+- Raw frame 详情按需读取，并设置读取大小边界，避免大文件阻塞会话主界面。
 - 支持复制原始事件。
 - 将 raw frame 关联到 message / tool call / permission request。
 - 展示 adapter crash、auth required、timeout 等错误。

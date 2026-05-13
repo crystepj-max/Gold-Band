@@ -307,7 +307,9 @@ pub(crate) fn finalize_ai_attempt(
             node.status = RunStatus::Completed;
             node.outcome = Some(NodeOutcome::Failure);
         }
-        ProviderRunStatus::Interrupted => {
+        ProviderRunStatus::Interrupted
+        | ProviderRunStatus::WaitingForUserInput
+        | ProviderRunStatus::PermissionRequested => {
             node.status = RunStatus::Paused;
             node.outcome = None;
         }

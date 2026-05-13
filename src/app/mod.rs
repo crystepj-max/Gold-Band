@@ -20,7 +20,7 @@ use crate::domain::{PauseReason, RunStatus};
 use crate::dsl::{EdgeOutcome, WorkflowDsl, validate_workflow};
 use crate::provider::{
     DoctorResult, ProviderAdapter, ProviderCapabilities, ProviderInfo, provider_capabilities,
-    provider_from_id,
+    provider_from_config,
 };
 use crate::runtime::{
     NodeState, RoundState, RunState, TaskState, WorkerRefState, validate_node_state,
@@ -192,8 +192,8 @@ impl App {
     }
 
     pub fn with_config(repo_root: Utf8PathBuf, config: RuntimeConfig) -> Self {
-        let provider = provider_from_id(&config.default_provider)
-            .expect("configured default provider must be supported");
+        let provider =
+            provider_from_config(&config).expect("configured default provider must be supported");
         Self {
             paths: GoldBandPaths::new(repo_root),
             config,
