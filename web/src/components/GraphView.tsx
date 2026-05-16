@@ -293,13 +293,13 @@ function matchesNodeId(node: GraphNodeVm, id?: string | null) {
 }
 
 function graphNodeDisplayStatus(node: GraphNodeVm, activeStatus?: string | null) {
-  const lifecycleStatus = node.status ?? activeStatus ?? null;
+  const lifecycleStatus = node.current && activeStatus ? activeStatus : node.status ?? activeStatus ?? null;
   if (isProcessStatus(lifecycleStatus)) return lifecycleStatus;
   return node.outcome ?? lifecycleStatus;
 }
 
 function isProcessStatus(status?: string | null) {
-  return ['running', 'in_progress', 'active', 'pending', 'paused', 'resumable'].includes(status?.toLowerCase() ?? '');
+  return ['running', 'in_progress', 'active', 'pending', 'paused', 'resumable', 'error-blocked'].includes(status?.toLowerCase() ?? '');
 }
 
 function WorkflowNode({ data }: NodeProps<Node<WorkflowNodeData>>) {

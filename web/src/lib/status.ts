@@ -3,7 +3,7 @@ import { cn } from '@/lib/utils';
 const runningTones = ['running', 'in_progress', 'active'];
 const successTones = ['completed', 'complete', 'success', 'succeeded', 'valid', 'passed'];
 const warningTones = ['warning', 'pending', 'paused', 'resumable', 'missing', 'missing-workflow', 'skipped'];
-const dangerTones = ['failed', 'failure', 'error', 'invalid', 'killed', 'cancelled', 'canceled'];
+const dangerTones = ['failed', 'failure', 'error', 'error-blocked', 'invalid', 'killed', 'cancelled', 'canceled'];
 const stoppableRunStatuses = ['running', 'paused'];
 
 export function isRunStoppable(status?: string | null) {

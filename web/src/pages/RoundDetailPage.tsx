@@ -1,9 +1,9 @@
 import { useEffect, useMemo, useState, type ReactNode } from 'react';
 import { useTranslation } from 'react-i18next';
-import type { AssetItemVm, ContentVm, GraphNodeVm, LogEntryVm, LogPageVm, LogQueryInput, NodeDetailVm, RoundDetailVm, RoundSelection } from '../types';
+import type { AcpUiEventVm, AssetItemVm, ContentVm, GraphNodeVm, LogEntryVm, LogPageVm, LogQueryInput, NodeDetailVm, RoundDetailVm, RoundSelection } from '../types';
 import { displayStatus } from '../i18n';
 import { getLogPage, showArtifact, showAttachment } from '../api';
-import { ACPChatDialog } from '../components/acp/ACPChatDialog';
+import { ACPChatDialog, createAcpPromptId, optimisticUserEvent, updateAcpOptimisticEvents } from '../components/acp/ACPChatDialog';
 import { DetailViewerContent } from '../components/DetailViewer';
 import { GraphView } from '../components/GraphView';
 import { RequirementDetailSheet, RequirementTeaser, fullRequirementText } from '../components/RequirementDisclosure';
@@ -28,8 +28,10 @@ interface RoundDetailPageProps {
   breadcrumbs?: ReactNode;
   selection: RoundSelection;
   refreshing: boolean;
+  busy: boolean;
   onRefresh: () => void;
   onSelect: (selection: RoundSelection) => void;
+  onContinueRun: (taskId: string, runId: string, promptId: string) => Promise<unknown>;
 }
 
 type NodeDrawerTab = 'detail' | 'session';
@@ -37,7 +39,7 @@ type NodeDrawerTab = 'detail' | 'session';
 const defaultLogPageSize = 50;
 const defaultHotLimit = 1000;
 
-export function RoundDetailPage({ vm, breadcrumbs, selection, refreshing, onRefresh, onSelect }: RoundDetailPageProps) {
+export function RoundDetailPage({ vm, breadcrumbs, selection, refreshing, busy, onRefresh, onSelect, onContinueRun }: RoundDetailPageProps) {
   const { t } = useTranslation();
   const [requirementOpen, setRequirementOpen] = useState(false);
   const [nodeDrawerOpen, setNodeDrawerOpen] = useState(false);
@@ -46,6 +48,7 @@ export function RoundDetailPage({ vm, breadcrumbs, selection, refreshing, onRefr
   const [assetContent, setAssetContent] = useState<ContentVm | null>(null);
   const [assetLoading, setAssetLoading] = useState(false);
   const [logDrawerOpen, setLogDrawerOpen] = useState(false);
+  const [optimisticAcpEventsByKey, setOptimisticAcpEventsByKey] = useState<Record<string, AcpUiEventVm[]>>({});
   const selectedNodeId = selectedNodeIdFromSelection(selection);
 
   useEffect(() => {
@@ -63,10 +66,13 @@ export function RoundDetailPage({ vm, breadcrumbs, selection, refreshing, onRefr
   if (!vm) return <Page><EmptyState>{t('common.loading')}</EmptyState></Page>;
 
   const requirement = fullRequirementText(vm.requirement, null, t('common.empty'));
-  const roundDisplayStatus = vm.round.outcome ?? vm.round.status;
-  const roundTerminal = Boolean(vm.round.outcome) || ['success', 'danger'].includes(normalizeTone(vm.round.status));
-  const currentNode = formatCurrentNode(t, vm.graph, vm.round.currentNode ?? vm.run.currentNode);
+  const roundDisplayStatus = displayPausedRuntimeStatus(vm.round.outcome ?? vm.round.status, vm.run.pauseReason);
+  const roundTerminal = Boolean(vm.round.outcome) || ['success', 'danger'].includes(normalizeTone(roundDisplayStatus));
+  const activeNodeId = vm.round.currentNode ?? vm.run.currentNode;
+  const activeAttemptId = vm.run.currentAttempt;
+  const currentNode = formatCurrentNode(t, vm.graph, activeNodeId);
   const nodeDetail = vm.selectedNodeDetail;
+  const canContinueRound = isRoundContinuable(vm);
 
   const openNodeDrawer = (node: GraphNodeVm, tab: NodeDrawerTab = 'detail') => {
     const nodeId = canonicalNodeId(node);
@@ -85,6 +91,28 @@ export function RoundDetailPage({ vm, breadcrumbs, selection, refreshing, onRefr
   const openAsset = (nextAsset: AssetItemVm) => {
     setAsset(nextAsset);
     setAssetContent(null);
+  };
+
+  const handleContinueRun = async () => {
+    if (!activeNodeId || !activeAttemptId) return;
+    const promptId = createAcpPromptId();
+    const optimisticKey = acpOptimisticKey(vm.run.taskId, vm.run.id, vm.round.id, activeNodeId, activeAttemptId);
+    const optimisticEvent = optimisticUserEvent(t('acp.continuePrompt'), promptId);
+    const appendOptimisticEvent = (events: AcpUiEventVm[]) => [...events.filter((event) => promptIdFromAcpEvent(event) !== promptId), optimisticEvent];
+    updateAcpOptimisticEvents(optimisticKey, appendOptimisticEvent);
+    setOptimisticAcpEventsByKey((current) => ({
+      ...current,
+      [optimisticKey]: appendOptimisticEvent(current[optimisticKey] ?? []),
+    }));
+    const result = await onContinueRun(vm.run.taskId, vm.run.id, promptId);
+    if (result) return;
+    const markPromptFailed = (events: AcpUiEventVm[]) => events.map((event) => promptIdFromAcpEvent(event) === promptId ? { ...event, status: 'failed' } : event);
+    updateAcpOptimisticEvents(optimisticKey, markPromptFailed);
+    setOptimisticAcpEventsByKey((current) => {
+      const events = markPromptFailed(current[optimisticKey] ?? []);
+      if (events.length === 0) return current;
+      return { ...current, [optimisticKey]: events };
+    });
   };
 
   return (
@@ -106,7 +134,7 @@ export function RoundDetailPage({ vm, breadcrumbs, selection, refreshing, onRefr
               {t('common.refresh')}
             </Button>
             <Button variant="outline" onClick={() => setLogDrawerOpen(true)}>{t('roundDetail.openLog')}</Button>
-            <Button>{t('common.continueRun')}</Button>
+            {canContinueRound ? <Button disabled={busy} onClick={() => void handleContinueRun()}>{t('common.continueRun')}</Button> : null}
             <DropdownMenu>
               <DropdownMenuTrigger asChild>
                 <Button variant="outline" size="icon" aria-label={t('roundDetail.moreActions')}>
@@ -140,7 +168,7 @@ export function RoundDetailPage({ vm, breadcrumbs, selection, refreshing, onRefr
               variant="actual"
               selectedNodeId={selectedNodeId}
               activeNodeId={vm.round.currentNode ?? vm.run.currentNode}
-              activeStatus={vm.round.status}
+              activeStatus={roundDisplayStatus}
               onNodeSelect={(node) => onSelect({ kind: 'node', nodeId: canonicalNodeId(node) })}
               onNodeOpenDetail={(node) => openNodeDrawer(node, 'detail')}
               onNodeOpenSession={(node) => openNodeDrawer(node, 'session')}
@@ -164,6 +192,13 @@ export function RoundDetailPage({ vm, breadcrumbs, selection, refreshing, onRefr
         activeTab={nodeDrawerTab}
         onOpenChange={setNodeDrawerOpen}
         onTabChange={setNodeDrawerTab}
+        optimisticAcpEventsByKey={optimisticAcpEventsByKey}
+        onOptimisticAcpEventsChange={(key, events) => setOptimisticAcpEventsByKey((current) => {
+          const next = { ...current };
+          if (events.length === 0) delete next[key];
+          else next[key] = events;
+          return next;
+        })}
         onOpenAsset={openAsset}
       />
       <AssetDetailSheet
@@ -180,7 +215,34 @@ export function RoundDetailPage({ vm, breadcrumbs, selection, refreshing, onRefr
   );
 }
 
-function NodeDetailSheet({ vm, nodeDetail, open, activeTab, onOpenChange, onTabChange, onOpenAsset }: { vm: RoundDetailVm; nodeDetail?: NodeDetailVm | null; open: boolean; activeTab: NodeDrawerTab; onOpenChange: (open: boolean) => void; onTabChange: (tab: NodeDrawerTab) => void; onOpenAsset: (asset: AssetItemVm) => void }) {
+function displayPausedRuntimeStatus(status: string, pauseReason?: string | null) {
+  if (status === 'paused' && pauseReason === 'error-blocked') return pauseReason;
+  return status;
+}
+
+function isRoundContinuable(vm: RoundDetailVm) {
+  const activeNodeId = vm.round.currentNode ?? vm.run.currentNode;
+  const activeAttemptId = vm.run.currentAttempt;
+  const currentPausedNode = vm.graph.nodes.some((node) => {
+    const sameNode = node.nodeId === activeNodeId || node.id === activeNodeId;
+    const sameAttempt = !activeAttemptId || node.attemptId === activeAttemptId;
+    return node.current && sameNode && sameAttempt && node.status === 'paused' && !node.outcome;
+  });
+
+  return Boolean(
+    vm.run.resumable
+    && vm.run.status === 'paused'
+    && !vm.run.outcome
+    && vm.round.status === 'paused'
+    && !vm.round.outcome
+    && vm.run.currentRound === vm.round.id
+    && activeNodeId
+    && activeAttemptId
+    && currentPausedNode,
+  );
+}
+
+function NodeDetailSheet({ vm, nodeDetail, open, activeTab, optimisticAcpEventsByKey, onOpenChange, onTabChange, onOptimisticAcpEventsChange, onOpenAsset }: { vm: RoundDetailVm; nodeDetail?: NodeDetailVm | null; open: boolean; activeTab: NodeDrawerTab; optimisticAcpEventsByKey: Record<string, AcpUiEventVm[]>; onOpenChange: (open: boolean) => void; onTabChange: (tab: NodeDrawerTab) => void; onOptimisticAcpEventsChange: (key: string, events: AcpUiEventVm[]) => void; onOpenAsset: (asset: AssetItemVm) => void }) {
   const { t } = useTranslation();
   return (
     <Sheet modal={false} open={open} onOpenChange={onOpenChange}>
@@ -206,12 +268,12 @@ function NodeDetailSheet({ vm, nodeDetail, open, activeTab, onOpenChange, onTabC
           <TabsContent value="detail" className="min-h-0 flex-1 overflow-hidden">
             <ScrollArea className="h-full">
               <div className="space-y-5 p-6">
-                {nodeDetail ? <NodeDetailContent detail={nodeDetail} onOpenAsset={onOpenAsset} /> : <EmptyState>{t('roundDetail.selectNodeForDetail')}</EmptyState>}
+                {nodeDetail ? <NodeDetailContent detail={nodeDetail} runPauseReason={vm.run.pauseReason} onOpenAsset={onOpenAsset} /> : <EmptyState>{t('roundDetail.selectNodeForDetail')}</EmptyState>}
               </div>
             </ScrollArea>
           </TabsContent>
           <TabsContent value="session" className="min-h-0 flex-1 overflow-hidden">
-            {nodeDetail ? <SessionContent vm={vm} detail={nodeDetail} /> : <EmptyState>{t('roundDetail.noSession')}</EmptyState>}
+            {nodeDetail ? <SessionContent vm={vm} detail={nodeDetail} optimisticAcpEventsByKey={optimisticAcpEventsByKey} onOptimisticAcpEventsChange={onOptimisticAcpEventsChange} /> : <EmptyState>{t('roundDetail.noSession')}</EmptyState>}
           </TabsContent>
         </Tabs>
       </SheetContent>
@@ -219,12 +281,13 @@ function NodeDetailSheet({ vm, nodeDetail, open, activeTab, onOpenChange, onTabC
   );
 }
 
-function NodeDetailContent({ detail, onOpenAsset }: { detail: NodeDetailVm; onOpenAsset: (asset: AssetItemVm) => void }) {
+function NodeDetailContent({ detail, runPauseReason, onOpenAsset }: { detail: NodeDetailVm; runPauseReason?: string | null; onOpenAsset: (asset: AssetItemVm) => void }) {
   const { t } = useTranslation();
+  const detailDisplayStatus = displayPausedRuntimeStatus(detail.outcome ?? detail.status, detail.current ? runPauseReason : null);
   return (
     <div className="space-y-5">
       <div className="flex flex-wrap items-center gap-2">
-        <StatusBadge value={detail.outcome ?? detail.status} label={displayStatus(t, detail.outcome ?? detail.status)} />
+        <StatusBadge value={detailDisplayStatus} label={displayStatus(t, detailDisplayStatus)} />
         <Badge variant="secondary" className="rounded-full px-3">{displayStatus(t, detail.nodeType)}</Badge>
         {detail.current ? <Badge className="rounded-full px-3">{t('graph.current')}</Badge> : null}
       </div>
@@ -299,7 +362,18 @@ function AssetDetailSheet({ asset, content, loading, onBack }: { asset: AssetIte
   );
 }
 
-function SessionContent({ vm, detail }: { vm: RoundDetailVm; detail: NodeDetailVm }) {
+function promptIdFromAcpEvent(event: AcpUiEventVm) {
+  if (!event.raw || typeof event.raw !== 'object' || Array.isArray(event.raw)) return null;
+  const promptId = (event.raw as { promptId?: unknown }).promptId;
+  return typeof promptId === 'string' ? promptId : null;
+}
+
+function acpOptimisticKey(taskId: string, runId: string, roundId: string, nodeId: string, attemptId: string) {
+  return `${taskId}:${runId}:${roundId}:${nodeId}:${attemptId}`;
+}
+
+function SessionContent({ vm, detail, optimisticAcpEventsByKey, onOptimisticAcpEventsChange }: { vm: RoundDetailVm; detail: NodeDetailVm; optimisticAcpEventsByKey: Record<string, AcpUiEventVm[]>; onOptimisticAcpEventsChange: (key: string, events: AcpUiEventVm[]) => void }) {
+  const optimisticKey = acpOptimisticKey(vm.run.taskId, vm.run.id, vm.round.id, detail.nodeId, detail.attemptId);
   return (
     <ACPChatDialog
       session={detail.acpSession}
@@ -308,6 +382,9 @@ function SessionContent({ vm, detail }: { vm: RoundDetailVm; detail: NodeDetailV
       roundId={vm.round.id}
       nodeId={detail.nodeId}
       attemptId={detail.attemptId}
+      runtimeStatus={detail.status}
+      optimisticEvents={optimisticAcpEventsByKey[optimisticKey]}
+      onOptimisticEventsChange={(events) => onOptimisticAcpEventsChange(optimisticKey, events)}
     />
   );
 }

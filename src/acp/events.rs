@@ -221,7 +221,19 @@ pub fn permission_decision_event(
     }
 }
 
-pub fn user_prompt_event(seq: u64, session_id: String, content: String) -> AcpUiEvent {
+pub fn user_prompt_event(
+    seq: u64,
+    session_id: String,
+    content: String,
+    prompt_id: Option<String>,
+) -> AcpUiEvent {
+    let mut raw = serde_json::json!({
+        "source": "goldBandPrompt",
+        "synthetic": true,
+    });
+    if let Some(prompt_id) = prompt_id {
+        raw["promptId"] = Value::String(prompt_id);
+    }
     AcpUiEvent {
         id: format!("gold-band-user-prompt-{seq}"),
         seq,
@@ -232,10 +244,7 @@ pub fn user_prompt_event(seq: u64, session_id: String, content: String) -> AcpUi
         title: Some("User prompt".to_string()),
         tool_call_id: None,
         status: Some("completed".to_string()),
-        raw: Some(serde_json::json!({
-            "source": "goldBandPrompt",
-            "synthetic": true,
-        })),
+        raw: Some(raw),
     }
 }
 
@@ -312,4 +321,39 @@ fn extract_status(value: &Value) -> Option<String> {
                 .and_then(Value::as_str)
         })
         .map(str::to_string)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::user_prompt_event;
+
+    #[test]
+    fn user_prompt_event_persists_prompt_id_metadata() {
+        let event = user_prompt_event(
+            7,
+            "session-123".to_string(),
+            "继续".to_string(),
+            Some("prompt-123".to_string()),
+        );
+        assert_eq!(
+            event
+                .raw
+                .as_ref()
+                .and_then(|raw| raw.get("promptId"))
+                .and_then(|value| value.as_str()),
+            Some("prompt-123")
+        );
+    }
+
+    #[test]
+    fn user_prompt_event_omits_prompt_id_when_absent() {
+        let event = user_prompt_event(7, "session-123".to_string(), "继续".to_string(), None);
+        assert_eq!(
+            event
+                .raw
+                .as_ref()
+                .and_then(|raw| raw.get("promptId")),
+            None
+        );
+    }
 }

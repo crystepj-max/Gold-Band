@@ -1,4 +1,7 @@
-use std::{collections::BTreeSet, io::{BufRead, BufReader}};
+use std::{
+    collections::BTreeSet,
+    io::{BufRead, BufReader},
+};
 
 use gold_band::acp::client;
 use gold_band::acp::events::{append_ui_event, current_timestamp, permission_decision_event};
@@ -20,9 +23,9 @@ use tauri_plugin_dialog::DialogExt;
 use crate::i18n::Translator;
 use crate::state::DesktopState;
 use crate::view_models::{
-    AcpRawFramePageVm, AcpRawFrameQueryInput, AcpSessionQueryInput, AcpSessionVm, AppBootstrapVm, ContentVm,
-    LogPageVm, LogQueryInput, PreferencesVm, RoundDetailVm, RoundSelectionInput, RunDetailVm,
-    RunSummaryVm, TaskDetailVm, TaskListVm, WorkflowVm, acp_raw_frame_page_vm,
+    AcpRawFramePageVm, AcpRawFrameQueryInput, AcpSessionQueryInput, AcpSessionVm, AppBootstrapVm,
+    ContentVm, LogPageVm, LogQueryInput, PreferencesVm, RoundDetailVm, RoundSelectionInput,
+    RunDetailVm, RunSummaryVm, TaskDetailVm, TaskListVm, WorkflowVm, acp_raw_frame_page_vm,
     acp_session_vm, bootstrap_vm, log_page_vm, preferences_vm, round_detail_vm, run_detail_vm,
     run_summary_vm, task_detail_vm, task_list_vm, workflow_vm,
 };
@@ -140,9 +143,10 @@ pub fn continue_run(
     state: State<'_, DesktopState>,
     task_id: String,
     run_id: String,
+    prompt_id: Option<String>,
 ) -> CommandResult<RunSummaryVm> {
     let app = state.app().map_err(command_error)?;
-    app.run_continue(&task_id, &run_id)
+    app.run_continue_background(&task_id, &run_id, prompt_id)
         .map(run_summary_vm)
         .map_err(command_error)
 }
@@ -213,7 +217,16 @@ pub fn get_acp_session(
     query: Option<AcpSessionQueryInput>,
 ) -> CommandResult<Option<AcpSessionVm>> {
     let app = state.app().map_err(command_error)?;
-    acp_session_vm(&app, &task_id, &run_id, &round_id, &node_id, &attempt_id, query).map_err(command_error)
+    acp_session_vm(
+        &app,
+        &task_id,
+        &run_id,
+        &round_id,
+        &node_id,
+        &attempt_id,
+        query,
+    )
+    .map_err(command_error)
 }
 
 #[tauri::command]
@@ -225,6 +238,7 @@ pub async fn send_acp_prompt(
     node_id: String,
     attempt_id: String,
     prompt: String,
+    prompt_id: Option<String>,
 ) -> CommandResult<Option<AcpSessionVm>> {
     let app = state.app().map_err(command_error)?;
     tauri::async_runtime::spawn_blocking(move || {
@@ -235,7 +249,8 @@ pub async fn send_acp_prompt(
             app.paths
                 .worker_ref_file(&task_id, &run_id, &round_id, &node_id, &attempt_id);
         let (session_mode, continue_ref) = if worker_ref_path.exists() {
-            let worker_ref = read_json::<WorkerRefState>(&worker_ref_path).map_err(command_error)?;
+            let worker_ref =
+                read_json::<WorkerRefState>(&worker_ref_path).map_err(command_error)?;
             (worker_ref.mode, worker_ref.continue_ref)
         } else {
             (SessionMode::New, None)
@@ -247,13 +262,22 @@ pub async fn send_acp_prompt(
             &PromptBundle {
                 system_prompt: String::new(),
                 user_prompt: prompt,
+                prompt_id,
             },
             session_mode,
             continue_ref,
         )
         .map_err(command_error)?;
-        acp_session_vm(&app, &task_id, &run_id, &round_id, &node_id, &attempt_id, None)
-            .map_err(command_error)
+        acp_session_vm(
+            &app,
+            &task_id,
+            &run_id,
+            &round_id,
+            &node_id,
+            &attempt_id,
+            None,
+        )
+        .map_err(command_error)
     })
     .await
     .map_err(|error| error.to_string())?
@@ -291,7 +315,16 @@ pub fn respond_acp_permission(
         &permission_decision_event(seq, request_id, option_id),
     )
     .map_err(command_error)?;
-    acp_session_vm(&app, &task_id, &run_id, &round_id, &node_id, &attempt_id, None).map_err(command_error)
+    acp_session_vm(
+        &app,
+        &task_id,
+        &run_id,
+        &round_id,
+        &node_id,
+        &attempt_id,
+        None,
+    )
+    .map_err(command_error)
 }
 
 fn next_acp_event_seq(path: &camino::Utf8Path) -> u64 {
@@ -325,7 +358,16 @@ pub fn cancel_acp_session(
     let requested_at = current_timestamp();
     request_cancel(&attempt_dir, requested_at.clone()).map_err(command_error)?;
     cancel_pending_permission_requests(&attempt_dir, requested_at).map_err(command_error)?;
-    acp_session_vm(&app, &task_id, &run_id, &round_id, &node_id, &attempt_id, None).map_err(command_error)
+    acp_session_vm(
+        &app,
+        &task_id,
+        &run_id,
+        &round_id,
+        &node_id,
+        &attempt_id,
+        None,
+    )
+    .map_err(command_error)
 }
 
 #[tauri::command]

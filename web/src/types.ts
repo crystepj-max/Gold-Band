@@ -166,6 +166,9 @@ export interface AcpSessionVm {
   adapterDisplayName?: string | null;
   cwd?: string | null;
   status: string;
+  sessionStartedAt?: string | null;
+  sessionUpdatedAt?: string | null;
+  sessionElapsedSeconds?: number | null;
   restored: boolean;
   stopReason?: string | null;
   config?: AcpSessionConfigVm | null;
@@ -234,6 +237,7 @@ export interface AcpDiagnosticsVm {
   eventCount: number;
   errorCount: number;
   lastError?: string | null;
+  lastErrorTimestamp?: string | null;
 }
 
 export interface AcpRawFrameQueryInput {

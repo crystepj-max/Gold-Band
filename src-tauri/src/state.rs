@@ -109,7 +109,8 @@ fn resolve_configured_workspace(user_config: &UserConfig) -> Option<Utf8PathBuf>
 }
 
 fn find_workspace_root(start: &Utf8Path) -> Option<Utf8PathBuf> {
-    nearest_parent_containing(start, ".git").or_else(|| nearest_parent_containing(start, ".gold-band"))
+    nearest_parent_containing(start, ".git")
+        .or_else(|| nearest_parent_containing(start, ".gold-band"))
 }
 
 fn nearest_parent_containing(start: &Utf8Path, marker: &str) -> Option<Utf8PathBuf> {

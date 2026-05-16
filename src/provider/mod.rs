@@ -43,6 +43,8 @@ pub struct WorkerInvocation {
     pub task_instruction: Option<String>,
     pub session_mode: SessionMode,
     pub continue_ref: Option<serde_json::Value>,
+    pub resume_prompt: Option<String>,
+    pub resume_prompt_id: Option<String>,
     pub stream_mode: StreamMode,
     #[serde(default)]
     pub log_prompts: bool,
@@ -103,6 +105,7 @@ pub struct PrimaryArtifactPayload {
 pub struct PromptBundle {
     pub system_prompt: String,
     pub user_prompt: String,
+    pub prompt_id: Option<String>,
 }
 
 pub trait ProviderAdapter: Send + Sync {
@@ -175,8 +178,14 @@ impl ProviderAdapter for AcpProvider {
             req.continue_ref.clone(),
         )?;
         let status = match run.stop_reason.as_deref() {
-            Some("cancelled") => ProviderRunStatus::Interrupted,
-            Some("refusal") => ProviderRunStatus::Failure,
+            Some("cancelled" | "interrupted" | "max_turn_requests") => {
+                ProviderRunStatus::Interrupted
+            }
+            Some("waiting_for_user_input" | "user_input_required") => {
+                ProviderRunStatus::WaitingForUserInput
+            }
+            Some("permission_requested") => ProviderRunStatus::PermissionRequested,
+            Some("refusal" | "error") => ProviderRunStatus::Failure,
             _ => ProviderRunStatus::Success,
         };
         let result_payload = req.primary_artifact.as_ref().map(|primary_artifact| {
@@ -215,6 +224,16 @@ impl ProviderAdapter for AcpProvider {
 }
 
 pub fn render_prompt_bundle(req: &WorkerInvocation) -> Result<PromptBundle> {
+    if matches!(req.session_mode, SessionMode::Continue) {
+        if let Some(resume_prompt) = req.resume_prompt.as_ref() {
+            return Ok(PromptBundle {
+                system_prompt: String::new(),
+                user_prompt: resume_prompt.clone(),
+                prompt_id: req.resume_prompt_id.clone(),
+            });
+        }
+    }
+
     ensure!(
         req.requirement_path.is_some() || req.requirement_text.is_some(),
         "worker invocation requires requirementPath or requirementText"
@@ -299,6 +318,7 @@ pub fn render_prompt_bundle(req: &WorkerInvocation) -> Result<PromptBundle> {
     Ok(PromptBundle {
         system_prompt,
         user_prompt: user_sections.join("\n\n"),
+        prompt_id: None,
     })
 }
 
@@ -387,6 +407,8 @@ mod tests {
             task_instruction: Some("Evaluate whether the requirement is satisfied based only on the provided evidence and produce a verify-result.".to_string()),
             session_mode: SessionMode::New,
             continue_ref: None,
+            resume_prompt: None,
+            resume_prompt_id: None,
             stream_mode: StreamMode::StreamJson,
             log_prompts: false,
             log_provider_command: false,
@@ -430,6 +452,8 @@ mod tests {
             task_instruction: Some("Create an exec plan".to_string()),
             session_mode: SessionMode::New,
             continue_ref: None,
+            resume_prompt: None,
+            resume_prompt_id: None,
             stream_mode: StreamMode::StreamJson,
             log_prompts: false,
             log_provider_command: false,

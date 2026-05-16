@@ -19,6 +19,8 @@ fn worker_invocation_can_be_serialized_with_context_indexes() {
         task_instruction: Some("Create an exec plan".to_string()),
         session_mode: SessionMode::New,
         continue_ref: None,
+        resume_prompt: None,
+        resume_prompt_id: None,
         stream_mode: StreamMode::None,
         log_prompts: false,
         log_provider_command: false,

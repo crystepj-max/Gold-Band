@@ -138,6 +138,12 @@ round 详情
 - 大屏展示更多列
 - 小窗口下保留左侧一级导航和当前页面核心内容
 
+### 6.4 运行态生命周期
+- Round 详情页的“继续运行”只在当前 run / round / node 处于可恢复暂停态时出现；成功、失败或 killed 的终局 round 不展示该入口。
+- 顶部“继续运行”是 workflow runtime 控制动作，不等同于 ACP 会话抽屉中的自由输入 composer；它会向当前 ACP session 自动发送本地化 `继续 / Continue`。
+- ACP 会话抽屉属于右侧功能区的可关闭详情层；关闭抽屉不取消正在发送的 prompt，同一 attempt 重新打开时需要恢复发送中的乐观用户消息和 composer 锁定状态。
+- 桌面窗口关闭时，应用壳负责 best-effort 停止当前 workspace 内仍为 `running` 的 run，确保 provider 进程和 canonical run lifecycle 一致。
+
 ---
 
 ## 7. Tauri 2.x MVP 对应实现

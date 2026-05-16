@@ -278,6 +278,6 @@ export function App() {
         />
       );
     }
-    return <RoundDetailPage vm={roundDetail} breadcrumbs={pageBreadcrumbs} selection={roundSelection} refreshing={loading === 'manual'} onRefresh={() => void refresh('manual')} onSelect={setRoundSelection} />;
+    return <RoundDetailPage vm={roundDetail} breadcrumbs={pageBreadcrumbs} selection={roundSelection} refreshing={loading === 'manual'} busy={busy} onRefresh={() => void refresh('manual')} onSelect={setRoundSelection} onContinueRun={(taskId, runId, promptId) => runAction(() => continueRun(taskId, runId, promptId))} />;
   }
 }

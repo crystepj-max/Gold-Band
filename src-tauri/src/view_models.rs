@@ -1,16 +1,23 @@
-use std::{collections::{HashMap, VecDeque}, fs, io::{BufRead, BufReader, Read, Seek, SeekFrom}};
+use std::{
+    collections::{HashMap, VecDeque},
+    fs,
+    io::{BufRead, BufReader, Read, Seek, SeekFrom},
+};
 
 use anyhow::Result;
-use gold_band::acp::permission::is_cancel_requested;
-use gold_band::app::{App, LogSource, TaskSummary};
+use gold_band::acp::permission::{clear_cancel_request, is_cancel_requested};
+use gold_band::app::{App, LogSource, TaskSummary, is_run_continuable};
 use gold_band::config::{DesktopFontPreference, DesktopLanguage, DesktopThemePreference};
-use gold_band::domain::{RunOutcome, RunStatus};
+use gold_band::domain::{PauseReason, RunOutcome, RunStatus};
 use gold_band::dsl::{NodeDsl, WorkflowDsl};
 use gold_band::runtime::{NodeState, RoundState, RoundTraceStep, RunState, WorkerRefState};
 
 use crate::i18n::Translator;
-use gold_band::storage::read_json;
+use gold_band::process::kill_process_tree;
+use gold_band::storage::{read_json, write_json};
 use serde::{Deserialize, Serialize};
+
+const ACP_CANCEL_FUSE_SECONDS: u64 = 15;
 
 #[derive(Debug, Clone, Serialize)]
 #[serde(rename_all = "camelCase")]
@@ -210,6 +217,9 @@ pub struct AcpSessionVm {
     pub adapter_display_name: Option<String>,
     pub cwd: Option<String>,
     pub status: String,
+    pub session_started_at: Option<String>,
+    pub session_updated_at: Option<String>,
+    pub session_elapsed_seconds: Option<u64>,
     pub restored: bool,
     pub stop_reason: Option<String>,
     pub config: Option<AcpSessionConfigVm>,
@@ -292,6 +302,7 @@ pub struct AcpDiagnosticsVm {
     pub event_count: usize,
     pub error_count: usize,
     pub last_error: Option<String>,
+    pub last_error_timestamp: Option<String>,
 }
 
 #[derive(Debug, Clone, Serialize)]
@@ -568,9 +579,13 @@ pub fn round_detail_vm(
         .ok_or_else(|| anyhow::anyhow!("round not found: {round_id}"))?;
     let nodes = app.node_list(task_id, run_id, round_id)?;
     let graph = round_graph_vm(app, task_id, &run, &round, &nodes)?;
-    let selection = selection.unwrap_or(RoundSelectionInput::Round { context_node_id: None });
+    let selection = selection.unwrap_or(RoundSelectionInput::Round {
+        context_node_id: None,
+    });
     let requirement = read_optional_text(&app.paths.requirement_file(task_id))?.unwrap_or_default();
-    let selected_node_detail = selected_node_detail_vm(app, task_id, run_id, round_id, &run, &round, &nodes, &graph, &selection)?;
+    let selected_node_detail = selected_node_detail_vm(
+        app, task_id, run_id, round_id, &run, &round, &nodes, &graph, &selection,
+    )?;
 
     Ok(RoundDetailVm {
         run: run_summary_vm(run.clone()),
@@ -582,6 +597,7 @@ pub fn round_detail_vm(
 }
 
 pub fn run_summary_vm(run: RunState) -> RunSummaryVm {
+    let resumable = is_run_continuable(&run);
     RunSummaryVm {
         id: run.id,
         task_id: run.task_id,
@@ -592,7 +608,7 @@ pub fn run_summary_vm(run: RunState) -> RunSummaryVm {
         current_round: run.current_round,
         current_node: run.current_node,
         current_attempt: run.current_attempt,
-        resumable: run.status == RunStatus::Paused,
+        resumable,
         pause_reason: run.pause_reason.map(|reason| enum_label(&reason)),
     }
 }
@@ -739,7 +755,17 @@ fn round_graph_vm(
     let graph_nodes = ordered_nodes
         .iter()
         .enumerate()
-        .map(|(index, node)| round_node_graph_vm(app, task_id, run, round, node, index as u32 + 1, &node_labels))
+        .map(|(index, node)| {
+            round_node_graph_vm(
+                app,
+                task_id,
+                run,
+                round,
+                node,
+                index as u32 + 1,
+                &node_labels,
+            )
+        })
         .collect::<Result<Vec<_>>>()?;
     let edges = graph_nodes
         .windows(2)
@@ -769,9 +795,9 @@ fn round_trace_graph_vm(
     let graph_nodes = steps
         .iter()
         .map(|step| {
-            let node = nodes.iter().find(|node| {
-                node.node_id == step.node_id && node.attempt_id == step.attempt_id
-            });
+            let node = nodes
+                .iter()
+                .find(|node| node.node_id == step.node_id && node.attempt_id == step.attempt_id);
             trace_step_graph_vm(app, task_id, run, round, step, node, node_labels)
         })
         .collect::<Result<Vec<_>>>()?;
@@ -809,8 +835,13 @@ fn trace_step_graph_vm(
         id: format!("{}:{}:{}", step.sequence, step.node_id, step.attempt_id),
         node_id: Some(step.node_id.clone()),
         sequence: Some(step.sequence),
-        label: node_labels.get(&step.node_id).cloned().unwrap_or_else(|| step.node_id.clone()),
-        node_type: node.map(|node| enum_label(&node.node_type)).unwrap_or_else(|| "unknown".to_string()),
+        label: node_labels
+            .get(&step.node_id)
+            .cloned()
+            .unwrap_or_else(|| step.node_id.clone()),
+        node_type: node
+            .map(|node| enum_label(&node.node_type))
+            .unwrap_or_else(|| "unknown".to_string()),
         status: node.map(|node| enum_label(&node.status)),
         outcome: node.and_then(|node| node.outcome.map(|outcome| enum_label(&outcome))),
         attempt_id: Some(step.attempt_id.clone()),
@@ -841,7 +872,10 @@ fn round_node_graph_vm(
         id: format!("{}:{}:{}", sequence, node.node_id, node.attempt_id),
         node_id: Some(node.node_id.clone()),
         sequence: Some(sequence),
-        label: node_labels.get(&node.node_id).cloned().unwrap_or_else(|| node.node_id.clone()),
+        label: node_labels
+            .get(&node.node_id)
+            .cloned()
+            .unwrap_or_else(|| node.node_id.clone()),
         node_type: enum_label(&node.node_type),
         status: Some(enum_label(&node.status)),
         outcome: node.outcome.map(|outcome| enum_label(&outcome)),
@@ -859,12 +893,22 @@ fn selected_node_id(selection: &RoundSelectionInput) -> Option<&str> {
         | RoundSelectionInput::Artifact { node_id, .. }
         | RoundSelectionInput::Attachment { node_id, .. }
         | RoundSelectionInput::WorkerRef { node_id, .. } => Some(node_id),
-        RoundSelectionInput::Log { node_id: Some(node_id), .. } => Some(node_id),
-        RoundSelectionInput::Event { node_id: Some(node_id), .. } => Some(node_id),
+        RoundSelectionInput::Log {
+            node_id: Some(node_id),
+            ..
+        } => Some(node_id),
+        RoundSelectionInput::Event {
+            node_id: Some(node_id),
+            ..
+        } => Some(node_id),
         RoundSelectionInput::Round { context_node_id }
         | RoundSelectionInput::Requirement { context_node_id }
-        | RoundSelectionInput::Event { context_node_id, .. }
-        | RoundSelectionInput::Log { context_node_id, .. } => context_node_id.as_deref(),
+        | RoundSelectionInput::Event {
+            context_node_id, ..
+        }
+        | RoundSelectionInput::Log {
+            context_node_id, ..
+        } => context_node_id.as_deref(),
     }
 }
 
@@ -905,7 +949,9 @@ fn selected_node_detail_vm(
         .exists();
 
     Ok(Some(NodeDetailVm {
-        id: graph_node.map(|node| node.id.clone()).unwrap_or_else(|| node_id.to_string()),
+        id: graph_node
+            .map(|node| node.id.clone())
+            .unwrap_or_else(|| node_id.to_string()),
         node_id: node_id.to_string(),
         sequence: graph_node.and_then(|node| node.sequence),
         label: graph_node
@@ -924,10 +970,32 @@ fn selected_node_detail_vm(
         attachment_count: attachments.len(),
         artifacts,
         attachments,
-        has_progress_events: app.attempt_log_exists(task_id, run_id, round_id, node_id, &node.attempt_id, LogSource::ProgressEvents),
-        has_raw_stream: app.attempt_log_exists(task_id, run_id, round_id, node_id, &node.attempt_id, LogSource::RawStream),
+        has_progress_events: app.attempt_log_exists(
+            task_id,
+            run_id,
+            round_id,
+            node_id,
+            &node.attempt_id,
+            LogSource::ProgressEvents,
+        ),
+        has_raw_stream: app.attempt_log_exists(
+            task_id,
+            run_id,
+            round_id,
+            node_id,
+            &node.attempt_id,
+            LogSource::RawStream,
+        ),
         has_worker_ref: worker_ref_exists,
-        acp_session: acp_session_vm(app, task_id, run_id, round_id, node_id, &node.attempt_id, None)?,
+        acp_session: acp_session_vm(
+            app,
+            task_id,
+            run_id,
+            round_id,
+            node_id,
+            &node.attempt_id,
+            None,
+        )?,
     }))
 }
 
@@ -940,34 +1008,72 @@ pub fn acp_session_vm(
     attempt_id: &str,
     query: Option<AcpSessionQueryInput>,
 ) -> Result<Option<AcpSessionVm>> {
-    let session_path = app.paths.acp_session_file(task_id, run_id, round_id, node_id, attempt_id);
-    let events_path = app.paths.acp_events_file(task_id, run_id, round_id, node_id, attempt_id);
-    let raw_path = app.paths.acp_raw_file(task_id, run_id, round_id, node_id, attempt_id);
-    let diagnostics_path = app.paths.acp_diagnostics_file(task_id, run_id, round_id, node_id, attempt_id);
-    if !session_path.exists() && !events_path.exists() && !raw_path.exists() && !diagnostics_path.exists() {
+    let session_path = app
+        .paths
+        .acp_session_file(task_id, run_id, round_id, node_id, attempt_id);
+    let events_path = app
+        .paths
+        .acp_events_file(task_id, run_id, round_id, node_id, attempt_id);
+    let raw_path = app
+        .paths
+        .acp_raw_file(task_id, run_id, round_id, node_id, attempt_id);
+    let diagnostics_path = app
+        .paths
+        .acp_diagnostics_file(task_id, run_id, round_id, node_id, attempt_id);
+    if !session_path.exists()
+        && !events_path.exists()
+        && !raw_path.exists()
+        && !diagnostics_path.exists()
+    {
         return Ok(None);
     }
 
-    let session = if session_path.exists() {
+    let mut session = if session_path.exists() {
         read_json::<serde_json::Value>(&session_path).unwrap_or_else(|_| serde_json::json!({}))
     } else {
         serde_json::json!({})
     };
-    let worker_ref_path = app.paths.worker_ref_file(task_id, run_id, round_id, node_id, attempt_id);
+    let worker_ref_path = app
+        .paths
+        .worker_ref_file(task_id, run_id, round_id, node_id, attempt_id);
     let worker_ref = if worker_ref_path.exists() {
         read_json::<WorkerRefState>(&worker_ref_path).ok()
     } else {
         None
     };
-    let continue_ref = worker_ref.as_ref().and_then(|state| state.continue_ref.as_ref());
-    let event_scan = scan_acp_events(&events_path, query)?;
+    let continue_ref = worker_ref
+        .as_ref()
+        .and_then(|state| state.continue_ref.as_ref());
     let raw_frame_count = count_jsonl_lines(&raw_path)?;
-    let diagnostics = scan_acp_diagnostics(&diagnostics_path)?;
+    let mut diagnostics = scan_acp_diagnostics(&diagnostics_path)?;
+    merge_raw_frame_error(&mut diagnostics, scan_acp_raw_error(&raw_path)?);
+    let attempt_dir = app
+        .paths
+        .attempt_dir(task_id, run_id, round_id, node_id, attempt_id);
+    apply_stale_cancel_fuse(
+        app,
+        task_id,
+        run_id,
+        round_id,
+        node_id,
+        attempt_id,
+        &attempt_dir,
+        &mut session,
+    )?;
     let config = acp_session_config_vm(&session);
-    let metadata_status = session.get("status").and_then(|value| value.as_str()).unwrap_or("unknown");
-    let cancelling = is_cancel_requested(&app.paths.attempt_dir(task_id, run_id, round_id, node_id, attempt_id))
-        && is_acp_session_active_status(metadata_status);
-    let status = if cancelling { "cancelling" } else { metadata_status }.to_string();
+    let metadata_status = session
+        .get("status")
+        .and_then(|value| value.as_str())
+        .unwrap_or("unknown");
+    let cancelling =
+        is_cancel_requested(&attempt_dir) && is_acp_session_active_status(metadata_status);
+    let status = if cancelling {
+        "cancelling"
+    } else {
+        metadata_status
+    }
+    .to_string();
+    let event_scan = scan_acp_events(&events_path, query, is_acp_session_active_status(&status))?;
     let pending_permissions = if cancelling {
         Vec::new()
     } else {
@@ -996,7 +1102,11 @@ pub fn acp_session_vm(
         adapter_display_name: continue_ref
             .and_then(|value| value.get("adapterDisplayName"))
             .and_then(|value| value.as_str())
-            .or_else(|| session.get("adapterDisplayName").and_then(|value| value.as_str()))
+            .or_else(|| {
+                session
+                    .get("adapterDisplayName")
+                    .and_then(|value| value.as_str())
+            })
             .map(str::to_string),
         cwd: continue_ref
             .and_then(|value| value.get("cwd"))
@@ -1004,8 +1114,23 @@ pub fn acp_session_vm(
             .or_else(|| session.get("cwd").and_then(|value| value.as_str()))
             .map(str::to_string),
         status,
-        restored: session.get("restored").and_then(|value| value.as_bool()).unwrap_or(false),
-        stop_reason: session.get("stopReason").and_then(|value| value.as_str()).map(str::to_string),
+        session_started_at: session
+            .get("createdAt")
+            .and_then(|value| value.as_str())
+            .map(str::to_string),
+        session_updated_at: session
+            .get("updatedAt")
+            .and_then(|value| value.as_str())
+            .map(str::to_string),
+        session_elapsed_seconds: event_scan.session_elapsed_seconds,
+        restored: session
+            .get("restored")
+            .and_then(|value| value.as_bool())
+            .unwrap_or(false),
+        stop_reason: session
+            .get("stopReason")
+            .and_then(|value| value.as_str())
+            .map(str::to_string),
         config,
         available_commands: event_scan.available_commands,
         usage: event_scan.usage,
@@ -1014,6 +1139,7 @@ pub fn acp_session_vm(
             event_count: event_scan.event_count,
             error_count: diagnostics.error_count,
             last_error: diagnostics.last_error,
+            last_error_timestamp: diagnostics.last_error_timestamp,
         },
         events: event_scan.events,
         event_page: event_scan.event_page,
@@ -1025,6 +1151,7 @@ struct AcpEventScan {
     events: Vec<AcpUiEventVm>,
     event_page: AcpEventPageVm,
     event_count: usize,
+    session_elapsed_seconds: Option<u64>,
     latest_permission_events: HashMap<String, AcpUiEventVm>,
     available_commands: Option<Vec<serde_json::Value>>,
     usage: Option<serde_json::Value>,
@@ -1033,9 +1160,19 @@ struct AcpEventScan {
 struct AcpDiagnosticsScan {
     error_count: usize,
     last_error: Option<String>,
+    last_error_timestamp: Option<String>,
 }
 
-fn scan_acp_events(path: &camino::Utf8Path, query: Option<AcpSessionQueryInput>) -> Result<AcpEventScan> {
+struct AcpRawErrorScan {
+    message: String,
+    timestamp: Option<String>,
+}
+
+fn scan_acp_events(
+    path: &camino::Utf8Path,
+    query: Option<AcpSessionQueryInput>,
+    session_active: bool,
+) -> Result<AcpEventScan> {
     const DEFAULT_EVENT_LIMIT: usize = 30;
     const MIN_EVENT_LIMIT: usize = 10;
     const MAX_EVENT_LIMIT: usize = 100;
@@ -1061,6 +1198,10 @@ fn scan_acp_events(path: &camino::Utf8Path, query: Option<AcpSessionQueryInput>)
     let mut first_seq = None;
     let mut last_seq = None;
     let mut pending_delta: Option<AcpUiEventVm> = None;
+    let mut session_elapsed_seconds = 0u64;
+    let mut active_turn_started_at = None;
+    let mut active_turn_last_event_at = None;
+    let mut saw_turn = false;
 
     if path.exists() {
         let file = fs::File::open(path.as_std_path())?;
@@ -1074,12 +1215,22 @@ fn scan_acp_events(path: &camino::Utf8Path, query: Option<AcpSessionQueryInput>)
             };
             raw_event_count += 1;
             event.seq = raw_event_count as u64;
+            update_session_elapsed_state(
+                &event,
+                &mut session_elapsed_seconds,
+                &mut active_turn_started_at,
+                &mut active_turn_last_event_at,
+                &mut saw_turn,
+            );
             if event.kind == "permissionRequest" {
                 latest_permission_events.insert(event.id.clone(), event.clone());
             }
             if let Some(raw) = event.raw.as_ref() {
                 if is_session_update(&event, "available_commands_update") {
-                    available_commands = raw.get("availableCommands").and_then(|value| value.as_array()).cloned();
+                    available_commands = raw
+                        .get("availableCommands")
+                        .and_then(|value| value.as_array())
+                        .cloned();
                 } else if is_session_update(&event, "usage_update") {
                     usage = Some(compact_raw_value(raw.clone()));
                 }
@@ -1131,6 +1282,11 @@ fn scan_acp_events(path: &camino::Utf8Path, query: Option<AcpSessionQueryInput>)
         &mut last_seq,
     );
 
+    session_elapsed_seconds += finish_session_turn_elapsed(
+        active_turn_started_at,
+        active_turn_last_event_at,
+        session_active,
+    );
     let events = if after_seq.is_some() {
         after_window
     } else {
@@ -1138,8 +1294,12 @@ fn scan_acp_events(path: &camino::Utf8Path, query: Option<AcpSessionQueryInput>)
     };
     let oldest_seq = events.first().map(|event| event.seq);
     let newest_seq = events.last().map(|event| event.seq);
-    let has_older = oldest_seq.zip(first_seq).is_some_and(|(oldest, first)| oldest > first);
-    let has_newer = newest_seq.zip(last_seq).is_some_and(|(newest, last)| newest < last);
+    let has_older = oldest_seq
+        .zip(first_seq)
+        .is_some_and(|(oldest, first)| oldest > first);
+    let has_newer = newest_seq
+        .zip(last_seq)
+        .is_some_and(|(newest, last)| newest < last);
     let event_page = AcpEventPageVm {
         loaded_count: events.len(),
         total: normalized_event_count,
@@ -1153,10 +1313,181 @@ fn scan_acp_events(path: &camino::Utf8Path, query: Option<AcpSessionQueryInput>)
         events,
         event_page,
         event_count: raw_event_count,
+        session_elapsed_seconds: saw_turn.then_some(session_elapsed_seconds),
         latest_permission_events,
         available_commands,
         usage,
     })
+}
+
+fn apply_stale_cancel_fuse(
+    app: &App,
+    task_id: &str,
+    run_id: &str,
+    round_id: &str,
+    node_id: &str,
+    attempt_id: &str,
+    attempt_dir: &camino::Utf8Path,
+    session: &mut serde_json::Value,
+) -> Result<()> {
+    if !is_cancel_requested(attempt_dir) || !cancel_request_is_stale(attempt_dir) {
+        return Ok(());
+    }
+
+    let pid_path = app
+        .paths
+        .provider_pid_file(task_id, run_id, round_id, node_id, attempt_id);
+    if let Ok(pid_text) = fs::read_to_string(pid_path.as_std_path()) {
+        if let Ok(pid) = pid_text.trim().parse::<u32>() {
+            let _ = kill_process_tree(pid);
+        }
+        let _ = fs::remove_file(pid_path.as_std_path());
+    }
+    let _ = clear_cancel_request(attempt_dir);
+
+    session["status"] = serde_json::json!("cancelled");
+    session["stopReason"] = serde_json::json!("cancelled");
+    session["updatedAt"] = serde_json::json!(current_epoch_timestamp());
+    write_json(
+        &app.paths
+            .acp_session_file(task_id, run_id, round_id, node_id, attempt_id),
+        session,
+    )?;
+
+    pause_current_attempt_after_cancel(app, task_id, run_id, round_id, node_id, attempt_id)?;
+    Ok(())
+}
+
+fn cancel_request_is_stale(attempt_dir: &camino::Utf8Path) -> bool {
+    let path = gold_band::acp::permission::cancel_requested_file(attempt_dir);
+    let Ok(value) = fs::read_to_string(path.as_std_path()) else {
+        return false;
+    };
+    let Some(requested_at) = parse_epoch_timestamp(value.trim()) else {
+        return false;
+    };
+    current_epoch_seconds().saturating_sub(requested_at) >= ACP_CANCEL_FUSE_SECONDS
+}
+
+fn pause_current_attempt_after_cancel(
+    app: &App,
+    task_id: &str,
+    run_id: &str,
+    round_id: &str,
+    node_id: &str,
+    attempt_id: &str,
+) -> Result<()> {
+    let now = current_epoch_timestamp();
+    let run_path = app.paths.run_file(task_id, run_id);
+    if run_path.exists() {
+        let mut run: RunState = read_json(&run_path)?;
+        if run.status == RunStatus::Running
+            && run.current_round.as_deref() == Some(round_id)
+            && run.current_node.as_deref() == Some(node_id)
+            && run.current_attempt.as_deref() == Some(attempt_id)
+        {
+            run.status = RunStatus::Paused;
+            run.pause_reason = Some(PauseReason::ProcessInterrupted);
+            run.updated_at = now.clone();
+            write_json(&run_path, &run)?;
+        }
+    }
+
+    let round_path = app.paths.round_file(task_id, run_id, round_id);
+    if round_path.exists() {
+        let mut round: RoundState = read_json(&round_path)?;
+        if round.status == RunStatus::Running {
+            round.status = RunStatus::Paused;
+            write_json(&round_path, &round)?;
+        }
+    }
+
+    let node_path = app
+        .paths
+        .node_file(task_id, run_id, round_id, node_id, attempt_id);
+    if node_path.exists() {
+        let mut node: NodeState = read_json(&node_path)?;
+        if node.status == RunStatus::Running {
+            node.status = RunStatus::Paused;
+            node.outcome = None;
+            node.finished_at = Some(now);
+            write_json(&node_path, &node)?;
+        }
+    }
+    Ok(())
+}
+
+fn parse_epoch_timestamp(value: &str) -> Option<u64> {
+    value.trim_end_matches('Z').parse::<u64>().ok()
+}
+
+fn update_session_elapsed_state(
+    event: &AcpUiEventVm,
+    session_elapsed_seconds: &mut u64,
+    active_turn_started_at: &mut Option<u64>,
+    active_turn_last_event_at: &mut Option<u64>,
+    saw_turn: &mut bool,
+) {
+    if is_gold_band_user_prompt_event(event) {
+        *session_elapsed_seconds +=
+            finish_session_turn_elapsed(*active_turn_started_at, *active_turn_last_event_at, false);
+        *active_turn_started_at = parse_epoch_timestamp(&event.timestamp);
+        *active_turn_last_event_at = None;
+        *saw_turn = true;
+        return;
+    }
+    if active_turn_started_at.is_some() {
+        *active_turn_last_event_at = parse_epoch_timestamp(&event.timestamp);
+    }
+}
+
+fn finish_session_turn_elapsed(
+    started_at: Option<u64>,
+    last_event_at: Option<u64>,
+    session_active: bool,
+) -> u64 {
+    let Some(started_at) = started_at else {
+        return 0;
+    };
+    if session_active {
+        return current_epoch_seconds().saturating_sub(started_at);
+    }
+    last_event_at
+        .map(|ended_at| ended_at.saturating_sub(started_at))
+        .unwrap_or_default()
+}
+
+fn is_gold_band_user_prompt_event(event: &AcpUiEventVm) -> bool {
+    event.kind == "userTextDelta"
+        && event
+            .raw
+            .as_ref()
+            .and_then(|raw| raw.get("source"))
+            .and_then(|value| value.as_str())
+            == Some("goldBandPrompt")
+}
+
+fn current_epoch_timestamp() -> String {
+    format!("{}Z", current_epoch_seconds())
+}
+
+fn current_epoch_seconds() -> u64 {
+    std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .map(|duration| duration.as_secs())
+        .unwrap_or_default()
+}
+
+fn merge_raw_frame_error(diagnostics: &mut AcpDiagnosticsScan, raw_error: Option<AcpRawErrorScan>) {
+    if diagnostics.last_error.is_some() {
+        return;
+    }
+    let Some(raw_error) = raw_error else {
+        return;
+    };
+    diagnostics.error_count += 1;
+    diagnostics.last_error = Some(raw_error.message);
+    diagnostics.last_error_timestamp = raw_error.timestamp;
 }
 
 fn flush_normalized_event(
@@ -1198,22 +1529,36 @@ fn merge_pending_delta(pending: &mut Option<AcpUiEventVm>, event: &AcpUiEventVm)
     if !is_delta_event(event) || previous.kind != event.kind {
         return false;
     }
-    previous.content = Some(format!("{}{}", previous.content.as_deref().unwrap_or_default(), event.content.as_deref().unwrap_or_default()));
+    previous.content = Some(format!(
+        "{}{}",
+        previous.content.as_deref().unwrap_or_default(),
+        event.content.as_deref().unwrap_or_default()
+    ));
     previous.seq = event.seq;
     previous.timestamp = event.timestamp.clone();
     previous.status = event.status.clone().or_else(|| previous.status.clone());
-    previous.raw = event.raw.clone().or_else(|| previous.raw.clone()).map(compact_raw_value);
+    previous.raw = event
+        .raw
+        .clone()
+        .or_else(|| previous.raw.clone())
+        .map(compact_raw_value);
     true
 }
 
 fn is_delta_event(event: &AcpUiEventVm) -> bool {
-    matches!(event.kind.as_str(), "textDelta" | "userTextDelta" | "thoughtDelta")
+    matches!(event.kind.as_str(), "textDelta" | "thoughtDelta")
 }
 
 fn is_session_timeline_event(event: &AcpUiEventVm) -> bool {
     if matches!(
         event.kind.as_str(),
-        "availableCommands" | "usageUpdate" | "sessionInfo" | "modeUpdate" | "configUpdate" | "permissionRequest" | "rawDiagnostic"
+        "availableCommands"
+            | "usageUpdate"
+            | "sessionInfo"
+            | "modeUpdate"
+            | "configUpdate"
+            | "permissionRequest"
+            | "rawDiagnostic"
     ) {
         return false;
     }
@@ -1223,15 +1568,59 @@ fn is_session_timeline_event(event: &AcpUiEventVm) -> bool {
     let session_update = raw.get("sessionUpdate").and_then(|value| value.as_str());
     !matches!(
         session_update,
-        Some("available_commands_update" | "usage_update" | "session_info_update" | "current_mode_update" | "config_option_update")
+        Some(
+            "available_commands_update"
+                | "usage_update"
+                | "session_info_update"
+                | "current_mode_update"
+                | "config_option_update"
+        )
     )
+}
+
+fn scan_acp_raw_error(path: &camino::Utf8Path) -> Result<Option<AcpRawErrorScan>> {
+    let mut last_error = None;
+    if !path.exists() {
+        return Ok(None);
+    }
+    let file = fs::File::open(path.as_std_path())?;
+    for line in BufReader::new(file).lines() {
+        let line = line?;
+        if line.trim().is_empty() {
+            continue;
+        }
+        let Ok(value) = serde_json::from_str::<serde_json::Value>(&line) else {
+            continue;
+        };
+        let Some(error) = value.pointer("/frame/error") else {
+            continue;
+        };
+        let message = error
+            .get("message")
+            .and_then(|item| item.as_str())
+            .map(str::to_string)
+            .unwrap_or_else(|| error.to_string());
+        last_error = Some(AcpRawErrorScan {
+            message,
+            timestamp: value
+                .get("timestamp")
+                .and_then(|item| item.as_str())
+                .map(str::to_string),
+        });
+    }
+    Ok(last_error)
 }
 
 fn scan_acp_diagnostics(path: &camino::Utf8Path) -> Result<AcpDiagnosticsScan> {
     let mut error_count = 0usize;
     let mut last_error = None;
+    let mut last_error_timestamp = None;
     if !path.exists() {
-        return Ok(AcpDiagnosticsScan { error_count, last_error });
+        return Ok(AcpDiagnosticsScan {
+            error_count,
+            last_error,
+            last_error_timestamp,
+        });
     }
     let file = fs::File::open(path.as_std_path())?;
     for line in BufReader::new(file).lines() {
@@ -1246,15 +1635,25 @@ fn scan_acp_diagnostics(path: &camino::Utf8Path) -> Result<AcpDiagnosticsScan> {
             error_count += 1;
             if let Some(message) = value.get("message").and_then(|item| item.as_str()) {
                 last_error = Some(message.to_string());
+                last_error_timestamp = value
+                    .get("timestamp")
+                    .and_then(|item| item.as_str())
+                    .map(str::to_string);
             }
         }
     }
-    Ok(AcpDiagnosticsScan { error_count, last_error })
+    Ok(AcpDiagnosticsScan {
+        error_count,
+        last_error,
+        last_error_timestamp,
+    })
 }
 
 fn compact_event_for_session(mut event: AcpUiEventVm) -> AcpUiEventVm {
     event.raw = event.raw.map(compact_raw_value);
-    event.content = event.content.map(|content| truncate_string(content, 64_000));
+    event.content = event
+        .content
+        .map(|content| truncate_string(content, 64_000));
     event.title = event.title.map(|title| truncate_string(title, 2_000));
     event
 }
@@ -1269,21 +1668,50 @@ fn compact_raw_value(value: serde_json::Value) -> serde_json::Value {
         return compacted;
     }
     let mut fallback = serde_json::Map::new();
-    for key in ["sessionUpdate", "title", "status", "requestId", "toolCallId", "toolCall", "rawInput", "locations", "entries", "source", "synthetic", "optimistic"] {
+    for key in [
+        "sessionUpdate",
+        "title",
+        "status",
+        "requestId",
+        "toolCallId",
+        "toolCall",
+        "rawInput",
+        "locations",
+        "entries",
+        "source",
+        "synthetic",
+        "optimistic",
+    ] {
         if let Some(item) = compacted.get(key) {
             fallback.insert(key.to_string(), item.clone());
         }
     }
     fallback.insert("truncated".to_string(), serde_json::Value::Bool(true));
-    fallback.insert("summary".to_string(), serde_json::Value::String(truncate_string(serialized, MAX_RAW_CHARS)));
+    fallback.insert(
+        "summary".to_string(),
+        serde_json::Value::String(truncate_string(serialized, MAX_RAW_CHARS)),
+    );
     serde_json::Value::Object(fallback)
 }
 
 fn truncate_json_value(value: serde_json::Value, max_string_chars: usize) -> serde_json::Value {
     match value {
-        serde_json::Value::String(value) => serde_json::Value::String(truncate_string(value, max_string_chars)),
-        serde_json::Value::Array(values) => serde_json::Value::Array(values.into_iter().take(100).map(|value| truncate_json_value(value, max_string_chars)).collect()),
-        serde_json::Value::Object(values) => serde_json::Value::Object(values.into_iter().map(|(key, value)| (key, truncate_json_value(value, max_string_chars))).collect()),
+        serde_json::Value::String(value) => {
+            serde_json::Value::String(truncate_string(value, max_string_chars))
+        }
+        serde_json::Value::Array(values) => serde_json::Value::Array(
+            values
+                .into_iter()
+                .take(100)
+                .map(|value| truncate_json_value(value, max_string_chars))
+                .collect(),
+        ),
+        serde_json::Value::Object(values) => serde_json::Value::Object(
+            values
+                .into_iter()
+                .map(|(key, value)| (key, truncate_json_value(value, max_string_chars)))
+                .collect(),
+        ),
         value => value,
     }
 }
@@ -1320,12 +1748,14 @@ fn acp_session_config_vm(session: &serde_json::Value) -> Option<AcpSessionConfig
         .and_then(|value| value.as_str())
         .map(str::to_string)
         .or_else(|| config_current_value(config_options.as_ref(), "mode"));
-    let current_model_name = current_model_id
-        .as_deref()
-        .and_then(|model_id| model_display_name(models.as_ref(), model_id).or_else(|| config_option_display_name(config_options.as_ref(), "model", model_id)));
-    let current_mode_name = current_mode_id
-        .as_deref()
-        .and_then(|mode_id| mode_display_name(modes.as_ref(), mode_id).or_else(|| config_option_display_name(config_options.as_ref(), "mode", mode_id)));
+    let current_model_name = current_model_id.as_deref().and_then(|model_id| {
+        model_display_name(models.as_ref(), model_id)
+            .or_else(|| config_option_display_name(config_options.as_ref(), "model", model_id))
+    });
+    let current_mode_name = current_mode_id.as_deref().and_then(|mode_id| {
+        mode_display_name(modes.as_ref(), mode_id)
+            .or_else(|| config_option_display_name(config_options.as_ref(), "mode", mode_id))
+    });
 
     if current_model_id.is_none()
         && current_model_name.is_none()
@@ -1349,34 +1779,56 @@ fn acp_session_config_vm(session: &serde_json::Value) -> Option<AcpSessionConfig
     })
 }
 
-fn config_current_value(config_options: Option<&serde_json::Value>, option_id: &str) -> Option<String> {
+fn config_current_value(
+    config_options: Option<&serde_json::Value>,
+    option_id: &str,
+) -> Option<String> {
     find_config_option(config_options, option_id)
         .and_then(|option| option.get("currentValue"))
         .and_then(|value| value.as_str())
         .map(str::to_string)
 }
 
-fn config_option_display_name(config_options: Option<&serde_json::Value>, option_id: &str, value: &str) -> Option<String> {
+fn config_option_display_name(
+    config_options: Option<&serde_json::Value>,
+    option_id: &str,
+    value: &str,
+) -> Option<String> {
     find_config_option(config_options, option_id)
         .and_then(|option| option.get("options"))
         .and_then(|options| options.as_array())
-        .and_then(|options| options.iter().find(|option| option.get("value").and_then(|item| item.as_str()) == Some(value)))
+        .and_then(|options| {
+            options
+                .iter()
+                .find(|option| option.get("value").and_then(|item| item.as_str()) == Some(value))
+        })
         .and_then(|option| option.get("name"))
         .and_then(|name| name.as_str())
         .map(str::to_string)
 }
 
-fn find_config_option<'a>(config_options: Option<&'a serde_json::Value>, option_id: &str) -> Option<&'a serde_json::Value> {
+fn find_config_option<'a>(
+    config_options: Option<&'a serde_json::Value>,
+    option_id: &str,
+) -> Option<&'a serde_json::Value> {
     config_options
         .and_then(|value| value.as_array())
-        .and_then(|options| options.iter().find(|option| option.get("id").and_then(|item| item.as_str()) == Some(option_id)))
+        .and_then(|options| {
+            options
+                .iter()
+                .find(|option| option.get("id").and_then(|item| item.as_str()) == Some(option_id))
+        })
 }
 
 fn model_display_name(models: Option<&serde_json::Value>, model_id: &str) -> Option<String> {
     models
         .and_then(|value| value.get("availableModels"))
         .and_then(|value| value.as_array())
-        .and_then(|models| models.iter().find(|model| model.get("modelId").and_then(|item| item.as_str()) == Some(model_id)))
+        .and_then(|models| {
+            models
+                .iter()
+                .find(|model| model.get("modelId").and_then(|item| item.as_str()) == Some(model_id))
+        })
         .and_then(|model| model.get("name"))
         .and_then(|name| name.as_str())
         .map(str::to_string)
@@ -1386,7 +1838,11 @@ fn mode_display_name(modes: Option<&serde_json::Value>, mode_id: &str) -> Option
     modes
         .and_then(|value| value.get("availableModes"))
         .and_then(|value| value.as_array())
-        .and_then(|modes| modes.iter().find(|mode| mode.get("id").and_then(|item| item.as_str()) == Some(mode_id)))
+        .and_then(|modes| {
+            modes
+                .iter()
+                .find(|mode| mode.get("id").and_then(|item| item.as_str()) == Some(mode_id))
+        })
         .and_then(|mode| mode.get("name"))
         .and_then(|name| name.as_str())
         .map(str::to_string)
@@ -1402,21 +1858,40 @@ fn is_session_update(event: &AcpUiEventVm, session_update: &str) -> bool {
 }
 
 fn permission_vm_from_event(event: &AcpUiEventVm) -> AcpPermissionRequestVm {
-    let raw = event.raw.clone().map(compact_raw_value).unwrap_or_else(|| serde_json::json!({}));
+    let raw = event
+        .raw
+        .clone()
+        .map(compact_raw_value)
+        .unwrap_or_else(|| serde_json::json!({}));
     let options = raw
         .get("options")
         .and_then(|value| value.as_array())
         .into_iter()
         .flatten()
         .map(|option| AcpPermissionOptionVm {
-            option_id: option.get("optionId").and_then(|value| value.as_str()).unwrap_or_default().to_string(),
-            name: option.get("name").and_then(|value| value.as_str()).unwrap_or_default().to_string(),
-            kind: option.get("kind").and_then(|value| value.as_str()).unwrap_or_default().to_string(),
+            option_id: option
+                .get("optionId")
+                .and_then(|value| value.as_str())
+                .unwrap_or_default()
+                .to_string(),
+            name: option
+                .get("name")
+                .and_then(|value| value.as_str())
+                .unwrap_or_default()
+                .to_string(),
+            kind: option
+                .get("kind")
+                .and_then(|value| value.as_str())
+                .unwrap_or_default()
+                .to_string(),
         })
         .collect::<Vec<_>>();
     AcpPermissionRequestVm {
         request_id: event.id.clone(),
-        title: event.title.clone().unwrap_or_else(|| "Permission required".to_string()),
+        title: event
+            .title
+            .clone()
+            .unwrap_or_else(|| "Permission required".to_string()),
         tool_call_id: event.tool_call_id.clone(),
         options,
         raw,
@@ -1440,7 +1915,12 @@ fn asset_item_vm(kind: &str, node_id: &str, attempt_id: &str, name: String) -> A
         kind: kind.to_string(),
         title: name.clone(),
         preview: name.clone(),
-        tone: if kind == "artifact" { "accent" } else { "neutral" }.to_string(),
+        tone: if kind == "artifact" {
+            "accent"
+        } else {
+            "neutral"
+        }
+        .to_string(),
         node_id: node_id.to_string(),
         attempt_id: attempt_id.to_string(),
         name,
@@ -1461,12 +1941,26 @@ pub fn acp_raw_frame_page_vm(
     let search = normalized_filter(query.search);
     let kind = normalized_filter(query.kind);
     let direction = normalized_filter(query.direction);
-    let path = app.paths.acp_raw_file(task_id, run_id, round_id, node_id, attempt_id);
+    let path = app
+        .paths
+        .acp_raw_file(task_id, run_id, round_id, node_id, attempt_id);
 
-    let total = count_matching_raw_frames(&path, search.as_deref(), kind.as_deref(), direction.as_deref())?;
+    let total = count_matching_raw_frames(
+        &path,
+        search.as_deref(),
+        kind.as_deref(),
+        direction.as_deref(),
+    )?;
     let end = total.saturating_sub(page.saturating_mul(page_size));
     let start = total.saturating_sub((page + 1).saturating_mul(page_size));
-    let items = collect_matching_raw_frames(&path, search.as_deref(), kind.as_deref(), direction.as_deref(), start, end)?;
+    let items = collect_matching_raw_frames(
+        &path,
+        search.as_deref(),
+        kind.as_deref(),
+        direction.as_deref(),
+        start,
+        end,
+    )?;
 
     Ok(AcpRawFramePageVm {
         items,
@@ -1482,13 +1976,21 @@ pub fn acp_raw_frame_page_vm(
     })
 }
 
-fn count_matching_raw_frames(path: &camino::Utf8Path, search: Option<&str>, kind: Option<&str>, direction: Option<&str>) -> Result<usize> {
+fn count_matching_raw_frames(
+    path: &camino::Utf8Path,
+    search: Option<&str>,
+    kind: Option<&str>,
+    direction: Option<&str>,
+) -> Result<usize> {
     if !path.exists() {
         return Ok(0);
     }
     let file = fs::File::open(path.as_std_path())?;
     let mut total = 0usize;
-    for line in BufReader::new(file).lines().map_while(std::result::Result::ok) {
+    for line in BufReader::new(file)
+        .lines()
+        .map_while(std::result::Result::ok)
+    {
         if raw_frame_matches(&line, search, kind, direction) {
             total += 1;
         }
@@ -1526,7 +2028,12 @@ fn collect_matching_raw_frames(
     Ok(items)
 }
 
-fn raw_frame_matches(line: &str, search: Option<&str>, kind: Option<&str>, direction: Option<&str>) -> bool {
+fn raw_frame_matches(
+    line: &str,
+    search: Option<&str>,
+    kind: Option<&str>,
+    direction: Option<&str>,
+) -> bool {
     if let Some(search) = search {
         if !line.to_lowercase().contains(search) {
             return false;
@@ -1542,7 +2049,13 @@ fn raw_frame_matches(line: &str, search: Option<&str>, kind: Option<&str>, direc
         }
     }
     if let Some(direction) = direction {
-        if parsed.direction.as_deref().map(str::to_lowercase).as_deref() != Some(direction) {
+        if parsed
+            .direction
+            .as_deref()
+            .map(str::to_lowercase)
+            .as_deref()
+            != Some(direction)
+        {
             return false;
         }
     }
@@ -1587,10 +2100,22 @@ fn raw_frame_meta(line: &str) -> RawFrameMeta {
     let kind = frame
         .and_then(|frame| frame.pointer("/params/update/sessionUpdate"))
         .and_then(|item| item.as_str())
-        .or_else(|| frame.and_then(|frame| frame.get("method")).and_then(|item| item.as_str()))
+        .or_else(|| {
+            frame
+                .and_then(|frame| frame.get("method"))
+                .and_then(|item| item.as_str())
+        })
         .map(str::to_string)
-        .or_else(|| frame.and_then(|frame| frame.get("error")).map(|_| "error".to_string()))
-        .or_else(|| frame.and_then(|frame| frame.get("result")).map(|_| "result".to_string()))
+        .or_else(|| {
+            frame
+                .and_then(|frame| frame.get("error"))
+                .map(|_| "error".to_string())
+        })
+        .or_else(|| {
+            frame
+                .and_then(|frame| frame.get("result"))
+                .map(|_| "result".to_string())
+        })
         .unwrap_or_else(|| "frame".to_string());
     RawFrameMeta {
         timestamp: json_string(&value, "timestamp"),
@@ -1600,7 +2125,9 @@ fn raw_frame_meta(line: &str) -> RawFrameMeta {
 }
 
 fn normalized_filter(value: Option<String>) -> Option<String> {
-    value.map(|item| item.trim().to_lowercase()).filter(|item| !item.is_empty())
+    value
+        .map(|item| item.trim().to_lowercase())
+        .filter(|item| !item.is_empty())
 }
 
 pub fn log_page_vm(app: &App, query: LogQueryInput) -> Result<LogPageVm> {
@@ -1614,7 +2141,11 @@ pub fn log_page_vm(app: &App, query: LogQueryInput) -> Result<LogPageVm> {
         .enumerate()
         .map(|(index, line)| log_entry_from_line(index, source, &line))
         .collect::<Vec<_>>();
-    items.sort_by(|left, right| left.timestamp.cmp(&right.timestamp).then_with(|| left.id.cmp(&right.id)));
+    items.sort_by(|left, right| {
+        left.timestamp
+            .cmp(&right.timestamp)
+            .then_with(|| left.id.cmp(&right.id))
+    });
     let total = items.len();
     let start = page.saturating_mul(page_size).min(total);
     let end = (start + page_size).min(total);
@@ -1633,15 +2164,32 @@ pub fn log_page_vm(app: &App, query: LogQueryInput) -> Result<LogPageVm> {
     })
 }
 
-fn log_lines_for_query(app: &App, query: &LogQueryInput, source: &str, hot_limit: usize) -> Result<Vec<String>> {
+fn log_lines_for_query(
+    app: &App,
+    query: &LogQueryInput,
+    source: &str,
+    hot_limit: usize,
+) -> Result<Vec<String>> {
     let scope = &query.scope;
     let path = match source {
         "progress-events" => match (&scope.round_id, &scope.node_id, &scope.attempt_id) {
-            (Some(round_id), Some(node_id), Some(attempt_id)) => app.paths.progress_events_file(&scope.task_id, &scope.run_id, round_id, node_id, attempt_id),
+            (Some(round_id), Some(node_id), Some(attempt_id)) => app.paths.progress_events_file(
+                &scope.task_id,
+                &scope.run_id,
+                round_id,
+                node_id,
+                attempt_id,
+            ),
             _ => return Ok(Vec::new()),
         },
         "raw-stream" => match (&scope.round_id, &scope.node_id, &scope.attempt_id) {
-            (Some(round_id), Some(node_id), Some(attempt_id)) => app.paths.raw_stream_file(&scope.task_id, &scope.run_id, round_id, node_id, attempt_id),
+            (Some(round_id), Some(node_id), Some(attempt_id)) => app.paths.raw_stream_file(
+                &scope.task_id,
+                &scope.run_id,
+                round_id,
+                node_id,
+                attempt_id,
+            ),
             _ => return Ok(Vec::new()),
         },
         "run-events" | "system" => app.paths.run_events_file(&scope.task_id, &scope.run_id),
@@ -1675,7 +2223,10 @@ fn read_tail_lines(path: &camino::Utf8Path, limit: usize) -> Result<Vec<String>>
         position -= read_len as u64;
         file.seek(SeekFrom::Start(position))?;
         file.read_exact(&mut buffer[..read_len])?;
-        newline_count += buffer[..read_len].iter().filter(|&&byte| byte == b'\n').count();
+        newline_count += buffer[..read_len]
+            .iter()
+            .filter(|&&byte| byte == b'\n')
+            .count();
         chunks.push(buffer[..read_len].to_vec());
     }
     chunks.reverse();
@@ -1683,7 +2234,10 @@ fn read_tail_lines(path: &camino::Utf8Path, limit: usize) -> Result<Vec<String>>
     let normalized = text.strip_suffix('\n').unwrap_or(&text);
     let lines = normalized.lines().collect::<Vec<_>>();
     let start = lines.len().saturating_sub(limit);
-    Ok(lines[start..].iter().map(|line| (*line).to_string()).collect())
+    Ok(lines[start..]
+        .iter()
+        .map(|line| (*line).to_string())
+        .collect())
 }
 
 fn log_entry_from_line(index: usize, source: &str, line: &str) -> LogEntryVm {
@@ -1692,7 +2246,12 @@ fn log_entry_from_line(index: usize, source: &str, line: &str) -> LogEntryVm {
         Err(_) => LogEntryVm {
             id: format!("{source}-{index}"),
             timestamp: String::new(),
-            entry_type: if source == "system" { "runtime" } else { "parse-error" }.to_string(),
+            entry_type: if source == "system" {
+                "runtime"
+            } else {
+                "parse-error"
+            }
+            .to_string(),
             level: None,
             node_id: None,
             attempt_id: None,
@@ -1721,7 +2280,10 @@ fn log_entry_from_json(index: usize, source: &str, value: serde_json::Value) -> 
     let summary = data
         .and_then(|data| json_string(data, "summary"))
         .or_else(|| data.and_then(|data| json_string(data, "content")))
-        .or_else(|| data.and_then(|data| json_string(data, "toolName")).map(|tool| format!("tool: {tool}")))
+        .or_else(|| {
+            data.and_then(|data| json_string(data, "toolName"))
+                .map(|tool| format!("tool: {tool}"))
+        })
         .or_else(|| json_string(&value, "content"))
         .unwrap_or_else(|| preview_text(&value.to_string(), 240));
 
@@ -1842,8 +2404,86 @@ fn preview_text(text: &str, limit: usize) -> String {
     }
 }
 
-
 fn newest_first<T>(mut items: Vec<T>) -> Vec<T> {
     items.reverse();
     items
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use camino::Utf8PathBuf;
+    use serde_json::json;
+
+    fn test_event(kind: &str, content: &str) -> AcpUiEventVm {
+        AcpUiEventVm {
+            id: format!("{kind}-{content}"),
+            seq: 1,
+            timestamp: "1778771541Z".to_string(),
+            kind: kind.to_string(),
+            session_id: Some("session-123".to_string()),
+            content: Some(content.to_string()),
+            title: None,
+            tool_call_id: None,
+            status: Some("completed".to_string()),
+            raw: Some(json!({ "source": "goldBandPrompt" })),
+        }
+    }
+
+    #[test]
+    fn raw_frame_error_populates_session_diagnostics() {
+        let dir =
+            std::env::temp_dir().join(format!("gold-band-raw-error-test-{}", std::process::id()));
+        fs::create_dir_all(&dir).unwrap();
+        let path = Utf8PathBuf::from_path_buf(dir.join("acp.raw.jsonl")).unwrap();
+        fs::write(
+            path.as_std_path(),
+            r#"{"timestamp":"1778771541Z","direction":"inbound","frame":{"error":{"code":-32603,"data":{"errorKind":"rate_limit"},"message":"Internal error: API Error: Request rejected (429)"},"id":3,"jsonrpc":"2.0"}}
+"#,
+        )
+        .unwrap();
+
+        let mut diagnostics = AcpDiagnosticsScan {
+            error_count: 0,
+            last_error: None,
+            last_error_timestamp: None,
+        };
+        merge_raw_frame_error(&mut diagnostics, scan_acp_raw_error(&path).unwrap());
+
+        assert_eq!(diagnostics.error_count, 1);
+        assert_eq!(
+            diagnostics.last_error.as_deref(),
+            Some("Internal error: API Error: Request rejected (429)")
+        );
+        assert_eq!(
+            diagnostics.last_error_timestamp.as_deref(),
+            Some("1778771541Z")
+        );
+
+        fs::remove_dir_all(dir).unwrap();
+    }
+
+    #[test]
+    fn text_delta_still_merges_in_scan_window() {
+        let mut pending = Some(test_event("textDelta", "输出你的"));
+        let next = test_event("textDelta", "工具列表");
+
+        assert!(merge_pending_delta(&mut pending, &next));
+        assert_eq!(
+            pending.and_then(|event| event.content),
+            Some("输出你的工具列表".to_string())
+        );
+    }
+
+    #[test]
+    fn user_text_delta_no_longer_merges_across_prompts() {
+        let mut pending = Some(test_event("userTextDelta", "输出你的工具列表"));
+        let next = test_event("userTextDelta", "给我一首古诗");
+
+        assert!(!merge_pending_delta(&mut pending, &next));
+        assert_eq!(
+            pending.and_then(|event| event.content),
+            Some("输出你的工具列表".to_string())
+        );
+    }
 }

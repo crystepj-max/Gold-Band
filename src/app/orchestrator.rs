@@ -4,6 +4,7 @@ use anyhow::{Result, bail};
 use camino::Utf8Path;
 use camino::Utf8PathBuf;
 
+use crate::config::DesktopLanguage;
 use crate::control::{ControlDecision, decide_next_step};
 use crate::domain::{
     NodeOutcome, PauseReason, RoundTrigger, RunOutcome, RunStatus, SessionMode, VERSION,
@@ -19,7 +20,6 @@ use crate::runtime::{
 };
 use crate::storage::{read_json, write_json};
 
-use super::App;
 use super::ids::{next_attempt_id, next_run_id, now_rfc3339_like};
 use super::node_executor::{execute_ai_node, execute_exec_node, re_evaluate_attempt};
 use super::profile_resolver::{resolve_profile_for_node, resolve_workflow_profiles};
@@ -29,6 +29,7 @@ use super::transition_context::{
     feedback_summary_from_previous_node, find_latest_artifact_path,
     find_latest_worker_ref_for_transition,
 };
+use super::{App, is_run_continuable};
 
 struct PreparedRun {
     validated: ValidatedWorkflow,
@@ -36,6 +37,13 @@ struct PreparedRun {
     run: RunState,
     round: RoundState,
     node: NodeState,
+}
+
+fn localized_continue_prompt(language: DesktopLanguage) -> String {
+    match language {
+        DesktopLanguage::ZhCn => "继续".to_string(),
+        DesktopLanguage::En => "Continue".to_string(),
+    }
 }
 
 pub(crate) fn run_start(
@@ -245,7 +253,12 @@ fn prepare_run(
     })
 }
 
-pub(crate) fn run_continue(app: &App, task_id: &str, run_id: &str) -> Result<RunState> {
+pub(crate) fn run_continue(
+    app: &App,
+    task_id: &str,
+    run_id: &str,
+    prompt_id: Option<String>,
+) -> Result<RunState> {
     let workflow = load_run_workflow(app, task_id, run_id)?;
     let validated = validate_workflow(workflow)?;
     let resolved_profiles = resolve_workflow_profiles(&app.paths, &validated.raw)?;
@@ -284,42 +297,35 @@ pub(crate) fn run_continue(app: &App, task_id: &str, run_id: &str) -> Result<Run
         ),
     );
 
-    match node.status {
+    let (initial_session_mode, initial_continue_ref, initial_resume_prompt, initial_resume_prompt_id) = match node.status {
         RunStatus::Paused => {
-            if run.pause_reason == Some(PauseReason::ProcessInterrupted) {
-                let continue_ref = read_json::<WorkerRefState>(&app.paths.worker_ref_file(
-                    task_id,
-                    run_id,
-                    &round.id,
-                    &node.node_id,
-                    &node.attempt_id,
-                ))?
-                .continue_ref;
-                node = execute_ai_node(
-                    app,
-                    task_id,
-                    &run.id,
-                    &round.id,
-                    &node.attempt_id,
-                    &validated,
-                    &node.node_id,
-                    node.clone(),
-                    SessionMode::Continue,
-                    continue_ref,
-                    None,
-                    None,
-                )?;
-            } else {
+            if !is_run_continuable(&run) {
                 bail!("current attempt is paused but not resumable by continue");
             }
+            let continue_ref = read_json::<WorkerRefState>(&app.paths.worker_ref_file(
+                task_id,
+                run_id,
+                &round.id,
+                &node.node_id,
+                &node.attempt_id,
+            ))?
+            .continue_ref
+            .ok_or_else(|| anyhow::anyhow!("current attempt has no ACP continue reference"))?;
+            (
+                SessionMode::Continue,
+                Some(continue_ref),
+                Some(localized_continue_prompt(app.config.desktop_language)),
+                prompt_id,
+            )
         }
         RunStatus::Completed if node.outcome == Some(NodeOutcome::Invalid) => {
             node = re_evaluate_attempt(app, task_id, &run.id, &round.id, node)?;
+            (SessionMode::New, None, None, None)
         }
         _ => bail!("current attempt is not continuable"),
-    }
+    };
 
-    drive_from_node(
+    drive_from_node_with_initial_session(
         app,
         task_id,
         &validated,
@@ -327,8 +333,45 @@ pub(crate) fn run_continue(app: &App, task_id: &str, run_id: &str) -> Result<Run
         &mut run,
         &mut round,
         node,
+        initial_session_mode,
+        initial_continue_ref,
+        initial_resume_prompt,
+        initial_resume_prompt_id,
     )?;
     Ok(run)
+}
+
+pub(crate) fn run_continue_background(
+    app: &App,
+    task_id: &str,
+    run_id: &str,
+    prompt_id: Option<String>,
+) -> Result<RunState> {
+    let initial_run = app.run_status(task_id, run_id)?;
+    if !is_run_continuable(&initial_run) {
+        bail!("current run is not resumable by continue");
+    }
+    let repo_root = app.paths.repo_root.clone();
+    let config = app.config.clone();
+    let task_id = task_id.to_string();
+    let run_id = run_id.to_string();
+    let prompt_id = prompt_id.clone();
+
+    thread::spawn(move || {
+        let app = App::with_config(repo_root, config);
+        if let Err(err) = run_continue(&app, &task_id, &run_id, prompt_id) {
+            let _ = std::fs::create_dir_all(app.paths.runs_dir(&task_id).as_std_path());
+            let _ = std::fs::write(
+                app.paths
+                    .runs_dir(&task_id)
+                    .join("desktop-continue-error.txt")
+                    .as_std_path(),
+                err.to_string(),
+            );
+        }
+    });
+
+    Ok(initial_run)
 }
 
 pub(crate) fn run_retry(app: &App, task_id: &str, run_id: &str) -> Result<RunState> {
@@ -447,10 +490,40 @@ pub(crate) fn drive_from_node(
     resolved_profiles: &super::profile_resolver::ResolvedWorkflowMetadata,
     run: &mut RunState,
     round: &mut RoundState,
-    mut node: NodeState,
+    node: NodeState,
 ) -> Result<()> {
-    let mut session_mode = SessionMode::New;
-    let mut continue_ref: Option<serde_json::Value> = None;
+    drive_from_node_with_initial_session(
+        app,
+        task_id,
+        workflow,
+        resolved_profiles,
+        run,
+        round,
+        node,
+        SessionMode::New,
+        None,
+        None,
+        None,
+    )
+}
+
+fn drive_from_node_with_initial_session(
+    app: &App,
+    task_id: &str,
+    workflow: &ValidatedWorkflow,
+    resolved_profiles: &super::profile_resolver::ResolvedWorkflowMetadata,
+    run: &mut RunState,
+    round: &mut RoundState,
+    mut node: NodeState,
+    initial_session_mode: SessionMode,
+    initial_continue_ref: Option<serde_json::Value>,
+    initial_resume_prompt: Option<String>,
+    initial_resume_prompt_id: Option<String>,
+) -> Result<()> {
+    let mut session_mode = initial_session_mode;
+    let mut continue_ref = initial_continue_ref;
+    let mut resume_prompt = initial_resume_prompt;
+    let mut resume_prompt_id = initial_resume_prompt_id;
     let mut feedback_summary: Option<String> = None;
     let mut verify_result_path: Option<Utf8PathBuf> = None;
 
@@ -464,6 +537,14 @@ pub(crate) fn drive_from_node(
             .with_round(round.id.clone())
             .with_node(current_node_id.clone())
             .with_attempt(current_attempt_id.clone());
+        run.status = RunStatus::Running;
+        run.pause_reason = None;
+        run.updated_at = now_rfc3339_like();
+        round.status = RunStatus::Running;
+        if node.status == RunStatus::Paused {
+            node.status = RunStatus::Running;
+            node.finished_at = None;
+        }
         let node_stage = match node.node_type {
             crate::domain::NodeType::Exec => ProgressStage::RunningCommand,
             crate::domain::NodeType::Verify => ProgressStage::Verifying,
@@ -513,6 +594,8 @@ pub(crate) fn drive_from_node(
                     node.clone(),
                     session_mode,
                     continue_ref.as_ref().cloned(),
+                    resume_prompt.take(),
+                    resume_prompt_id.take(),
                     feedback_summary.clone(),
                     verify_result_path.as_deref(),
                 ) {
@@ -661,6 +744,8 @@ pub(crate) fn drive_from_node(
                 let previous_node_id = node.node_id.clone();
                 let edge_outcome = node.outcome.map(edge_outcome_label);
                 session_mode = session;
+                resume_prompt = None;
+                resume_prompt_id = None;
                 continue_ref = find_latest_worker_ref_for_transition(
                     app, task_id, &run.id, &round.id, &node, &node_id, session,
                 )?
@@ -781,6 +866,8 @@ pub(crate) fn drive_from_node(
                     &node,
                 )?;
                 continue_ref = None;
+                resume_prompt = None;
+                resume_prompt_id = None;
                 session_mode = SessionMode::New;
                 let next_profile = match next_node_dsl {
                     crate::dsl::NodeDsl::Worker(worker) => worker

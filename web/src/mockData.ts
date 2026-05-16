@@ -74,6 +74,16 @@ const failedAcceptanceGraph = {
   ],
 };
 
+const errorBlockedGraph = {
+  nodes: [
+    { id: 'dev', label: 'dev', nodeType: 'worker', status: 'paused', outcome: null, attemptId: 'attempt-001', artifactCount: 0, attachmentCount: 0, current: true },
+    { id: 'accept', label: 'accept', nodeType: 'verify', status: 'pending', outcome: null, attemptId: null, artifactCount: 0, attachmentCount: 0, current: false },
+  ],
+  edges: [
+    { from: 'dev', to: 'accept', label: 'success' },
+  ],
+};
+
 const mockNodeDetail: NodeDetailVm = {
   id: 'node-03 execute',
   nodeId: 'node-03 execute',
@@ -98,9 +108,10 @@ const mockNodeDetail: NodeDetailVm = {
     adapterDisplayName: 'Claude ACP',
     cwd: 'D:\\Projects\\code\\ai\\Gold-Band',
     status: 'running',
+    sessionElapsedSeconds: 240,
     restored: true,
     stopReason: null,
-    diagnostics: { rawFrameCount: 18, eventCount: 7, errorCount: 0, lastError: null },
+    diagnostics: { rawFrameCount: 18, eventCount: 7, errorCount: 0, lastError: null, lastErrorTimestamp: null },
     eventPage: { loadedCount: 5, total: 7, oldestSeq: 1, newestSeq: 5, hasOlder: false, hasNewer: false },
     pendingPermissions: [
       {
@@ -129,6 +140,36 @@ const mockNodeDetail: NodeDetailVm = {
   attachments: [
     { kind: 'attachment', name: 'dpi_scaling_logs_win11.txt', title: 'dpi_scaling_logs_win11.txt', tone: 'neutral', preview: 'provider attachment', nodeId: 'node-03 execute', attemptId: 'att-2-node03-rev1' },
   ],
+};
+
+const errorBlockedNodeDetail: NodeDetailVm = {
+  ...mockNodeDetail,
+  id: 'dev',
+  nodeId: 'dev',
+  sequence: 1,
+  label: 'dev',
+  nodeType: 'worker',
+  status: 'paused',
+  outcome: null,
+  attemptId: 'attempt-001',
+  current: true,
+  artifactCount: 0,
+  attachmentCount: 0,
+  artifacts: [],
+  attachments: [],
+  acpSession: mockNodeDetail.acpSession ? {
+    ...mockNodeDetail.acpSession,
+    status: 'failed',
+    sessionElapsedSeconds: 62,
+    diagnostics: { rawFrameCount: 5, eventCount: 2, errorCount: 1, lastError: 'ACP prompt failed: adapter returned malformed response', lastErrorTimestamp: '2026-05-15 10:02' },
+    eventPage: { loadedCount: 3, total: 3, oldestSeq: 1, newestSeq: 3, hasOlder: false, hasNewer: false },
+    pendingPermissions: [],
+    events: [
+      { id: 'e1', seq: 1, timestamp: '2026-05-15 10:01', kind: 'userTextDelta', content: '初始需求 prompt', sessionId: 'acp-session-7f3', raw: { source: 'goldBandPrompt', synthetic: true } },
+      { id: 'acp-diagnostic-error-1', seq: 2, timestamp: '2026-05-15 10:02', kind: 'runtimeError', content: 'ACP prompt failed: adapter returned malformed response', status: 'failed', raw: { source: 'acpDiagnostic', level: 'error' } },
+      { id: 'gold-band-user-prompt-3', seq: 3, timestamp: '2026-05-15 10:03', kind: 'userTextDelta', content: '继续', status: 'completed', sessionId: 'acp-session-7f3', raw: { source: 'goldBandPrompt', synthetic: true } },
+    ],
+  } : null,
 };
 
 const rounds = [
@@ -223,14 +264,28 @@ export const mockRunDetail: RunDetailVm = {
 
 export function mockRoundDetail(selection?: RoundSelection, route?: { taskId: string; runId: string; roundId: string }): RoundDetailVm {
   const isFailedAcceptanceRound = route?.runId === 'run-024' && route.roundId === 'round-001';
-  const routeRun = isFailedAcceptanceRound ? { ...latestRun, id: 'run-024', status: 'completed', outcome: 'failure', currentRound: 'round-001', currentNode: 'accept', resumable: true } : latestRun;
-  const routeRound = isFailedAcceptanceRound ? { ...rounds[0], id: 'round-001', runId: 'run-024', index: 1, status: 'completed', outcome: 'failure', trigger: 'initial', repairLoopsUsed: 0, currentNode: 'accept', artifactCount: 1, attachmentCount: 0 } : rounds[0];
+  const isErrorBlockedRound = route?.runId === 'run-051' && route.roundId === 'round-001';
+  const routeRun = isErrorBlockedRound
+    ? { ...latestRun, id: 'run-051', status: 'paused', outcome: null, currentRound: 'round-001', currentNode: 'dev', currentAttempt: 'attempt-001', resumable: true, pauseReason: 'error-blocked' }
+    : isFailedAcceptanceRound
+      ? { ...latestRun, id: 'run-024', status: 'completed', outcome: 'failure', currentRound: 'round-001', currentNode: 'accept', resumable: true }
+      : latestRun;
+  const routeRound = isErrorBlockedRound
+    ? { ...rounds[0], id: 'round-001', runId: 'run-051', index: 1, status: 'paused', outcome: null, trigger: 'initial', repairLoopsUsed: 0, currentNode: 'dev', artifactCount: 0, attachmentCount: 0 }
+    : isFailedAcceptanceRound
+      ? { ...rounds[0], id: 'round-001', runId: 'run-024', index: 1, status: 'completed', outcome: 'failure', trigger: 'initial', repairLoopsUsed: 0, currentNode: 'accept', artifactCount: 1, attachmentCount: 0 }
+      : rounds[0];
+  const selectedNodeDetail = selection?.kind === 'node' || selection?.kind === 'artifact' || selection?.kind === 'attachment' || selection?.kind === 'worker-ref' || selection?.kind === 'log'
+    ? isErrorBlockedRound
+      ? { ...errorBlockedNodeDetail, nodeId: selection.nodeId ?? errorBlockedNodeDetail.nodeId }
+      : { ...mockNodeDetail, nodeId: selection.nodeId ?? mockNodeDetail.nodeId }
+    : null;
   return {
     run: routeRun,
     round: routeRound,
-    graph: isFailedAcceptanceRound ? failedAcceptanceGraph : graph,
+    graph: isErrorBlockedRound ? errorBlockedGraph : isFailedAcceptanceRound ? failedAcceptanceGraph : graph,
     requirement,
-    selectedNodeDetail: selection?.kind === 'node' || selection?.kind === 'artifact' || selection?.kind === 'attachment' || selection?.kind === 'worker-ref' || selection?.kind === 'log' ? { ...mockNodeDetail, nodeId: selection.nodeId ?? mockNodeDetail.nodeId } : null,
+    selectedNodeDetail,
   };
 }
 

@@ -6,6 +6,7 @@ mod state_access;
 mod state_factory;
 mod transition_context;
 
+use crate::acp::permission::{cancel_pending_permission_requests, request_cancel};
 use crate::artifacts::{
     ExecPlanArtifact, ExecResultArtifact, VerifyResultArtifact, validate_exec_plan,
     validate_exec_result, validate_verify_result,
@@ -36,8 +37,10 @@ use std::io::{Read, Seek, SeekFrom};
 
 use self::ids::now_rfc3339_like;
 use self::orchestrator::{
-    run_continue as orchestrator_run_continue, run_retry as orchestrator_run_retry,
-    run_start as orchestrator_run_start, run_start_background as orchestrator_run_start_background,
+    run_continue as orchestrator_run_continue,
+    run_continue_background as orchestrator_run_continue_background,
+    run_retry as orchestrator_run_retry, run_start as orchestrator_run_start,
+    run_start_background as orchestrator_run_start_background,
 };
 use self::profile_resolver::resolve_workflow_profiles;
 
@@ -89,6 +92,22 @@ pub struct App {
     pub paths: GoldBandPaths,
     pub config: RuntimeConfig,
     provider: Box<dyn ProviderAdapter>,
+}
+
+pub fn is_run_continuable(run: &RunState) -> bool {
+    run.status == RunStatus::Paused
+        && run.outcome.is_none()
+        && matches!(
+            run.pause_reason,
+            Some(
+                PauseReason::ProcessInterrupted
+                    | PauseReason::WaitingForUserInput
+                    | PauseReason::ErrorBlocked
+            )
+        )
+        && run.current_round.is_some()
+        && run.current_node.is_some()
+        && run.current_attempt.is_some()
 }
 
 impl App {
@@ -641,6 +660,7 @@ impl App {
 
     pub fn run_kill(&self, task_id: &str, run_id: &str) -> Result<RunState> {
         let mut run = self.run_status(task_id, run_id)?;
+        self.request_current_provider_cancel_best_effort(task_id, run_id, &run);
         self.kill_current_provider_process_best_effort(task_id, run_id, &run);
         run.status = RunStatus::Completed;
         run.outcome = Some(RunOutcome::Killed);
@@ -673,6 +693,42 @@ impl App {
         }
 
         Ok(run)
+    }
+
+    pub fn stop_all_running_sessions(&self) -> Result<Vec<RunState>> {
+        let mut stopped = Vec::new();
+        for task in self.task_list()? {
+            let Ok(runs) = self.run_list(&task.id) else {
+                continue;
+            };
+            for run in runs {
+                if run.status != RunStatus::Running {
+                    continue;
+                }
+                if let Ok(killed) = self.run_kill(&task.id, &run.id) {
+                    stopped.push(killed);
+                }
+            }
+        }
+        Ok(stopped)
+    }
+
+    fn request_current_provider_cancel_best_effort(
+        &self,
+        task_id: &str,
+        run_id: &str,
+        run: &RunState,
+    ) {
+        let (Some(round_id), Some(node_id), Some(attempt_id)) =
+            (&run.current_round, &run.current_node, &run.current_attempt)
+        else {
+            return;
+        };
+        let attempt_dir = self
+            .paths
+            .attempt_dir(task_id, run_id, round_id, node_id, attempt_id);
+        let _ = request_cancel(&attempt_dir, now_rfc3339_like());
+        let _ = cancel_pending_permission_requests(&attempt_dir, now_rfc3339_like());
     }
 
     fn kill_current_provider_process_best_effort(
@@ -732,8 +788,22 @@ impl App {
             .ok_or_else(|| anyhow!("provider did not return an open-session command"))
     }
 
-    pub fn run_continue(&self, task_id: &str, run_id: &str) -> Result<RunState> {
-        orchestrator_run_continue(self, task_id, run_id)
+    pub fn run_continue(
+        &self,
+        task_id: &str,
+        run_id: &str,
+        prompt_id: Option<String>,
+    ) -> Result<RunState> {
+        orchestrator_run_continue(self, task_id, run_id, prompt_id)
+    }
+
+    pub fn run_continue_background(
+        &self,
+        task_id: &str,
+        run_id: &str,
+        prompt_id: Option<String>,
+    ) -> Result<RunState> {
+        orchestrator_run_continue_background(self, task_id, run_id, prompt_id)
     }
 
     pub fn run_retry(&self, task_id: &str, run_id: &str) -> Result<RunState> {
@@ -888,10 +958,7 @@ impl App {
         {
             return Ok(Some(run.id.clone()));
         }
-        if let Some(run) = runs.iter().rev().find(|run| {
-            run.status == RunStatus::Paused
-                && matches!(run.pause_reason, Some(PauseReason::ProcessInterrupted))
-        }) {
+        if let Some(run) = runs.iter().rev().find(|run| is_run_continuable(run)) {
             return Ok(Some(run.id.clone()));
         }
         Ok(runs.into_iter().last().map(|run| run.id))
@@ -899,9 +966,7 @@ impl App {
 
     fn find_resumable_run_id(&self, task_id: &str) -> Result<Option<String>> {
         for run in self.run_list(task_id)?.into_iter().rev() {
-            if run.status == RunStatus::Paused
-                && matches!(run.pause_reason, Some(PauseReason::ProcessInterrupted))
-            {
+            if is_run_continuable(&run) {
                 return Ok(Some(run.id));
             }
         }

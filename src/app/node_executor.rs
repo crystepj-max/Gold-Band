@@ -33,6 +33,8 @@ pub(crate) fn execute_ai_node(
     node: NodeState,
     session_mode: SessionMode,
     continue_ref: Option<serde_json::Value>,
+    resume_prompt: Option<String>,
+    resume_prompt_id: Option<String>,
     feedback_summary: Option<String>,
     verify_result_path: Option<&Utf8Path>,
 ) -> Result<NodeState> {
@@ -110,6 +112,8 @@ pub(crate) fn execute_ai_node(
         task_instruction,
         session_mode,
         continue_ref,
+        resume_prompt,
+        resume_prompt_id,
         stream_mode: StreamMode::StreamJson,
         log_prompts: app.config.log_prompts,
         log_provider_command: app.config.log_provider_command,

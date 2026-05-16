@@ -93,7 +93,14 @@ MVP 中：
 - `paused` 只表示系统挂起，不表示终局结果
 - `paused` 的典型来源只有：
   - `process_interrupted`
+  - `waiting_for_user_input`
   - `error_blocked`
+
+`continue` 只暴露给可恢复的中途暂停态：run / round / 当前 node 必须仍处于 `paused`，且 run 没有终局 outcome，暂停原因必须是 `process_interrupted`、`waiting_for_user_input` 或 `error_blocked`。桌面端应将 `error_blocked` 展示为错误阻塞而不是普通已暂停，但仍保留用户显式继续入口；已经 `completed` 且 outcome 为 `success / failure / killed` 的 round 不展示继续入口。
+
+ACP provider 的 continue 必须恢复既有 session：runtime 使用当前 attempt 的 `worker-ref.json.continue_ref` 执行 `session/load`，加载失败即阻塞，不允许新建 session 后发送短 prompt。恢复成功后，runtime 发送本地化用户 prompt：中文为 `继续`，英文为 `Continue`。每次继续都必须携带新的 prompt identity（如 `promptId`）并写入 synthetic `goldBandPrompt` 事件元数据，供桌面端把“新的继续回合”与历史同文本继续回合区分开，避免错误复用旧回合计时或把多次继续合并成一条消息。
+
+桌面客户端关闭时，应用壳需要 best-effort 停止所有仍处于 `running` 的 run：先写入 ACP cancel 标记并取消 pending permission；运行中的 ACP runtime 发现该标记后，必须发送不带 `id` 的 JSON-RPC notification `session/cancel`，不能把它作为 request 等待 adapter 返回；随后再清理 provider 进程树，最后将 run / round / 当前 node 收束为 `completed + killed`。已 `paused` 或 `completed` 的 run 不在关闭时自动改写。
 
 ---
 

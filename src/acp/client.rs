@@ -24,7 +24,7 @@ use crate::domain::{DEFAULT_PROVIDER, SessionMode, VERSION};
 use crate::process::kill_process_tree;
 use crate::provider::PromptBundle;
 use crate::runtime::{WorkerRefState, validate_worker_ref_state};
-use crate::storage::{GoldBandPaths, ensure_parent_dir, write_json};
+use crate::storage::{GoldBandPaths, ensure_parent_dir, read_json, write_json};
 
 const CANCEL_CHECK_INTERVAL: Duration = Duration::from_millis(200);
 const CANCEL_GRACE_PERIOD: Duration = Duration::from_secs(5);
@@ -88,8 +88,13 @@ pub fn run_prompt(
     clear_cancel_request(&attempt_dir)?;
     let mut runtime = AcpRuntime::start(config, workspace_dir.clone(), attempt_dir)?;
     let capabilities = runtime.initialize()?;
-    let restored =
-        runtime.setup_session(workspace_dir.clone(), continue_ref, &prompt.system_prompt)?;
+    let strict_continue = session_mode == SessionMode::Continue && continue_ref.is_some();
+    let restored = runtime.setup_session(
+        workspace_dir.clone(),
+        continue_ref,
+        &prompt.system_prompt,
+        strict_continue,
+    )?;
     let session_id = runtime
         .session_id
         .clone()
@@ -283,6 +288,7 @@ impl AcpRuntime {
         cwd: Utf8PathBuf,
         continue_ref: Option<Value>,
         system_prompt: &str,
+        strict_continue: bool,
     ) -> Result<bool> {
         if let Some(session_id) = continue_ref
             .as_ref()
@@ -312,8 +318,15 @@ impl AcpRuntime {
                         format!("failed to load ACP session `{session_id}`: {err}"),
                         None,
                     )?;
+                    if strict_continue {
+                        bail!("failed to load existing ACP session for continue: {err}");
+                    }
                 }
             }
+        }
+
+        if strict_continue {
+            bail!("ACP continue requires an existing session id");
         }
 
         let mut params = json!({
@@ -351,7 +364,12 @@ impl AcpRuntime {
         self.seq += 1;
         append_ui_event(
             &self.paths.events,
-            &user_prompt_event(self.seq, session_id.clone(), prompt.user_prompt.clone()),
+            &user_prompt_event(
+                self.seq,
+                session_id.clone(),
+                prompt.user_prompt.clone(),
+                prompt.prompt_id.clone(),
+            ),
         )?;
         let result = self.request(
             "session/prompt",
@@ -380,7 +398,6 @@ impl AcpRuntime {
         });
         self.send_frame(&frame)?;
         let mut cancel_started_at = None;
-        let mut cancel_request_id = None;
         loop {
             match self.rx.recv_timeout(CANCEL_CHECK_INTERVAL) {
                 Ok(value) => {
@@ -393,9 +410,6 @@ impl AcpRuntime {
                             bail!("ACP `{method}` failed: {error}");
                         }
                         return Ok(value.get("result").cloned().unwrap_or_else(|| json!({})));
-                    }
-                    if cancel_request_id.is_some() && response_id == cancel_request_id {
-                        continue;
                     }
                     self.handle_inbound(value)?;
                 }
@@ -411,7 +425,7 @@ impl AcpRuntime {
             if is_cancel_requested(&self.paths.attempt_dir) {
                 if cancel_started_at.is_none() {
                     cancel_started_at = Some(Instant::now());
-                    cancel_request_id = self.send_cancel_request()?;
+                    self.send_cancel_notification()?;
                     append_diagnostic(
                         &self.paths.diagnostics,
                         "info",
@@ -509,21 +523,11 @@ impl AcpRuntime {
         }))
     }
 
-    fn send_cancel_request(&mut self) -> Result<Option<u64>> {
+    fn send_cancel_notification(&mut self) -> Result<()> {
         let Some(session_id) = self.session_id.clone() else {
-            return Ok(None);
+            return Ok(());
         };
-        let id = self.next_id;
-        self.next_id += 1;
-        self.send_frame(&json!({
-            "jsonrpc": "2.0",
-            "id": id,
-            "method": "session/cancel",
-            "params": {
-                "sessionId": session_id,
-            }
-        }))?;
-        Ok(Some(id))
+        self.send_frame(&cancel_notification_frame(&session_id))
     }
 
     fn kill_adapter_process(&mut self) {
@@ -580,6 +584,14 @@ impl AcpRuntime {
         stop_reason: Option<String>,
         capabilities: Value,
     ) -> Result<()> {
+        let now = current_timestamp();
+        let created_at = if self.paths.session.exists() {
+            read_json::<AcpSessionMetadata>(&self.paths.session)
+                .map(|session| session.created_at)
+                .unwrap_or_else(|_| now.clone())
+        } else {
+            now.clone()
+        };
         write_session_metadata(
             &self.paths.session,
             &AcpSessionMetadata {
@@ -593,8 +605,8 @@ impl AcpRuntime {
                 models: self.models.clone(),
                 modes: self.modes.clone(),
                 config_options: self.config_options.clone(),
-                created_at: current_timestamp(),
-                updated_at: current_timestamp(),
+                created_at,
+                updated_at: now,
             },
         )
     }
@@ -639,14 +651,42 @@ fn rpc_id_to_string(id: &Value) -> String {
         .unwrap_or_else(|| id.to_string())
 }
 
+fn cancel_notification_frame(session_id: &str) -> Value {
+    json!({
+        "jsonrpc": "2.0",
+        "method": "session/cancel",
+        "params": {
+            "sessionId": session_id,
+        }
+    })
+}
+
 #[cfg(test)]
 mod tests {
-    use super::contributes_to_final_text;
+    use serde_json::json;
+
+    use super::{cancel_notification_frame, contributes_to_final_text};
 
     #[test]
     fn final_text_ignores_user_prompt_deltas() {
         assert!(contributes_to_final_text("textDelta"));
         assert!(!contributes_to_final_text("userTextDelta"));
         assert!(!contributes_to_final_text("thoughtDelta"));
+    }
+
+    #[test]
+    fn cancel_frame_is_notification_without_id() {
+        let frame = cancel_notification_frame("session-123");
+        assert_eq!(frame.get("id"), None);
+        assert_eq!(
+            frame,
+            json!({
+                "jsonrpc": "2.0",
+                "method": "session/cancel",
+                "params": {
+                    "sessionId": "session-123",
+                }
+            })
+        );
     }
 }

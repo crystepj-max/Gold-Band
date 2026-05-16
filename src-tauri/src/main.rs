@@ -12,6 +12,7 @@ use commands::{
     show_attachment, show_worker_ref, start_run,
 };
 use state::{DesktopContext, DesktopState};
+use tauri::{Manager, WindowEvent};
 
 fn main() {
     if let Err(error) = run() {
@@ -24,6 +25,14 @@ fn run() -> anyhow::Result<()> {
     tauri::Builder::default()
         .plugin(tauri_plugin_dialog::init())
         .manage(DesktopState::new(context))
+        .on_window_event(|window, event| {
+            if matches!(event, WindowEvent::CloseRequested { .. }) {
+                let state = window.state::<DesktopState>();
+                if let Ok(app) = state.app() {
+                    let _ = app.stop_all_running_sessions();
+                }
+            }
+        })
         .invoke_handler(tauri::generate_handler![
             get_app_bootstrap,
             get_system_fonts,

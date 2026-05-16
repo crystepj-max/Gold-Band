@@ -209,8 +209,8 @@ export function startRun(taskId: string) {
   return command<RunSummaryVm>('start_run', { taskId }, { ...mockRunDetail.run, taskId });
 }
 
-export function continueRun(taskId: string, runId: string) {
-  return command<RunSummaryVm>('continue_run', { taskId, runId }, { ...mockRunDetail.run, taskId, id: runId });
+export function continueRun(taskId: string, runId: string, promptId?: string | null) {
+  return command<RunSummaryVm>('continue_run', { taskId, runId, promptId }, { ...mockRunDetail.run, taskId, id: runId });
 }
 
 export function retryRun(taskId: string, runId: string) {
@@ -229,8 +229,8 @@ export function getAcpSession(taskId: string, runId: string, roundId: string, no
   return command<AcpSessionVm | null>('get_acp_session', { taskId, runId, roundId, nodeId, attemptId, query }, fallback ?? null);
 }
 
-export function sendAcpPrompt(taskId: string, runId: string, roundId: string, nodeId: string, attemptId: string, prompt: string, fallback?: AcpSessionVm | null) {
-  return command<AcpSessionVm | null>('send_acp_prompt', { taskId, runId, roundId, nodeId, attemptId, prompt }, fallback ?? null);
+export function sendAcpPrompt(taskId: string, runId: string, roundId: string, nodeId: string, attemptId: string, prompt: string, promptId?: string | null, fallback?: AcpSessionVm | null) {
+  return command<AcpSessionVm | null>('send_acp_prompt', { taskId, runId, roundId, nodeId, attemptId, prompt, promptId }, fallback ?? null);
 }
 
 export function respondAcpPermission(taskId: string, runId: string, roundId: string, nodeId: string, attemptId: string, requestId: string, optionId: string, fallback?: AcpSessionVm | null) {
