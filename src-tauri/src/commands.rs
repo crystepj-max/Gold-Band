@@ -1,36 +1,68 @@
 use std::{
     collections::BTreeSet,
     io::{BufRead, BufReader},
+    str::FromStr,
 };
-
 use gold_band::acp::client;
 use gold_band::acp::events::{append_ui_event, current_timestamp, permission_decision_event};
 use gold_band::acp::permission::{
     cancel_pending_permission_requests, request_cancel, write_permission_response,
 };
+use gold_band::app::CreateTaskInput;
 use gold_band::domain::SessionMode;
+use gold_band::dsl::WorkflowDsl;
 use gold_band::provider::PromptBundle;
-use gold_band::runtime::WorkerRefState;
+use gold_band::runtime::{NodeState, WorkerRefState};
 use gold_band::storage::read_json;
 
 use camino::Utf8PathBuf;
 use gold_band::config::{
-    DesktopFontPreference, DesktopLanguage, DesktopThemePreference, RuntimeConfig,
+    AcpAdapterConfig, DesktopFontPreference, DesktopLanguage, DesktopThemePreference,
+    ManagedAgentConfig, ManagedAgentType, RuntimeConfig,
 };
+use serde::Deserialize;
 use tauri::State;
 use tauri_plugin_dialog::DialogExt;
 
 use crate::i18n::Translator;
 use crate::state::DesktopState;
 use crate::view_models::{
-    AcpRawFramePageVm, AcpRawFrameQueryInput, AcpSessionQueryInput, AcpSessionVm, AppBootstrapVm,
-    ContentVm, LogPageVm, LogQueryInput, PreferencesVm, RoundDetailVm, RoundSelectionInput,
-    RunDetailVm, RunSummaryVm, TaskDetailVm, TaskListVm, WorkflowVm, acp_raw_frame_page_vm,
-    acp_session_vm, bootstrap_vm, log_page_vm, preferences_vm, round_detail_vm, run_detail_vm,
-    run_summary_vm, task_detail_vm, task_list_vm, workflow_vm,
+    AcpRawFramePageVm, AcpRawFrameQueryInput, AcpSessionQueryInput, AcpSessionVm,
+    AgentRegistryVm, AppBootstrapVm, ContentVm, LogPageVm, LogQueryInput, PreferencesVm,
+    RoundDetailVm, RoundSelectionInput, RunDetailVm, RunSummaryVm, TaskDetailVm, TaskListVm,
+    WorkflowVm, acp_raw_frame_page_vm, acp_session_vm, agent_registry_vm, bootstrap_vm,
+    log_page_vm, preferences_vm, round_detail_vm, run_detail_vm, run_summary_vm,
+    task_detail_vm, task_list_vm, workflow_vm,
 };
 
 pub type CommandResult<T> = Result<T, String>;
+
+#[derive(Debug, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ManagedAgentInput {
+    pub display_name: String,
+    pub command: String,
+    #[serde(default)]
+    pub args: Vec<String>,
+    #[serde(default)]
+    pub env: std::collections::BTreeMap<String, String>,
+}
+
+#[derive(Debug, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct CreateTaskInputVm {
+    pub title: Option<String>,
+    pub description: Option<String>,
+    pub requirement_file_name: String,
+    pub requirement_content: String,
+    pub workflow: WorkflowDsl,
+}
+
+#[derive(Debug, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct SaveWorkflowInputVm {
+    pub workflow: WorkflowDsl,
+}
 
 #[tauri::command]
 pub fn get_system_fonts() -> Vec<String> {
@@ -49,6 +81,99 @@ pub fn get_system_fonts() -> Vec<String> {
 pub fn get_app_bootstrap(state: State<'_, DesktopState>) -> CommandResult<AppBootstrapVm> {
     let context = state.context().map_err(command_error)?;
     Ok(bootstrap_vm(&context.app(), context.recent_workspaces))
+}
+
+#[tauri::command]
+pub fn get_agent_registry(state: State<'_, DesktopState>) -> CommandResult<AgentRegistryVm> {
+    let app = state.app().map_err(command_error)?;
+    let diagnostics = state.agent_diagnostics().map_err(command_error)?;
+    Ok(agent_registry_vm(&app, &diagnostics))
+}
+
+#[tauri::command]
+pub fn create_agent(
+    state: State<'_, DesktopState>,
+    agent_type: String,
+    input: ManagedAgentInput,
+) -> CommandResult<AgentRegistryVm> {
+    let app = state.app().map_err(command_error)?;
+    let agent_type = ManagedAgentType::from_str(&agent_type).map_err(command_error)?;
+    if app.managed_agents().contains_key(&agent_type) {
+        return Err(format!("agent `{}` already exists", agent_type.as_str()));
+    }
+    let user_config = app
+        .save_managed_agent(
+            agent_type,
+            ManagedAgentConfig::new(AcpAdapterConfig {
+                command: input.command,
+                args: input.args,
+                display_name: input.display_name,
+                env: input.env,
+            }),
+        )
+        .map_err(command_error)?;
+    let config = RuntimeConfig::default().apply_user_config(&user_config);
+    state.update_config(config).map_err(command_error)?;
+    let app = state.app().map_err(command_error)?;
+    let diagnostics = state.agent_diagnostics().map_err(command_error)?;
+    Ok(agent_registry_vm(&app, &diagnostics))
+}
+
+#[tauri::command]
+pub fn update_agent(
+    state: State<'_, DesktopState>,
+    agent_type: String,
+    input: ManagedAgentInput,
+) -> CommandResult<AgentRegistryVm> {
+    let app = state.app().map_err(command_error)?;
+    let agent_type = ManagedAgentType::from_str(&agent_type).map_err(command_error)?;
+    if !app.managed_agents().contains_key(&agent_type) {
+        return Err(format!("agent `{}` is not configured", agent_type.as_str()));
+    }
+    let user_config = app
+        .save_managed_agent(
+            agent_type,
+            ManagedAgentConfig::new(AcpAdapterConfig {
+                command: input.command,
+                args: input.args,
+                display_name: input.display_name,
+                env: input.env,
+            }),
+        )
+        .map_err(command_error)?;
+    let config = RuntimeConfig::default().apply_user_config(&user_config);
+    state.update_config(config).map_err(command_error)?;
+    state.clear_agent_diagnostic(agent_type).map_err(command_error)?;
+    let app = state.app().map_err(command_error)?;
+    let diagnostics = state.agent_diagnostics().map_err(command_error)?;
+    Ok(agent_registry_vm(&app, &diagnostics))
+}
+
+#[tauri::command]
+pub fn delete_agent(
+    state: State<'_, DesktopState>,
+    agent_type: String,
+) -> CommandResult<AgentRegistryVm> {
+    let app = state.app().map_err(command_error)?;
+    let agent_type = ManagedAgentType::from_str(&agent_type).map_err(command_error)?;
+    let user_config = app.remove_managed_agent(agent_type).map_err(command_error)?;
+    let config = RuntimeConfig::default().apply_user_config(&user_config);
+    state.update_config(config).map_err(command_error)?;
+    let app = state.app().map_err(command_error)?;
+    let diagnostics = state.agent_diagnostics().map_err(command_error)?;
+    Ok(agent_registry_vm(&app, &diagnostics))
+}
+
+#[tauri::command]
+pub fn doctor_agent(
+    state: State<'_, DesktopState>,
+    agent_type: String,
+) -> CommandResult<AgentRegistryVm> {
+    let agent_type = ManagedAgentType::from_str(&agent_type).map_err(command_error)?;
+    state.refresh_agent_diagnostic(agent_type).map_err(command_error)?;
+    let app = state.app().map_err(command_error)?;
+    let diagnostics = state.agent_diagnostics().map_err(command_error)?;
+    Ok(agent_registry_vm(&app, &diagnostics))
 }
 
 #[tauri::command]
@@ -100,6 +225,36 @@ pub fn get_task_detail(
 ) -> CommandResult<TaskDetailVm> {
     let app = state.app().map_err(command_error)?;
     task_detail_vm(&app, &task_id).map_err(command_error)
+}
+
+#[tauri::command]
+pub fn create_task(
+    state: State<'_, DesktopState>,
+    input: CreateTaskInputVm,
+) -> CommandResult<WorkflowVm> {
+    let app = state.app().map_err(command_error)?;
+    let summary = app
+        .create_task_from_requirement(CreateTaskInput {
+            title: input.title,
+            description: input.description,
+            requirement_file_name: input.requirement_file_name,
+            requirement_content: input.requirement_content,
+            workflow: input.workflow,
+        })
+        .map_err(command_error)?;
+    workflow_vm(&app, &summary.task.id).map_err(command_error)
+}
+
+#[tauri::command]
+pub fn save_task_workflow(
+    state: State<'_, DesktopState>,
+    task_id: String,
+    input: SaveWorkflowInputVm,
+) -> CommandResult<WorkflowVm> {
+    let app = state.app().map_err(command_error)?;
+    app.save_task_workflow(&task_id, input.workflow)
+        .map_err(command_error)?;
+    workflow_vm(&app, &task_id).map_err(command_error)
 }
 
 #[tauri::command]
@@ -248,6 +403,16 @@ pub async fn send_acp_prompt(
         let worker_ref_path =
             app.paths
                 .worker_ref_file(&task_id, &run_id, &round_id, &node_id, &attempt_id);
+        let node_path = app
+            .paths
+            .node_file(&task_id, &run_id, &round_id, &node_id, &attempt_id);
+        let node = read_json::<NodeState>(&node_path).map_err(command_error)?;
+        let provider = node
+            .resolved_config
+            .get("provider")
+            .and_then(|value| value.as_str())
+            .ok_or_else(|| "node is missing resolved provider".to_string())?;
+        let (_, agent_config) = app.managed_agent(provider).map_err(command_error)?;
         let (session_mode, continue_ref) = if worker_ref_path.exists() {
             let worker_ref =
                 read_json::<WorkerRefState>(&worker_ref_path).map_err(command_error)?;
@@ -256,7 +421,7 @@ pub async fn send_acp_prompt(
             (SessionMode::New, None)
         };
         client::run_prompt(
-            &app.config.acp_adapter,
+            &agent_config.adapter,
             app.paths.repo_root.clone(),
             attempt_dir,
             &PromptBundle {

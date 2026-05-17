@@ -1,5 +1,6 @@
 import { invoke } from '@tauri-apps/api/core';
 import {
+  mockAgentRegistry,
   mockBootstrap,
   mockContent,
   mockLogPage,
@@ -14,13 +15,16 @@ import type {
   AcpRawFrameQueryInput,
   AcpSessionQueryInput,
   AcpSessionVm,
+  AgentRegistryVm,
   AppBootstrapVm,
+  CreateTaskInput,
   ContentVm,
   DesktopLanguage,
   DesktopFontPreference,
   DesktopThemePreference,
   LogPageVm,
   LogQueryInput,
+  ManagedAgentInput,
   PreferencesVm,
   RoundDetailVm,
   RoundSelection,
@@ -28,6 +32,7 @@ import type {
   RunSummaryVm,
   TaskDetailVm,
   TaskListVm,
+  WorkflowDsl,
   WorkflowVm,
 } from './types';
 
@@ -168,6 +173,26 @@ function quoteFontFamily(family: string) {
   return `"${family.replaceAll('\\', '\\\\').replaceAll('"', '\\"')}"`;
 }
 
+export function getAgentRegistry() {
+  return command<AgentRegistryVm>('get_agent_registry', undefined, mockAgentRegistry);
+}
+
+export function createAgent(agentType: string, input: ManagedAgentInput) {
+  return command<AgentRegistryVm>('create_agent', { agentType, input }, mockAgentRegistry);
+}
+
+export function updateAgent(agentType: string, input: ManagedAgentInput) {
+  return command<AgentRegistryVm>('update_agent', { agentType, input }, mockAgentRegistry);
+}
+
+export function deleteAgent(agentType: string) {
+  return command<AgentRegistryVm>('delete_agent', { agentType }, mockAgentRegistry);
+}
+
+export function doctorAgent(agentType: string) {
+  return command<AgentRegistryVm>('doctor_agent', { agentType }, mockAgentRegistry);
+}
+
 export function getTaskList() {
   return command<TaskListVm>('get_task_list', undefined, mockTaskList);
 }
@@ -186,6 +211,33 @@ export function getTaskDetail(taskId: string) {
 
 export function getWorkflow(taskId: string) {
   return command<WorkflowVm>('get_workflow', { taskId }, { ...mockWorkflow, task: mockTaskList.tasks.find((item) => item.id === taskId) ?? mockWorkflow.task });
+}
+
+export function createTask(input: CreateTaskInput) {
+  const task = {
+    ...mockWorkflow.task,
+    id: `task-${String(mockTaskList.tasks.length + 1).padStart(3, '0')}`,
+    title: input.title || input.requirementFileName.replace(/\.(md|txt)$/i, ''),
+    description: input.description ?? null,
+    requirement: input.requirementContent,
+    requirementPreview: input.requirementContent.slice(0, 120),
+    workflowExists: true,
+    workflowValid: true,
+    workflowError: null,
+  };
+  return command<WorkflowVm>('create_task', { input }, {
+    ...mockWorkflow,
+    task,
+    workflowJson: JSON.stringify(input.workflow, null, 2),
+  });
+}
+
+export function saveTaskWorkflow(taskId: string, workflow: WorkflowDsl) {
+  return command<WorkflowVm>('save_task_workflow', { taskId, input: { workflow } }, {
+    ...mockWorkflow,
+    task: mockTaskList.tasks.find((item) => item.id === taskId) ?? mockWorkflow.task,
+    workflowJson: JSON.stringify(workflow, null, 2),
+  });
 }
 
 export function getRunDetail(taskId: string, runId: string) {

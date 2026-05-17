@@ -12,7 +12,6 @@ pub(crate) fn create_node_state(
     attempt_id: &str,
     node_dsl: &NodeDsl,
     resolved_profile: Option<ResolvedProfileRef>,
-    default_provider: &str,
 ) -> NodeState {
     NodeState {
         version: VERSION.to_string(),
@@ -25,14 +24,13 @@ pub(crate) fn create_node_state(
         outcome: None,
         started_at: now_rfc3339_like(),
         finished_at: None,
-        resolved_config: resolved_config_for_node(node_dsl, resolved_profile, default_provider),
+        resolved_config: resolved_config_for_node(node_dsl, resolved_profile),
     }
 }
 
 pub(crate) fn resolved_config_for_node(
     node: &NodeDsl,
     resolved_profile: Option<ResolvedProfileRef>,
-    default_provider: &str,
 ) -> ResolvedConfig {
     let mut config = ResolvedConfig::new();
     match node {
@@ -43,7 +41,7 @@ pub(crate) fn resolved_config_for_node(
                     worker
                         .provider
                         .clone()
-                        .unwrap_or_else(|| default_provider.to_string()),
+                        .expect("validated worker provider must exist"),
                 ),
             );
             if let Some(profile) = &worker.profile {
@@ -68,6 +66,26 @@ pub(crate) fn resolved_config_for_node(
                     serde_json::Value::String(primary_artifact.clone()),
                 );
             }
+            if let Some(output) = &worker.output {
+                config.insert(
+                    "outputKind".to_string(),
+                    serde_json::to_value(output.kind).expect("serialize output kind"),
+                );
+                config.insert(
+                    "outputArtifact".to_string(),
+                    serde_json::Value::String(output.artifact.clone()),
+                );
+            }
+            if let Some(condition) = &worker.success_condition {
+                config.insert(
+                    "successConditionPath".to_string(),
+                    serde_json::Value::String(condition.path.clone()),
+                );
+                config.insert(
+                    "successConditionEquals".to_string(),
+                    condition.equals.clone(),
+                );
+            }
             config.insert(
                 "sessionMode".to_string(),
                 serde_json::Value::String("new".to_string()),
@@ -86,7 +104,7 @@ pub(crate) fn resolved_config_for_node(
                     verify
                         .provider
                         .clone()
-                        .unwrap_or_else(|| default_provider.to_string()),
+                        .expect("validated verify provider must exist"),
                 ),
             );
             if let Some(profile) = &verify.profile {

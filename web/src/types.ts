@@ -16,6 +16,49 @@ export interface AppBootstrapVm {
   preferences: PreferencesVm;
 }
 
+export interface AgentRegistryVm {
+  agents: ManagedAgentVm[];
+  supportedTypes: SupportedAgentTypeVm[];
+}
+
+export interface ManagedAgentVm {
+  agentType: string;
+  displayName: string;
+  command: string;
+  args: string[];
+  env: AgentEnvEntryVm[];
+  iconKey: string;
+  supported: boolean;
+  diagnostic?: ManagedAgentDiagnosticVm | null;
+}
+
+export interface AgentEnvEntryVm {
+  key: string;
+  value: string;
+}
+
+export interface ManagedAgentDiagnosticVm {
+  status: string;
+  available: boolean;
+  reason?: string | null;
+  checkedAt: string;
+}
+
+export interface SupportedAgentTypeVm {
+  agentType: string;
+  label: string;
+  iconKey: string;
+  supported: boolean;
+  configured: boolean;
+}
+
+export interface ManagedAgentInput {
+  displayName: string;
+  command: string;
+  args: string[];
+  env: Record<string, string>;
+}
+
 export interface SummaryCardVm {
   key: string;
   label: string;
@@ -56,6 +99,76 @@ export interface WorkflowVm {
   runs: RunGroupVm[];
   control?: WorkflowControlVm | null;
   workflowJson?: string | null;
+}
+
+export interface WorkflowDsl {
+  version: string;
+  id: string;
+  entry: string;
+  control: WorkflowControlDsl;
+  nodes: WorkflowNodeDsl[];
+  edges: WorkflowEdgeDsl[];
+}
+
+export interface WorkflowControlDsl {
+  max_repair_loops: number;
+  max_acceptance_loops: number;
+  on_acceptance_failure: 'auto-loop' | 'stop' | string;
+}
+
+export type WorkflowNodeDsl = WorkflowWorkerNodeDsl | WorkflowExecNodeDsl | WorkflowVerifyNodeDsl;
+
+export interface WorkflowWorkerNodeDsl {
+  type: 'worker';
+  id: string;
+  provider?: string | null;
+  profile?: string | null;
+  goal?: string | null;
+  primary_artifact?: string | null;
+  output?: WorkflowOutputContractDsl | null;
+  success_condition?: WorkflowJsonConditionDsl | null;
+}
+
+export interface WorkflowExecNodeDsl {
+  type: 'exec';
+  id: string;
+  plan_from: string;
+}
+
+export interface WorkflowVerifyNodeDsl {
+  type: 'verify';
+  id: string;
+  provider?: string | null;
+  profile?: string | null;
+}
+
+export interface WorkflowOutputContractDsl {
+  kind: 'json' | string;
+  artifact: string;
+}
+
+export interface WorkflowJsonConditionDsl {
+  path: string;
+  equals: unknown;
+}
+
+export interface WorkflowEdgeDsl {
+  from: string;
+  to: string;
+  on: 'success' | 'failure' | 'invalid' | string;
+  session?: 'new' | 'continue' | null;
+}
+
+export interface CreateTaskInput {
+  title?: string | null;
+  description?: string | null;
+  requirementFileName: string;
+  requirementContent: string;
+  workflow: WorkflowDsl;
+}
+
+export interface SaveWorkflowInput {
+  workflow: WorkflowDsl;
 }
 
 export interface WorkflowControlVm {
@@ -143,6 +256,8 @@ export interface NodeDetailVm {
   sequence?: number | null;
   label: string;
   nodeType: string;
+  provider?: string | null;
+  providerDisplayName?: string | null;
   status: string;
   outcome?: string | null;
   attemptId: string;
@@ -340,7 +455,7 @@ export interface ContentVm {
   metadata: unknown;
 }
 
-export type PrimaryModule = 'task-orchestration' | 'knowledge-base' | 'model-management' | 'settings';
+export type PrimaryModule = 'task-orchestration' | 'agent-management' | 'knowledge-base' | 'model-management' | 'settings';
 
 export type TaskPage =
   | { kind: 'task-list' }

@@ -63,7 +63,7 @@ pub enum VerifyStatus {
 const JSON_ARTIFACT_OUTPUT_SEARCH_LIMIT: usize = 5;
 
 pub fn artifact_uses_json_output(name: &str) -> bool {
-    matches!(name, "exec-plan" | "exec-result" | "verify-result")
+    matches!(name, "exec-plan" | "exec-result" | "verify-result") || name.ends_with("-result")
 }
 
 pub fn json_artifact_text_from_outputs(outputs: &[String], fallback: &str) -> Option<String> {

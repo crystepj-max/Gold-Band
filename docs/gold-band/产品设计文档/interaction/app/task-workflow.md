@@ -34,7 +34,7 @@
 └──────────────────────────────────────────────────────────────┘
 
 右侧工作流抽屉：
-prepare -> plan -> execute -> validate -> finalize
+作者态画布编辑器：plan -> dev -> review -> test -> accept
 ```
 
 ---
@@ -87,12 +87,20 @@ prepare -> plan -> execute -> validate -> finalize
 ### 5.3 交互
 - 工作流状态卡片统一命名为“工作流”，承载查看、新建、修复等生命周期动作。
 - 状态标签与动作按钮同一行展示，状态靠左，动作按钮靠右。
-- 点击工作流动作从右侧打开非模态抽屉；抽屉内展示 control 规则条与只读 workflow 图。
+- 点击工作流动作从右侧打开非模态抽屉；查看模式展示 control 规则条、只读 workflow 图与 workflow JSON 预览。
 - 有效状态显示查看；未创建状态显示新建工作流；无效或校验失败状态显示修复。
-- 原始 workflow 图保持只读，节点操作能力留给 Round 详情页的实际工作图。
+- 新建 / 修改 / 修复模式进入作者态画布编辑器，基于 `@xyflow/react` 支持拖拽节点、连接边、选择节点/边并在右侧 Inspector 配置。
+- 节点配置包含 node id、goal、provider agent、profile、AI 输出验证；agent 来源于 Agent 管理页已配置 agent 卡片。
+- 人工 check 作为预留能力在节点配置中展示占位说明，本期不实现运行时阻塞逻辑。
+- 默认模板为 `plan -> dev -> review -> test -> accept`，不再默认生成 `exec` 节点或 `exec-plan` 产物；review/test/accept 使用 worker JSON 输出验证决定 success/failure 分支。
 - 工作流图节点长文本默认优先展示前部内容，尾部截断；鼠标悬浮节点标题或元信息时展示完整全文。
 
 ---
+
+### 5.4 作者态与运行态边界
+- 任务级工作流保存为 `tasks/<task>/authoring/workflow.json`，可在任务工作流页后续修改。
+- 新建 run 时 runtime 会把当时的 authoring workflow 写入 `runs/<run>/workflow.snapshot.json`。
+- 已存在 run / round 的展示和继续执行只读取运行时快照，不被后续 authoring workflow 修改回写。
 
 ## 6. Run / Round 执行列表
 

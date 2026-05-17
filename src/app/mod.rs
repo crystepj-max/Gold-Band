@@ -6,6 +6,7 @@ mod state_access;
 mod state_factory;
 mod transition_context;
 
+use crate::acp::client as acp_client;
 use crate::acp::permission::{cancel_pending_permission_requests, request_cancel};
 use crate::artifacts::{
     ExecPlanArtifact, ExecResultArtifact, VerifyResultArtifact, validate_exec_plan,
@@ -13,16 +14,16 @@ use crate::artifacts::{
 };
 use crate::config::{
     ConsoleThemeName, DesktopFontPreference, DesktopLanguage, DesktopThemePreference,
-    RuntimeConfig, UserConfig,
+    ManagedAgentConfig, ManagedAgentType, RuntimeConfig, UserConfig,
 };
 use crate::control::{ControlDecision, decide_next_step};
 use crate::domain::{NodeOutcome, RunOutcome};
-use crate::domain::{PauseReason, RunStatus};
-use crate::dsl::{EdgeOutcome, WorkflowDsl, validate_workflow};
+use crate::domain::{PauseReason, RunStatus, VERSION};
+use crate::dsl::{EdgeOutcome, ValidatedWorkflow, WorkflowDsl, validate_workflow};
 use crate::process::kill_process_tree;
 use crate::provider::{
     DoctorResult, ProviderAdapter, ProviderCapabilities, ProviderInfo, provider_capabilities,
-    provider_from_config,
+    provider_from_agent,
 };
 use crate::runtime::{
     NodeState, RoundState, RunState, TaskState, WorkerRefState, validate_node_state,
@@ -34,8 +35,10 @@ use camino::{Utf8Path, Utf8PathBuf};
 use serde::de::DeserializeOwned;
 use std::fs;
 use std::io::{Read, Seek, SeekFrom};
+use std::str::FromStr;
+use std::sync::Arc;
 
-use self::ids::now_rfc3339_like;
+use self::ids::{next_task_id, now_rfc3339_like};
 use self::orchestrator::{
     run_continue as orchestrator_run_continue,
     run_continue_background as orchestrator_run_continue_background,
@@ -56,6 +59,15 @@ fn tail_text(text: &str, limit: usize) -> String {
 
 fn logical_artifact_name(name: &str) -> &str {
     name.strip_suffix(".json").unwrap_or(name)
+}
+
+#[derive(Debug, Clone)]
+pub struct CreateTaskInput {
+    pub title: Option<String>,
+    pub description: Option<String>,
+    pub requirement_file_name: String,
+    pub requirement_content: String,
+    pub workflow: WorkflowDsl,
 }
 
 #[derive(Debug, Clone, serde::Serialize)]
@@ -91,7 +103,7 @@ pub struct NodeRuntimeSummary {
 pub struct App {
     pub paths: GoldBandPaths,
     pub config: RuntimeConfig,
-    provider: Box<dyn ProviderAdapter>,
+    provider_override: Option<Arc<dyn ProviderAdapter>>,
 }
 
 pub fn is_run_continuable(run: &RunState) -> bool {
@@ -176,27 +188,89 @@ impl App {
         Ok(config)
     }
 
-    pub fn provider_info(&self) -> ProviderInfo {
-        self.provider.describe_provider()
+    pub fn set_user_agents(
+        &self,
+        agents: std::collections::BTreeMap<ManagedAgentType, ManagedAgentConfig>,
+    ) -> Result<UserConfig> {
+        let mut config = self.load_user_config()?;
+        config.agents = Some(agents);
+        self.save_user_config(&config)?;
+        Ok(config)
     }
 
-    pub fn provider_doctor(&self) -> DoctorResult {
-        self.provider.doctor()
+    pub fn managed_agents(&self) -> &std::collections::BTreeMap<ManagedAgentType, ManagedAgentConfig> {
+        &self.config.agents
     }
 
-    pub fn provider_capabilities(&self) -> Result<ProviderCapabilities> {
-        provider_capabilities(&self.config.default_provider)
+    pub fn save_managed_agent(
+        &self,
+        agent_type: ManagedAgentType,
+        config: ManagedAgentConfig,
+    ) -> Result<UserConfig> {
+        let mut agents = self.config.agents.clone();
+        if !agent_type.is_supported() {
+            bail!("agent `{}` is not supported yet", agent_type.as_str());
+        }
+        agents.insert(agent_type, config);
+        self.set_user_agents(agents)
+    }
+
+    pub fn remove_managed_agent(&self, agent_type: ManagedAgentType) -> Result<UserConfig> {
+        let mut agents = self.config.agents.clone();
+        agents.remove(&agent_type);
+        self.set_user_agents(agents)
+    }
+
+    pub fn managed_agent(&self, provider: &str) -> Result<(ManagedAgentType, &ManagedAgentConfig)> {
+        let agent_type = ManagedAgentType::from_str(provider)?;
+        let config = self
+            .config
+            .agents
+            .get(&agent_type)
+            .ok_or_else(|| anyhow!("agent `{provider}` is not configured"))?;
+        Ok((agent_type, config))
+    }
+
+    pub fn provider_for_id(&self, provider: &str) -> Result<Arc<dyn ProviderAdapter>> {
+        if let Some(provider_override) = &self.provider_override {
+            return Ok(provider_override.clone());
+        }
+        let (agent_type, config) = self.managed_agent(provider)?;
+        Ok(Arc::from(provider_from_agent(agent_type, config)?))
+    }
+
+    pub fn provider_info(&self, provider: &str) -> Result<ProviderInfo> {
+        Ok(self.provider_for_id(provider)?.describe_provider())
+    }
+
+    pub fn provider_doctor(&self, provider: &str) -> Result<DoctorResult> {
+        let (agent_type, config) = self.managed_agent(provider)?;
+        match agent_type {
+            ManagedAgentType::ClaudeCode => match acp_client::doctor(&config.adapter, self.paths.repo_root.clone()) {
+                Ok(()) => Ok(DoctorResult {
+                    available: true,
+                    reason: None,
+                }),
+                Err(err) => Ok(DoctorResult {
+                    available: false,
+                    reason: Some(err.to_string()),
+                }),
+            },
+            _ => bail!("agent `{provider}` is not supported yet"),
+        }
+    }
+
+    pub fn provider_capabilities(&self, provider: &str) -> Result<ProviderCapabilities> {
+        provider_capabilities(provider)
     }
 
     pub fn with_config(repo_root: Utf8PathBuf, config: RuntimeConfig) -> Self {
-        let provider =
-            provider_from_config(&config).expect("configured default provider must be supported");
         let paths = GoldBandPaths::new(repo_root);
         let _ = paths.write_project_manifest();
         Self {
             paths,
             config,
-            provider,
+            provider_override: None,
         }
     }
 
@@ -214,7 +288,7 @@ impl App {
         Self {
             paths,
             config,
-            provider,
+            provider_override: Some(Arc::from(provider)),
         }
     }
 
@@ -231,6 +305,51 @@ impl App {
         }
         tasks.sort_by(|left, right| left.id.cmp(&right.id));
         Ok(tasks)
+    }
+
+    pub fn create_task_from_requirement(&self, input: CreateTaskInput) -> Result<TaskSummary> {
+        let extension = std::path::Path::new(&input.requirement_file_name)
+            .extension()
+            .and_then(|value| value.to_str())
+            .map(str::to_ascii_lowercase)
+            .ok_or_else(|| anyhow!("requirement file must have .txt or .md extension"))?;
+        if !matches!(extension.as_str(), "txt" | "md") {
+            bail!("requirement file must be .txt or .md");
+        }
+        if input.requirement_content.trim().is_empty() {
+            bail!("requirement content cannot be empty");
+        }
+
+        let validated = validate_workflow(input.workflow.clone())?;
+        self.validate_workflow_agents(&validated)?;
+        resolve_workflow_profiles(&self.paths, &validated.raw)?;
+
+        let task_id = next_task_id(&self.paths.tasks_dir())?;
+        let task = TaskState {
+            version: VERSION.to_string(),
+            id: task_id.clone(),
+            title: input.title.filter(|value| !value.trim().is_empty()),
+            description: input.description.filter(|value| !value.trim().is_empty()),
+        };
+        validate_task_state(&task)?;
+        fs::create_dir_all(self.paths.task_dir(&task_id).join("authoring").as_std_path())?;
+        write_json(&self.paths.task_file(&task_id), &task)?;
+        fs::write(
+            self.paths.requirement_file(&task_id).as_std_path(),
+            input.requirement_content,
+        )?;
+        write_json(&self.paths.workflow_file(&task_id), &validated.raw)?;
+        self.task_summary(&task_id)
+    }
+
+    pub fn save_task_workflow(&self, task_id: &str, workflow: WorkflowDsl) -> Result<TaskSummary> {
+        self.task_show(task_id)?;
+        let validated = validate_workflow(workflow)?;
+        self.validate_workflow_agents(&validated)?;
+        resolve_workflow_profiles(&self.paths, &validated.raw)?;
+        fs::create_dir_all(self.paths.task_dir(task_id).join("authoring").as_std_path())?;
+        write_json(&self.paths.workflow_file(task_id), &validated.raw)?;
+        self.task_summary(task_id)
     }
 
     pub fn task_summaries(&self) -> Result<Vec<TaskSummary>> {
@@ -783,7 +902,7 @@ impl App {
             continue_ref: worker_ref.continue_ref.clone(),
             open_command: worker_ref.open_command.clone(),
         };
-        self.provider
+        self.provider_for_id(&worker_ref.provider)?
             .build_continue_command(&session_ref)?
             .ok_or_else(|| anyhow!("provider did not return an open-session command"))
     }
@@ -824,6 +943,31 @@ impl App {
         workflow_override: Option<&Utf8Path>,
     ) -> Result<RunState> {
         orchestrator_run_start_background(self, task_id, workflow_override)
+    }
+
+    pub fn validate_workflow_agents(&self, workflow: &ValidatedWorkflow) -> Result<()> {
+        for node in workflow.nodes_by_id.values() {
+            if let Some(provider) = node.provider() {
+                let (agent_type, _) = self.managed_agent(provider)?;
+                if !agent_type.is_supported() {
+                    bail!("agent `{provider}` is not supported yet");
+                }
+            }
+        }
+        for edge in &workflow.raw.edges {
+            if matches!(edge.session, Some(crate::domain::SessionMode::Continue)) {
+                let target = workflow
+                    .get_node(&edge.to)
+                    .ok_or_else(|| anyhow!("session=continue requires a real node target: {}", edge.to))?;
+                let provider = target
+                    .provider()
+                    .ok_or_else(|| anyhow!("target node `{}` is missing provider", edge.to))?;
+                if !self.provider_capabilities(provider)?.supports_continue_session {
+                    bail!("session=continue currently only supports agents with continue-session capability: {provider}");
+                }
+            }
+        }
+        Ok(())
     }
 
     pub fn decide(
@@ -936,6 +1080,10 @@ impl App {
             Ok(validated) => validated,
             Err(err) => return Ok(Some(err.to_string())),
         };
+
+        if let Err(err) = self.validate_workflow_agents(&validated) {
+            return Ok(Some(err.to_string()));
+        }
 
         match resolve_workflow_profiles(&self.paths, &validated.raw) {
             Ok(_) => Ok(None),

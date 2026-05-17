@@ -2,12 +2,14 @@ import { useMemo, useState, type ReactNode } from 'react';
 import { useTranslation } from 'react-i18next';
 import type { TFunction } from 'i18next';
 import { ChevronDown, ChevronRight, RefreshCw } from 'lucide-react';
-import type { GraphVm, RoundSummaryVm, RunGroupVm, RunSummaryVm, TaskPage, TaskRowVm, WorkflowVm } from '../types';
+import type { AgentRegistryVm, GraphVm, RoundSummaryVm, RunGroupVm, RunSummaryVm, TaskPage, TaskRowVm, WorkflowDsl, WorkflowVm } from '../types';
 import { displayPolicy, displayStatus } from '../i18n';
+import { getAgentRegistry } from '../api';
 import { GraphView } from '../components/GraphView';
+import { WorkflowEditor, createDefaultWorkflow, parseWorkflowJson } from '../components/WorkflowEditor';
 import { StatusBadge } from '../components/StatusBadge';
 import { AppCard } from '@/components/AppCard';
-import { EmptyState, Metric, MetricsBar, Page, PageHeader } from '@/components/PageScaffold';
+import { CodeBlock, EmptyState, Metric, MetricsBar, Page, PageHeader } from '@/components/PageScaffold';
 import { RequirementDetailSheet, RequirementTeaser, fullRequirementText } from '@/components/RequirementDisclosure';
 import { Button } from '@/components/ui/button';
 import { CardContent, CardHeader, CardTitle } from '@/components/ui/card';
@@ -29,6 +31,7 @@ interface WorkflowPageProps {
   onStartRun: (taskId: string) => Promise<RunSummaryVm | undefined>;
   onContinueRun: (taskId: string, runId: string) => void;
   onKillRun: (taskId: string, runId: string) => void;
+  onSaveWorkflow: (taskId: string, workflow: WorkflowDsl) => Promise<WorkflowVm | undefined>;
 }
 
 type StatusFilter = 'all' | 'running' | 'paused' | 'completed' | 'failed' | 'resumable';
@@ -49,7 +52,7 @@ function historyBodyMinHeightFor(pageSize: number) {
   return Math.max(320, pageSize * collapsedRunRowMinHeight);
 }
 
-export function WorkflowPage({ vm, busy, refreshing, breadcrumbs, onNavigate, onRefresh, onStartRun, onKillRun }: WorkflowPageProps) {
+export function WorkflowPage({ vm, busy, refreshing, breadcrumbs, onNavigate, onRefresh, onStartRun, onKillRun, onSaveWorkflow }: WorkflowPageProps) {
   const { t } = useTranslation();
   const [requirementOpen, setRequirementOpen] = useState(false);
   const [statusFilter, setStatusFilter] = useState<StatusFilter>('all');
@@ -58,9 +61,18 @@ export function WorkflowPage({ vm, busy, refreshing, breadcrumbs, onNavigate, on
   const [pageSize, setPageSize] = useState(5);
   const [workflowDrawerMode, setWorkflowDrawerMode] = useState<WorkflowDrawerMode | null>(null);
   const [expandedRunId, setExpandedRunId] = useState<string | null>(null);
+  const [agentRegistry, setAgentRegistry] = useState<AgentRegistryVm | null>(null);
+  const [savingWorkflow, setSavingWorkflow] = useState(false);
 
   const toggleRun = (runId: string, expanded: boolean) => {
     setExpandedRunId(expanded ? null : runId);
+  };
+
+  const openWorkflowDrawer = (mode: WorkflowDrawerMode) => {
+    setWorkflowDrawerMode(mode);
+    if (mode !== 'view' && !agentRegistry) {
+      getAgentRegistry().then(setAgentRegistry).catch(() => setAgentRegistry({ agents: [], supportedTypes: [] }));
+    }
   };
 
   if (!vm) return <Page><EmptyState>{t('common.loading')}</EmptyState></Page>;
@@ -88,7 +100,19 @@ export function WorkflowPage({ vm, busy, refreshing, breadcrumbs, onNavigate, on
   const requirement = fullRequirementText(vm.task.requirement, vm.task.requirementPreview || vm.task.description, t('common.empty'));
   const workflowLifecycle = workflowLifecycleFor(vm.task);
   const workflowDrawerOpen = workflowDrawerMode !== null;
+  const editingWorkflow = workflowDrawerMode === 'create' || workflowDrawerMode === 'edit' || workflowDrawerMode === 'repair';
+  const editableWorkflow = parseWorkflowJson(vm.workflowJson) ?? createDefaultWorkflow(agentRegistry?.agents.find((agent) => agent.supported)?.agentType ?? 'claude-code');
   const historyBodyMinHeight = historyBodyMinHeightFor(pageSize);
+
+  const saveWorkflow = async (workflow: WorkflowDsl) => {
+    setSavingWorkflow(true);
+    try {
+      const saved = await onSaveWorkflow(vm.task.id, workflow);
+      if (saved) setWorkflowDrawerMode('view');
+    } finally {
+      setSavingWorkflow(false);
+    }
+  };
 
   return (
     <Page flush className="flex flex-col">
@@ -111,7 +135,7 @@ export function WorkflowPage({ vm, busy, refreshing, breadcrumbs, onNavigate, on
         metrics={(
           <MetricsBar className="lg:grid-cols-4 xl:grid-cols-4">
             <Metric label={t('workflow.taskId')} value={vm.task.id} compact />
-            <WorkflowMetricCard lifecycle={workflowLifecycle} onOpen={setWorkflowDrawerMode} t={t} />
+            <WorkflowMetricCard lifecycle={workflowLifecycle} onOpen={openWorkflowDrawer} t={t} />
             <Metric label={t('taskList.latestRun')} value={latestRun?.id ?? '-'} compact />
             <Metric label={t('common.outcome')} value={<StatusBadge value={vm.task.displayStatus} label={displayStatus(t, vm.task.displayStatus)} />} compact />
           </MetricsBar>
@@ -194,7 +218,7 @@ export function WorkflowPage({ vm, busy, refreshing, breadcrumbs, onNavigate, on
         onOpenChange={setRequirementOpen}
       />
       <Sheet modal={false} open={workflowDrawerOpen} onOpenChange={(open) => !open && setWorkflowDrawerMode(null)}>
-        <SheetContent className="w-[720px] max-w-[calc(100vw-2rem)] gap-0 overflow-hidden p-0 sm:max-w-[720px]" closeLabel={t('common.close')} showOverlay={false}>
+        <SheetContent className="w-[min(1120px,calc(100vw-2rem))] max-w-[min(1120px,calc(100vw-2rem))] gap-0 overflow-hidden p-0 sm:max-w-[min(1120px,calc(100vw-2rem))]" closeLabel={t('common.close')} showOverlay={false}>
           <SheetHeader className="shrink-0 gap-3 border-b px-5 py-4 text-left">
             <SheetDescription className="sr-only">{t('workflow.drawerDescription')}</SheetDescription>
             <div className="flex min-w-0 flex-wrap items-center gap-3 pr-8">
@@ -212,7 +236,17 @@ export function WorkflowPage({ vm, busy, refreshing, breadcrumbs, onNavigate, on
                   <ControlPill label={t('workflow.onAcceptanceFailure')} value={displayPolicy(t, vm.control.onAcceptanceFailure)} />
                 </div>
               ) : null}
-              {vm.task.workflowExists ? <GraphView graph={vm.graph} variant="workflow" activeNodeId={activeWorkflowNodeId} activeStatus={activeRun?.status} /> : <EmptyState>{t('workflow.noWorkflow')}</EmptyState>}
+              {editingWorkflow ? (
+                <WorkflowEditor value={editableWorkflow} agentRegistry={agentRegistry} saving={savingWorkflow || busy} onSave={saveWorkflow} />
+              ) : vm.task.workflowExists ? (
+                <>
+                  <GraphView graph={vm.graph} variant="workflow" activeNodeId={activeWorkflowNodeId} activeStatus={activeRun?.status} />
+                  {vm.workflowJson ? <div className="mt-4"><CodeBlock>{vm.workflowJson}</CodeBlock></div> : null}
+                  <div className="mt-4 flex justify-end">
+                    <Button variant="outline" onClick={() => openWorkflowDrawer('edit')}>{t('workflow.editWorkflow')}</Button>
+                  </div>
+                </>
+              ) : <EmptyState>{t('workflow.noWorkflow')}</EmptyState>}
             </div>
           </ScrollArea>
         </SheetContent>

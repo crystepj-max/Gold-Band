@@ -1,5 +1,5 @@
 use crate::domain::{PauseReason, RunOutcome, SessionMode};
-use crate::dsl::{END_NODE, EdgeOutcome, NodeDsl, ValidatedWorkflow};
+use crate::dsl::{END_NODE, EdgeOutcome, NEW_ROUND_NODE, NodeDsl, ValidatedWorkflow};
 use crate::provider::supports_continue_session;
 use crate::runtime::{NodeState, RoundState, RunState};
 
@@ -44,10 +44,21 @@ pub fn decide_next_step(
                     ControlDecision::CompleteRun(RunOutcome::Failure)
                 }
             },
-            crate::domain::NodeType::Worker => ControlDecision::PauseRun(PauseReason::ErrorBlocked),
+            crate::domain::NodeType::Worker => match_edge_or_default(
+                workflow,
+                &node.node_id,
+                EdgeOutcome::Failure,
+                || ControlDecision::PauseRun(PauseReason::ErrorBlocked),
+            ),
         },
         Some(crate::domain::NodeOutcome::Invalid) => match node.node_type {
             crate::domain::NodeType::Exec => decide_exec_invalid(workflow, round, &node.node_id),
+            crate::domain::NodeType::Worker => match_edge_or_default(
+                workflow,
+                &node.node_id,
+                EdgeOutcome::Invalid,
+                || ControlDecision::PauseRun(PauseReason::ErrorBlocked),
+            ),
             _ => ControlDecision::PauseRun(PauseReason::ErrorBlocked),
         },
         Some(crate::domain::NodeOutcome::Killed) => {
@@ -120,6 +131,8 @@ fn find_edge_decision(
                     EdgeOutcome::Success => RunOutcome::Success,
                     EdgeOutcome::Failure | EdgeOutcome::Invalid => RunOutcome::Failure,
                 })
+            } else if edge.to == NEW_ROUND_NODE {
+                ControlDecision::OpenNewRound
             } else {
                 ControlDecision::TransitionToNode {
                     node_id: edge.to.clone(),
@@ -138,7 +151,7 @@ fn session_for_target(
         SessionMode::New => SessionMode::New,
         SessionMode::Continue => workflow
             .get_node(target_node_id)
-            .map(|node| node.provider().unwrap_or(crate::domain::DEFAULT_PROVIDER))
+            .and_then(|node| node.provider())
             .map(|provider| supports_continue_session(provider).unwrap_or(false))
             .unwrap_or(false)
             .then_some(SessionMode::Continue)

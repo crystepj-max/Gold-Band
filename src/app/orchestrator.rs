@@ -5,6 +5,7 @@ use camino::Utf8Path;
 use camino::Utf8PathBuf;
 
 use crate::config::DesktopLanguage;
+use crate::acp::permission::cancel_pending_permission_requests;
 use crate::control::{ControlDecision, decide_next_step};
 use crate::domain::{
     NodeOutcome, PauseReason, RoundTrigger, RunOutcome, RunStatus, SessionMode, VERSION,
@@ -123,6 +124,7 @@ fn prepare_run(
         .unwrap_or_else(|| app.paths.workflow_file(task_id));
     let workflow: WorkflowDsl = read_json(&workflow_path)?;
     let validated = validate_workflow(workflow.clone())?;
+    app.validate_workflow_agents(&validated)?;
     let resolved_profiles = resolve_workflow_profiles(&app.paths, &validated.raw)?;
     write_json(
         &app.paths.task_workflow_resolved_file(task_id),
@@ -200,7 +202,6 @@ fn prepare_run(
         &attempt_id,
         entry_node,
         entry_profile,
-        &app.config.default_provider,
     );
     let ctx = ExecutionContext::for_run(task_id, &run.id)
         .with_round(round.id.clone())
@@ -261,6 +262,7 @@ pub(crate) fn run_continue(
 ) -> Result<RunState> {
     let workflow = load_run_workflow(app, task_id, run_id)?;
     let validated = validate_workflow(workflow)?;
+    app.validate_workflow_agents(&validated)?;
     let resolved_profiles = resolve_workflow_profiles(&app.paths, &validated.raw)?;
     let mut run = app.run_status(task_id, run_id)?;
     let current = current_attempt_state(app, task_id, &run)?;
@@ -377,6 +379,7 @@ pub(crate) fn run_continue_background(
 pub(crate) fn run_retry(app: &App, task_id: &str, run_id: &str) -> Result<RunState> {
     let workflow = load_run_workflow(app, task_id, run_id)?;
     let validated = validate_workflow(workflow)?;
+    app.validate_workflow_agents(&validated)?;
     let resolved_profiles = resolve_workflow_profiles(&app.paths, &validated.raw)?;
     let mut run = app.run_status(task_id, run_id)?;
     let (mut round, node) = current_attempt_state(app, task_id, &run)?;
@@ -401,7 +404,6 @@ pub(crate) fn run_retry(app: &App, task_id: &str, run_id: &str) -> Result<RunSta
         &attempt_id,
         fresh_node,
         fresh_profile,
-        &app.config.default_provider,
     );
     round.trace.push(round_trace_step(
         next_trace_sequence(&round),
@@ -481,6 +483,38 @@ fn edge_outcome_label(outcome: NodeOutcome) -> String {
 fn run_is_killed(app: &App, task_id: &str, run_id: &str) -> Result<bool> {
     let run: RunState = read_json(&app.paths.run_file(task_id, run_id))?;
     Ok(run.status == RunStatus::Completed && run.outcome == Some(RunOutcome::Killed))
+}
+
+fn setup_node_environment(app: &App, task_id: &str, run_id: &str, round_id: &str, node: &NodeState, ctx: &ExecutionContext) -> Result<()> {
+    std::fs::create_dir_all(app.paths.attempt_dir(task_id, run_id, round_id, &node.node_id, &node.attempt_id).as_std_path())?;
+    std::fs::create_dir_all(app.paths.artifacts_dir(task_id, run_id, round_id, &node.node_id, &node.attempt_id).as_std_path())?;
+    std::fs::create_dir_all(app.paths.attachments_dir(task_id, run_id, round_id, &node.node_id, &node.attempt_id).as_std_path())?;
+    append_run_event_best_effort(
+        &app.paths,
+        task_id,
+        run_id,
+        "node_environment_setup",
+        now_rfc3339_like(),
+        run_event_data(ctx, Some(ProgressStage::Starting), Some(node.status), Some("node environment prepared".to_string()), None),
+    );
+    Ok(())
+}
+
+fn teardown_node_environment_best_effort(app: &App, task_id: &str, run_id: &str, round_id: &str, node: &NodeState, ctx: &ExecutionContext) {
+    let attempt_dir = app.paths.attempt_dir(task_id, run_id, round_id, &node.node_id, &node.attempt_id);
+    let _ = cancel_pending_permission_requests(&attempt_dir, now_rfc3339_like());
+    let pid_path = app.paths.provider_pid_file(task_id, run_id, round_id, &node.node_id, &node.attempt_id);
+    if pid_path.exists() {
+        let _ = std::fs::remove_file(pid_path.as_std_path());
+    }
+    append_run_event_best_effort(
+        &app.paths,
+        task_id,
+        run_id,
+        "node_environment_teardown",
+        now_rfc3339_like(),
+        run_event_data(ctx, Some(ProgressStage::NormalizingArtifact), Some(node.status), Some("node environment released".to_string()), None),
+    );
 }
 
 pub(crate) fn drive_from_node(
@@ -578,6 +612,7 @@ fn drive_from_node_with_initial_session(
             ),
         );
         persist_runtime_state(app, task_id, run, round, &node)?;
+        setup_node_environment(app, task_id, &run.id, &round.id, &node, &ctx)?;
         node = match workflow
             .get_node(&current_node_id)
             .expect("validated node exists")
@@ -639,6 +674,7 @@ fn drive_from_node_with_initial_session(
                                 run.pause_reason,
                             ),
                         );
+                        teardown_node_environment_best_effort(app, task_id, &run.id, &round.id, &failed_node, &ctx);
                         persist_runtime_state(app, task_id, run, round, &failed_node)?;
                         return Ok(());
                     }
@@ -686,12 +722,17 @@ fn drive_from_node_with_initial_session(
                                 run.pause_reason,
                             ),
                         );
+                        teardown_node_environment_best_effort(app, task_id, &run.id, &round.id, &failed_node, &ctx);
                         persist_runtime_state(app, task_id, run, round, &failed_node)?;
                         return Ok(());
                     }
                 }
             }
         };
+
+        if node.status == RunStatus::Completed {
+            teardown_node_environment_best_effort(app, task_id, &run.id, &round.id, &node, &ctx);
+        }
 
         let completion_summary = format!(
             "completed {}/{}/{}",
@@ -773,7 +814,6 @@ fn drive_from_node_with_initial_session(
                     &next_attempt_id,
                     next_node_dsl,
                     next_profile,
-                    &app.config.default_provider,
                 );
                 run.current_node = Some(node_id.clone());
                 run.current_attempt = Some(next_attempt_id.clone());
@@ -887,7 +927,6 @@ fn drive_from_node_with_initial_session(
                     &next_attempt_id,
                     next_node_dsl,
                     next_profile,
-                    &app.config.default_provider,
                 );
                 round.trace.push(round_trace_step(
                     1,

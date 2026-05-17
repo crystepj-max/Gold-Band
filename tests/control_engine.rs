@@ -69,7 +69,7 @@ fn verify_success_completes_run() {
                 "on_acceptance_failure": "stop"
             },
             "nodes": [
-                { "id": "accept", "type": "verify" }
+                { "id": "accept", "type": "verify", "provider": "claude-code" }
             ],
             "edges": []
         }"#,
@@ -101,10 +101,10 @@ fn exec_invalid_prefers_explicit_edge() {
                 "on_acceptance_failure": "stop"
             },
             "nodes": [
-                { "id": "dev", "type": "worker", "primary_artifact": "exec-plan" },
+                { "id": "dev", "type": "worker", "provider": "claude-code", "primary_artifact": "exec-plan" },
                 { "id": "run-tests", "type": "exec", "plan_from": "dev" },
-                { "id": "fix", "type": "worker", "primary_artifact": "exec-plan" },
-                { "id": "accept", "type": "verify" }
+                { "id": "fix", "type": "worker", "provider": "claude-code", "primary_artifact": "exec-plan" },
+                { "id": "accept", "type": "verify", "provider": "claude-code" }
             ],
             "edges": [
                 { "from": "dev", "to": "run-tests", "on": "success" },
@@ -139,9 +139,9 @@ fn exec_invalid_defaults_back_to_plan_from() {
                 "on_acceptance_failure": "stop"
             },
             "nodes": [
-                { "id": "dev", "type": "worker", "primary_artifact": "exec-plan" },
+                { "id": "dev", "type": "worker", "provider": "claude-code", "primary_artifact": "exec-plan" },
                 { "id": "run-tests", "type": "exec", "plan_from": "dev" },
-                { "id": "accept", "type": "verify" }
+                { "id": "accept", "type": "verify", "provider": "claude-code" }
             ],
             "edges": [
                 { "from": "dev", "to": "run-tests", "on": "success" },
@@ -177,7 +177,7 @@ fn exec_invalid_downgrades_continue_when_provider_cannot_continue() {
             "nodes": [
                 { "id": "dev", "type": "worker", "provider": "other-provider", "primary_artifact": "exec-plan" },
                 { "id": "run-tests", "type": "exec", "plan_from": "dev" },
-                { "id": "accept", "type": "verify" }
+                { "id": "accept", "type": "verify", "provider": "claude-code" }
             ],
             "edges": [
                 { "from": "dev", "to": "run-tests", "on": "success" },
@@ -211,9 +211,9 @@ fn exec_invalid_completes_failure_when_repair_budget_is_exhausted() {
                 "on_acceptance_failure": "stop"
             },
             "nodes": [
-                { "id": "dev", "type": "worker", "primary_artifact": "exec-plan" },
+                { "id": "dev", "type": "worker", "provider": "claude-code", "primary_artifact": "exec-plan" },
                 { "id": "run-tests", "type": "exec", "plan_from": "dev" },
-                { "id": "accept", "type": "verify" }
+                { "id": "accept", "type": "verify", "provider": "claude-code" }
             ],
             "edges": [
                 { "from": "dev", "to": "run-tests", "on": "success" },
@@ -235,4 +235,69 @@ fn exec_invalid_completes_failure_when_repair_budget_is_exhausted() {
         decision,
         ControlDecision::CompleteRun(gold_band::domain::RunOutcome::Failure)
     ));
+}
+
+#[test]
+fn worker_failure_uses_explicit_edge() {
+    let workflow = parse_workflow(
+        r#"{
+            "version": "0.1",
+            "id": "worker-failure-edge",
+            "entry": "review",
+            "control": {
+                "max_repair_loops": 1,
+                "max_acceptance_loops": 1,
+                "on_acceptance_failure": "stop"
+            },
+            "nodes": [
+                { "id": "review", "type": "worker", "provider": "claude-code", "primary_artifact": "review-result", "output": { "kind": "json", "artifact": "review-result" }, "success_condition": { "path": "passed", "equals": true } },
+                { "id": "dev", "type": "worker", "provider": "claude-code" }
+            ],
+            "edges": [
+                { "from": "review", "to": "dev", "on": "failure", "session": "continue" }
+            ]
+        }"#,
+    );
+
+    let validated = gold_band::dsl::validate_workflow(workflow).unwrap();
+    let decision = decide_next_step(
+        &validated,
+        &sample_run(),
+        &sample_round(),
+        &sample_node("review", NodeType::Worker, NodeOutcome::Failure),
+    );
+    assert!(
+        matches!(decision, ControlDecision::TransitionToNode { node_id, session: SessionMode::Continue } if node_id == "dev")
+    );
+}
+
+#[test]
+fn edge_to_new_round_opens_round() {
+    let workflow = parse_workflow(
+        r#"{
+            "version": "0.1",
+            "id": "new-round-edge",
+            "entry": "accept",
+            "control": {
+                "max_repair_loops": 1,
+                "max_acceptance_loops": 1,
+                "on_acceptance_failure": "stop"
+            },
+            "nodes": [
+                { "id": "accept", "type": "worker", "provider": "claude-code", "primary_artifact": "accept-result", "output": { "kind": "json", "artifact": "accept-result" }, "success_condition": { "path": "passed", "equals": true } }
+            ],
+            "edges": [
+                { "from": "accept", "to": "$new-round", "on": "failure" }
+            ]
+        }"#,
+    );
+
+    let validated = gold_band::dsl::validate_workflow(workflow).unwrap();
+    let decision = decide_next_step(
+        &validated,
+        &sample_run(),
+        &sample_round(),
+        &sample_node("accept", NodeType::Worker, NodeOutcome::Failure),
+    );
+    assert!(matches!(decision, ControlDecision::OpenNewRound));
 }

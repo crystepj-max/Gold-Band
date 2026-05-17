@@ -32,7 +32,8 @@ fn validates_basic_workflow() {
                 },
                 {
                     "id": "accept",
-                    "type": "verify"
+                    "type": "verify",
+                    "provider": "claude-code"
                 }
             ],
             "edges": [
@@ -63,7 +64,7 @@ fn rejects_exec_plan_from_non_worker() {
             },
             "nodes": [
                 { "id": "run-tests", "type": "exec", "plan_from": "accept" },
-                { "id": "accept", "type": "verify" }
+                { "id": "accept", "type": "verify", "provider": "claude-code" }
             ],
             "edges": []
         }"#,
@@ -85,7 +86,7 @@ fn rejects_reserved_node_ids() {
                 "on_acceptance_failure": "stop"
             },
             "nodes": [
-                { "id": "worker", "type": "worker", "primary_artifact": "exec-plan" }
+                { "id": "worker", "type": "worker", "provider": "claude-code", "primary_artifact": "exec-plan" }
             ],
             "edges": []
         }"#,
@@ -107,7 +108,7 @@ fn rejects_zero_loop_limits() {
                 "on_acceptance_failure": "stop"
             },
             "nodes": [
-                { "id": "dev", "type": "worker", "primary_artifact": "exec-plan" }
+                { "id": "dev", "type": "worker", "provider": "claude-code", "primary_artifact": "exec-plan" }
             ],
             "edges": []
         }"#,
@@ -129,7 +130,7 @@ fn rejects_acceptance_policy_without_verify_node() {
                 "on_acceptance_failure": "auto-loop"
             },
             "nodes": [
-                { "id": "dev", "type": "worker", "primary_artifact": "exec-plan" }
+                { "id": "dev", "type": "worker", "provider": "claude-code", "primary_artifact": "exec-plan" }
             ],
             "edges": []
         }"#,
@@ -151,9 +152,9 @@ fn rejects_invalid_edges_to_end() {
                 "on_acceptance_failure": "stop"
             },
             "nodes": [
-                { "id": "dev", "type": "worker", "primary_artifact": "exec-plan" },
+                { "id": "dev", "type": "worker", "provider": "claude-code", "primary_artifact": "exec-plan" },
                 { "id": "run-tests", "type": "exec", "plan_from": "dev" },
-                { "id": "accept", "type": "verify" }
+                { "id": "accept", "type": "verify", "provider": "claude-code" }
             ],
             "edges": [
                 { "from": "dev", "to": "run-tests", "on": "success" },
@@ -178,11 +179,105 @@ fn rejects_continue_edges_to_unsupported_provider() {
                 "on_acceptance_failure": "stop"
             },
             "nodes": [
-                { "id": "dev", "type": "worker", "primary_artifact": "exec-plan" },
+                { "id": "dev", "type": "worker", "provider": "claude-code", "primary_artifact": "exec-plan" },
                 { "id": "review", "type": "worker", "provider": "other-provider", "primary_artifact": "exec-plan" }
             ],
             "edges": [
                 { "from": "dev", "to": "review", "on": "success", "session": "continue" }
+            ]
+        }"#,
+    );
+
+    assert!(validate_workflow(workflow).is_err());
+}
+
+#[test]
+fn accepts_worker_json_output_validation() {
+    let workflow = parse_workflow(
+        r#"{
+            "version": "0.1",
+            "id": "worker-validation",
+            "entry": "review",
+            "control": {
+                "max_repair_loops": 1,
+                "max_acceptance_loops": 1,
+                "on_acceptance_failure": "stop"
+            },
+            "nodes": [
+                {
+                    "id": "review",
+                    "type": "worker",
+                    "provider": "claude-code",
+                    "primary_artifact": "review-result",
+                    "output": { "kind": "json", "artifact": "review-result" },
+                    "success_condition": { "path": "passed", "equals": true }
+                },
+                {
+                    "id": "test",
+                    "type": "worker",
+                    "provider": "claude-code",
+                    "primary_artifact": "test-result",
+                    "output": { "kind": "json", "artifact": "test-result" },
+                    "success_condition": { "path": "passed", "equals": true }
+                }
+            ],
+            "edges": [
+                { "from": "review", "to": "test", "on": "success" },
+                { "from": "test", "to": "$new-round", "on": "failure" }
+            ]
+        }"#,
+    );
+
+    let validated = validate_workflow(workflow).expect("workflow should validate");
+    assert_eq!(validated.raw.nodes.len(), 2);
+}
+
+#[test]
+fn rejects_worker_output_mismatch() {
+    let workflow = parse_workflow(
+        r#"{
+            "version": "0.1",
+            "id": "worker-validation",
+            "entry": "review",
+            "control": {
+                "max_repair_loops": 1,
+                "max_acceptance_loops": 1,
+                "on_acceptance_failure": "stop"
+            },
+            "nodes": [
+                {
+                    "id": "review",
+                    "type": "worker",
+                    "provider": "claude-code",
+                    "primary_artifact": "review-result",
+                    "output": { "kind": "json", "artifact": "other-result" },
+                    "success_condition": { "path": "passed", "equals": true }
+                }
+            ],
+            "edges": []
+        }"#,
+    );
+
+    assert!(validate_workflow(workflow).is_err());
+}
+
+#[test]
+fn rejects_continue_to_new_round_target() {
+    let workflow = parse_workflow(
+        r#"{
+            "version": "0.1",
+            "id": "new-round-session",
+            "entry": "review",
+            "control": {
+                "max_repair_loops": 1,
+                "max_acceptance_loops": 1,
+                "on_acceptance_failure": "stop"
+            },
+            "nodes": [
+                { "id": "review", "type": "worker", "provider": "claude-code" }
+            ],
+            "edges": [
+                { "from": "review", "to": "$new-round", "on": "failure", "session": "continue" }
             ]
         }"#,
     );

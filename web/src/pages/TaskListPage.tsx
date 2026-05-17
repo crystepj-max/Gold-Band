@@ -1,10 +1,12 @@
 import { type ReactNode, useEffect, useMemo, useState } from 'react';
 import type { TFunction } from 'i18next';
-import { Check, Copy, RefreshCw } from 'lucide-react';
+import { Check, Copy, RefreshCw, Upload } from 'lucide-react';
 import { useTranslation } from 'react-i18next';
-import type { TaskListVm, TaskPage, TaskRowVm } from '../types';
+import type { AgentRegistryVm, CreateTaskInput, TaskListVm, TaskPage, TaskRowVm, WorkflowDsl, WorkflowVm } from '../types';
 import { displayStatus } from '../i18n';
+import { getAgentRegistry } from '../api';
 import { StatusBadge } from '../components/StatusBadge';
+import { WorkflowEditor, createDefaultWorkflow } from '../components/WorkflowEditor';
 import { AppCard } from '@/components/AppCard';
 import { CodeBlock, EmptyState, Page, PageHeader } from '@/components/PageScaffold';
 import { fullRequirementText } from '@/components/RequirementDisclosure';
@@ -17,6 +19,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { Tabs, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Skeleton } from '@/components/ui/skeleton';
+import { Textarea } from '@/components/ui/textarea';
 import { cn } from '@/lib/utils';
 
 type TaskListLoading = 'initial' | 'manual' | null;
@@ -27,6 +30,7 @@ interface TaskListPageProps {
   breadcrumbs?: ReactNode;
   onNavigate: (page: TaskPage) => void;
   onRefresh: () => void;
+  onCreateTask: (input: CreateTaskInput) => Promise<WorkflowVm | undefined>;
 }
 
 type TaskFilter = 'all' | 'running' | 'completed' | 'resumable' | 'failed' | 'invalid';
@@ -35,7 +39,7 @@ type SortDir = 'asc' | 'desc';
 
 const pageSizes = [10, 20, 50];
 
-export function TaskListPage({ vm, loading, breadcrumbs, onNavigate, onRefresh }: TaskListPageProps) {
+export function TaskListPage({ vm, loading, breadcrumbs, onNavigate, onRefresh, onCreateTask }: TaskListPageProps) {
   const { t } = useTranslation();
   const [previewTaskId, setPreviewTaskId] = useState<string | null>(null);
   const [isPreviewOpen, setIsPreviewOpen] = useState(false);
@@ -45,6 +49,7 @@ export function TaskListPage({ vm, loading, breadcrumbs, onNavigate, onRefresh }
   const [sortDir, setSortDir] = useState<SortDir>('asc');
   const [pageIndex, setPageIndex] = useState(0);
   const [pageSize, setPageSize] = useState(10);
+  const [createOpen, setCreateOpen] = useState(false);
   const isInitialLoading = loading === 'initial';
   const isManualRefreshing = loading === 'manual' && vm !== null;
 
@@ -122,8 +127,7 @@ export function TaskListPage({ vm, loading, breadcrumbs, onNavigate, onRefresh }
               <RefreshCw className={cn(isManualRefreshing && 'animate-spin')} />
               {t('common.refresh')}
             </Button>
-            <Button disabled>{t('taskList.createTask')}</Button>
-            <Button variant="outline" disabled>{t('taskList.importRequirements')}</Button>
+            <Button disabled={isInitialLoading} onClick={() => setCreateOpen(true)}>{t('taskList.createTask')}</Button>
           </>
         )}
       />
@@ -233,7 +237,125 @@ export function TaskListPage({ vm, loading, breadcrumbs, onNavigate, onRefresh }
           <TaskPreviewSheet task={previewTask} open={isPreviewOpen && previewTask !== null} onOpenChange={(open) => { if (open) setIsPreviewOpen(true); else closePreview(); }} onNavigate={onNavigate} />
         </div>
       ) : null}
+      <CreateTaskSheet
+        open={createOpen}
+        onOpenChange={setCreateOpen}
+        onCreateTask={async (input) => {
+          const created = await onCreateTask(input);
+          if (created) {
+            setCreateOpen(false);
+            onNavigate({ kind: 'workflow', taskId: created.task.id });
+          }
+          return created;
+        }}
+      />
     </Page>
+  );
+}
+
+function CreateTaskSheet({ open, onOpenChange, onCreateTask }: { open: boolean; onOpenChange: (open: boolean) => void; onCreateTask: (input: CreateTaskInput) => Promise<WorkflowVm | undefined> }) {
+  const { t } = useTranslation();
+  const [agentRegistry, setAgentRegistry] = useState<AgentRegistryVm | null>(null);
+  const [title, setTitle] = useState('');
+  const [description, setDescription] = useState('');
+  const [requirementFileName, setRequirementFileName] = useState('');
+  const [requirementContent, setRequirementContent] = useState('');
+  const [workflow, setWorkflow] = useState<WorkflowDsl | null>(null);
+  const [error, setError] = useState<string | null>(null);
+  const [saving, setSaving] = useState(false);
+
+  useEffect(() => {
+    if (!open) return;
+    setError(null);
+    getAgentRegistry()
+      .then((registry) => {
+        setAgentRegistry(registry);
+        const provider = registry.agents.find((agent) => agent.supported)?.agentType ?? 'claude-code';
+        setWorkflow(createDefaultWorkflow(provider));
+      })
+      .catch((err) => setError(String(err)));
+  }, [open]);
+
+  const readRequirementFile = async (file: File | undefined) => {
+    if (!file) return;
+    if (!/\.(txt|md)$/i.test(file.name)) {
+      setError(t('taskList.create.invalidFile'));
+      return;
+    }
+    const content = await file.text();
+    setRequirementFileName(file.name);
+    setRequirementContent(content);
+    if (!title.trim()) setTitle(file.name.replace(/\.(txt|md)$/i, ''));
+    setError(null);
+  };
+
+  const submit = async (workflowDraft: WorkflowDsl) => {
+    if (!requirementFileName || !requirementContent.trim()) {
+      setError(t('taskList.create.requirementRequired'));
+      return;
+    }
+    setSaving(true);
+    try {
+      const created = await onCreateTask({
+        title: title.trim() || requirementFileName.replace(/\.(txt|md)$/i, ''),
+        description: description.trim() || null,
+        requirementFileName,
+        requirementContent,
+        workflow: workflowDraft,
+      });
+      if (created) {
+        setTitle('');
+        setDescription('');
+        setRequirementFileName('');
+        setRequirementContent('');
+        setWorkflow(null);
+      }
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  return (
+    <Sheet open={open} onOpenChange={onOpenChange}>
+      <SheetContent className="w-[min(1120px,calc(100vw-2rem))] max-w-[min(1120px,calc(100vw-2rem))] gap-0 overflow-hidden p-0 sm:max-w-[min(1120px,calc(100vw-2rem))]" closeLabel={t('common.close')}>
+        <SheetHeader className="border-b px-5 py-4 text-left">
+          <SheetTitle>{t('taskList.create.title')}</SheetTitle>
+          <SheetDescription>{t('taskList.create.description')}</SheetDescription>
+        </SheetHeader>
+        <ScrollArea className="h-[calc(100vh-96px)]">
+          <div className="space-y-4 p-5">
+            <AppCard className="grid gap-4 p-4 lg:grid-cols-[320px_minmax(0,1fr)]">
+              <div className="space-y-3">
+                <label className="flex min-h-28 cursor-pointer flex-col items-center justify-center gap-2 rounded-xl border border-dashed bg-muted/20 p-4 text-center text-sm text-muted-foreground transition-colors hover:bg-muted/30">
+                  <Upload className="size-5" />
+                  <span>{requirementFileName || t('taskList.create.pickFile')}</span>
+                  <input className="sr-only" type="file" accept=".txt,.md,text/plain,text/markdown" onChange={(event) => void readRequirementFile(event.target.files?.[0])} />
+                </label>
+                <label className="block space-y-1.5 text-sm">
+                  <span className="text-xs font-medium text-muted-foreground">{t('taskList.create.taskTitle')}</span>
+                  <input className="h-9 w-full rounded-md border border-input bg-transparent px-3 text-sm outline-none focus-visible:border-ring focus-visible:ring-[3px] focus-visible:ring-ring/50" value={title} onChange={(event) => setTitle(event.target.value)} />
+                </label>
+                <label className="block space-y-1.5 text-sm">
+                  <span className="text-xs font-medium text-muted-foreground">{t('taskList.create.taskDescription')}</span>
+                  <Textarea value={description} onChange={(event) => setDescription(event.target.value)} />
+                </label>
+              </div>
+              <div className="min-w-0 rounded-xl border bg-muted/10 p-3">
+                <div className="mb-2 flex items-center justify-between gap-3">
+                  <strong className="text-sm">{t('taskList.create.requirementPreview')}</strong>
+                  <Badge variant="outline">txt / md</Badge>
+                </div>
+                <ScrollArea className="h-56 rounded-lg bg-background/50 p-3 text-sm text-muted-foreground">
+                  <pre className="whitespace-pre-wrap break-words font-sans">{requirementContent || t('taskList.create.emptyRequirement')}</pre>
+                </ScrollArea>
+              </div>
+            </AppCard>
+            {error ? <div className="rounded-lg border border-destructive/30 bg-destructive/10 px-3 py-2 text-sm text-destructive">{error}</div> : null}
+            {workflow ? <WorkflowEditor value={workflow} agentRegistry={agentRegistry} saving={saving} onSave={submit} /> : <EmptyState>{t('common.loading')}</EmptyState>}
+          </div>
+        </ScrollArea>
+      </SheetContent>
+    </Sheet>
   );
 }
 

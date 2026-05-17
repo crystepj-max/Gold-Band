@@ -6,7 +6,7 @@ use crate::artifacts::{
     parse_json_artifact, validate_exec_plan, validate_exec_result, validate_verify_result,
 };
 use crate::domain::{InvocationKind, NodeOutcome, RunStatus, SessionMode, VERSION};
-use crate::dsl::{NodeDsl, ValidatedWorkflow};
+use crate::dsl::{NodeDsl, ValidatedWorkflow, WorkerNode};
 use crate::exec::run_exec_plan;
 use crate::observability::{ProgressStage, progress};
 use crate::provider::{
@@ -21,6 +21,24 @@ use super::transition_context::{
     find_latest_artifact_path, find_verify_attachment_paths, find_verify_exec_result_path,
     find_verify_worker_primary_artifact,
 };
+
+fn worker_task_instruction(worker: &WorkerNode) -> Option<String> {
+    let mut sections = Vec::new();
+    if let Some(goal) = worker.goal.as_deref().map(str::trim).filter(|value| !value.is_empty()) {
+        sections.push(goal.to_string());
+    }
+    if let (Some(output), Some(condition)) = (&worker.output, &worker.success_condition) {
+        sections.push(format!(
+            "Return valid JSON for `{}`. The runtime treats this node as successful only when JSON field `{}` equals `{}`.",
+            output.artifact,
+            condition.path,
+            condition.equals
+        ));
+    } else if let Some(output) = &worker.output {
+        sections.push(format!("Return valid JSON for `{}`.", output.artifact));
+    }
+    (!sections.is_empty()).then(|| sections.join("\n\n"))
+}
 
 pub(crate) fn execute_ai_node(
     app: &App,
@@ -58,7 +76,7 @@ pub(crate) fn execute_ai_node(
             (
                 worker.profile.clone(),
                 worker.primary_artifact.clone(),
-                worker.goal.clone(),
+                worker_task_instruction(worker),
                 kind,
                 Vec::new(),
                 Vec::new(),
@@ -136,8 +154,13 @@ pub(crate) fn execute_ai_node(
         app.paths
             .raw_stream_file(task_id, run_id, round_id, node_id, attempt_id)
     ));
-    tracing::debug!(task_id, run_id, round_id, node_id, attempt_id, stage = ?ProgressStage::CallingProvider, "calling provider");
-    let result = app.provider.run_worker(invocation)?;
+    let provider_id = node
+        .resolved_config
+        .get("provider")
+        .and_then(|value| value.as_str())
+        .ok_or_else(|| anyhow!("node `{node_id}` is missing resolved provider"))?;
+    tracing::debug!(task_id, run_id, round_id, node_id, attempt_id, provider_id, stage = ?ProgressStage::CallingProvider, "calling provider");
+    let result = app.provider_for_id(provider_id)?.run_worker(invocation)?;
     progress(&format!(
         "normalizing artifact for {}/{}/{}",
         round_id, node_id, attempt_id
@@ -208,6 +231,45 @@ pub(crate) fn execute_exec_node(
     node.finished_at = Some(now_rfc3339_like());
     validate_node_state(&node)?;
     Ok(node)
+}
+
+fn evaluate_json_success_condition(app: &App, task_id: &str, run_id: &str, round_id: &str, node: &NodeState, artifact_name: &str) -> Result<Option<NodeOutcome>> {
+    let Some(path) = node
+        .resolved_config
+        .get("successConditionPath")
+        .and_then(|value| value.as_str())
+    else {
+        return Ok(None);
+    };
+    let Some(expected) = node.resolved_config.get("successConditionEquals") else {
+        return Ok(Some(NodeOutcome::Invalid));
+    };
+    let artifact_path = app.paths.artifact_file(
+        task_id,
+        run_id,
+        round_id,
+        &node.node_id,
+        &node.attempt_id,
+        artifact_name,
+    );
+    let content = std::fs::read_to_string(artifact_path.as_std_path())?;
+    let value: serde_json::Value = parse_json_artifact(&content)?;
+    let mut cursor = &value;
+    for segment in path.split('.') {
+        let key = segment.trim();
+        if key.is_empty() {
+            return Ok(Some(NodeOutcome::Invalid));
+        }
+        let Some(next) = cursor.get(key) else {
+            return Ok(Some(NodeOutcome::Invalid));
+        };
+        cursor = next;
+    }
+    Ok(Some(if cursor == expected {
+        NodeOutcome::Success
+    } else {
+        NodeOutcome::Failure
+    }))
 }
 
 pub(crate) fn finalize_ai_attempt(
@@ -303,6 +365,13 @@ pub(crate) fn finalize_ai_attempt(
                     VerifyStatus::Success => NodeOutcome::Success,
                     VerifyStatus::Failure => NodeOutcome::Failure,
                 }
+            } else if matches!(node.node_type, crate::domain::NodeType::Worker) {
+                expected_artifact
+                    .as_deref()
+                    .map(|artifact| evaluate_json_success_condition(app, task_id, run_id, round_id, &node, artifact))
+                    .transpose()?
+                    .flatten()
+                    .unwrap_or(NodeOutcome::Success)
             } else {
                 NodeOutcome::Success
             });
@@ -382,7 +451,12 @@ pub(crate) fn re_evaluate_attempt(
                     VerifyStatus::Failure => NodeOutcome::Failure,
                 });
             }
-            _ => node.outcome = Some(NodeOutcome::Success),
+            _ => {
+                node.outcome = Some(
+                    evaluate_json_success_condition(app, task_id, run_id, round_id, &node, &artifact_name)?
+                        .unwrap_or(NodeOutcome::Success),
+                );
+            }
         }
     }
 

@@ -2,12 +2,15 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 import {
   chooseWorkspace,
   continueRun,
+  createTask,
+  getAgentRegistry,
   getAppBootstrap,
   getRoundDetail,
   getTaskList,
   getWorkflow,
   killRun,
   saveDesktopPreferences,
+  saveTaskWorkflow,
   selectRecentWorkspace,
   startRun,
 } from './api';
@@ -16,6 +19,7 @@ import { Breadcrumbs } from './components/Breadcrumbs';
 import { Shell } from './components/Shell';
 import i18n, { i18nLanguage } from './i18n';
 import { useTranslation } from 'react-i18next';
+import { AgentManagementPage } from './pages/AgentManagementPage';
 import { RoundDetailPage } from './pages/RoundDetailPage';
 import { SettingsPage } from './pages/SettingsPage';
 import { TaskListPage } from './pages/TaskListPage';
@@ -24,7 +28,9 @@ import { WorkspaceSelectPage } from './pages/WorkspaceSelectPage';
 import { pushRoute, replaceRoute, routeFromPath } from './routes';
 import { applyFont, applyTheme } from './theme';
 import type {
+  AgentRegistryVm,
   AppBootstrapVm,
+  CreateTaskInput,
   DesktopFontPreference,
   DesktopLanguage,
   DesktopThemePreference,
@@ -34,6 +40,7 @@ import type {
   RoundSelection,
   TaskListVm,
   TaskPage,
+  WorkflowDsl,
   WorkflowVm,
 } from './types';
 
@@ -47,6 +54,7 @@ export function App() {
   const [primaryModule, setPrimaryModule] = useState<PrimaryModule>(initialRoute.module);
   const [taskPage, setTaskPage] = useState<TaskPage>(initialRoute.taskPage);
   const [roundSelection, setRoundSelection] = useState<RoundSelection>({ kind: 'round' });
+  const [agentRegistry, setAgentRegistry] = useState<AgentRegistryVm | null>(null);
   const [taskList, setTaskList] = useState<TaskListVm | null>(null);
   const [workflow, setWorkflow] = useState<WorkflowVm | null>(null);
   const [roundDetail, setRoundDetail] = useState<RoundDetailVm | null>(null);
@@ -101,6 +109,7 @@ export function App() {
   const resetWorkspaceViews = () => {
     setTaskPage({ kind: 'task-list' });
     setRoundSelection({ kind: 'round' });
+    setAgentRegistry(null);
     setTaskList(null);
     setWorkflow(null);
     setRoundDetail(null);
@@ -108,11 +117,13 @@ export function App() {
     setWorkspacePickerOpen(false);
   };
 
-  const hasPageData = taskPage.kind === 'task-list'
-    ? taskList !== null
-    : taskPage.kind === 'workflow'
-      ? workflow !== null
-      : roundDetail !== null;
+  const hasPageData = primaryModule === 'agent-management'
+    ? agentRegistry !== null
+    : taskPage.kind === 'task-list'
+      ? taskList !== null
+      : taskPage.kind === 'workflow'
+        ? workflow !== null
+        : roundDetail !== null;
 
   const refresh = useCallback(async (mode: RefreshMode = 'manual') => {
     if (!bootstrap) return;
@@ -124,7 +135,9 @@ export function App() {
     }
     setError(null);
     try {
-      if (taskPage.kind === 'task-list') {
+      if (primaryModule === 'agent-management') {
+        setAgentRegistry(await getAgentRegistry());
+      } else if (taskPage.kind === 'task-list') {
         setTaskList(await getTaskList());
       } else if (taskPage.kind === 'workflow') {
         setWorkflow(await getWorkflow(taskPage.taskId));
@@ -140,7 +153,7 @@ export function App() {
         setLoading(null);
       }
     }
-  }, [bootstrap, roundSelection, taskPage]);
+  }, [bootstrap, primaryModule, roundSelection, taskPage]);
 
   useEffect(() => {
     void refresh(hasPageData ? 'background' : 'initial');
@@ -179,6 +192,18 @@ export function App() {
     if (window.confirm(t('common.confirmKill'))) {
       void runAction(() => killRun(taskId, runId));
     }
+  };
+
+  const onCreateTask = async (input: CreateTaskInput) => {
+    const created = await runAction(() => createTask(input));
+    if (created) setWorkflow(created);
+    return created;
+  };
+
+  const onSaveTaskWorkflow = async (taskId: string, workflow: WorkflowDsl) => {
+    const saved = await runAction(() => saveTaskWorkflow(taskId, workflow));
+    if (saved) setWorkflow(saved);
+    return saved;
   };
 
   const applyWorkspace = (nextBootstrap: AppBootstrapVm) => {
@@ -240,7 +265,9 @@ export function App() {
     )
     : primaryModule === 'settings'
       ? <SettingsPage preferences={preferences} onSave={onSavePreferences} />
-      : renderTaskContent();
+      : primaryModule === 'agent-management'
+        ? <AgentManagementPage vm={agentRegistry} loading={loading !== null} onRefresh={() => void refresh('manual')} onRegistryChange={setAgentRegistry} />
+        : renderTaskContent();
 
   return (
     <Shell
@@ -261,7 +288,7 @@ export function App() {
   function renderTaskContent() {
     const pageBreadcrumbs = <Breadcrumbs page={taskPage} onNavigate={navigate} />;
     if (taskPage.kind === 'task-list') {
-      return <TaskListPage vm={taskList} loading={loading} breadcrumbs={pageBreadcrumbs} onNavigate={navigate} onRefresh={() => void refresh('manual')} />;
+      return <TaskListPage vm={taskList} loading={loading} breadcrumbs={pageBreadcrumbs} onNavigate={navigate} onRefresh={() => void refresh('manual')} onCreateTask={onCreateTask} />;
     }
     if (taskPage.kind === 'workflow') {
       return (
@@ -275,6 +302,7 @@ export function App() {
           onStartRun={(taskId) => runAction(() => startRun(taskId))}
           onContinueRun={(taskId, runId) => void runAction(() => continueRun(taskId, runId))}
           onKillRun={onKillRun}
+          onSaveWorkflow={onSaveTaskWorkflow}
         />
       );
     }

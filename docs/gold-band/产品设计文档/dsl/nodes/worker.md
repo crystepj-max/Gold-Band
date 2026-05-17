@@ -23,7 +23,8 @@
 - 若未声明 `primaryArtifact`，只有 provider adapter 返回包本身不合法时，runtime 才归为 `invalid`
 - 若声明了 `primaryArtifact` 但结果缺失、name 不匹配或 schema 不合法，应归为 `invalid`
 - provider 执行失败或异常结束应归为 `failure`
-- 当前 MVP 中，`worker` 的 `primaryArtifact` 通常更适合是 `exec-plan`，而不是摘要型结果
+- 新建工作流中，`worker` 不再默认产出 `exec-plan`；review/test/accept 等验证型 worker 可产出 `*-result` JSON artifact
+- 当声明 `output.kind=json` 与 `successCondition` 时，runtime 按 JSON 字段值把节点归纳为 `success / failure / invalid`
 
 ## 3. 当前关注点
 - 如何绑定 `provider`
@@ -43,10 +44,26 @@
 - runtime 不应忽略它，也不应在没有 `goal` 的情况下自行硬造等价任务语义
 - provider implementation 只消费已经映射好的 invocation / prompt，不负责反推 `goal`
 
+## 3.2 JSON 输出验证
+验证型 worker 可声明：
+
+```json
+{
+  "primary_artifact": "review-result",
+  "output": { "kind": "json", "artifact": "review-result" },
+  "success_condition": { "path": "passed", "equals": true }
+}
+```
+
+规则：
+- `output.artifact` 必须与 `primary_artifact` 一致。
+- `success_condition.path` 当前是简单 dot path，例如 `passed` 或 `result.passed`。
+- 字段值等于 `equals` 时节点 outcome 为 `success`；不等于时为 `failure`；缺失、JSON 非法或 path 非法时为 `invalid`。
+
 ## 4. `provider` 与 `profile` 的解析规则
 当前建议：
-- `worker` 节点可显式声明 `provider`
-- 若节点未声明 `provider`，则由 runtime 使用内部默认 provider（当前 MVP 为 `claude-code`）
+- `worker` 节点必须显式声明 `provider`
+- 桌面作者态 UI 从 Agent 管理页已配置且支持的 agent card 中选择 provider
 - `profile` 通过节点上的 profile 名解析为对应 `{profileName}.md`
 
 `profile` 查找优先级：

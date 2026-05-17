@@ -1,4 +1,4 @@
-use crate::domain::{AcceptanceFailurePolicy, DEFAULT_PROVIDER, NodeType, SessionMode};
+use crate::domain::{AcceptanceFailurePolicy, NodeType, SessionMode};
 use crate::provider::supports_continue_session;
 use anyhow::{Result, anyhow, bail, ensure};
 use indexmap::IndexMap;
@@ -6,7 +6,8 @@ use serde::{Deserialize, Serialize};
 use std::collections::HashSet;
 
 pub const END_NODE: &str = "$end";
-const RESERVED_NODE_IDS: &[&str] = &["worker", "exec", "verify", END_NODE];
+pub const NEW_ROUND_NODE: &str = "$new-round";
+const RESERVED_NODE_IDS: &[&str] = &["worker", "exec", "verify", END_NODE, NEW_ROUND_NODE];
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct WorkflowDsl {
@@ -66,6 +67,26 @@ pub struct WorkerNode {
     pub profile: Option<String>,
     pub goal: Option<String>,
     pub primary_artifact: Option<String>,
+    pub output: Option<OutputContractDsl>,
+    pub success_condition: Option<JsonConditionDsl>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct OutputContractDsl {
+    pub kind: OutputKind,
+    pub artifact: String,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "kebab-case")]
+pub enum OutputKind {
+    Json,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct JsonConditionDsl {
+    pub path: String,
+    pub equals: serde_json::Value,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -152,14 +173,48 @@ pub fn validate_workflow(workflow: WorkflowDsl) -> Result<ValidatedWorkflow> {
 
         match node {
             NodeDsl::Worker(worker) => {
+                let provider = worker
+                    .provider
+                    .as_deref()
+                    .map(str::trim)
+                    .filter(|value| !value.is_empty())
+                    .ok_or_else(|| anyhow!("worker node `{id}` provider cannot be blank"))?;
+                ensure!(!provider.is_empty(), "worker node `{id}` provider cannot be blank");
                 if let Some(profile) = &worker.profile {
                     ensure!(
                         !profile.trim().is_empty(),
                         "worker node `{id}` profile cannot be blank"
                     );
                 }
+                if let Some(output) = &worker.output {
+                    ensure!(
+                        !output.artifact.trim().is_empty(),
+                        "worker node `{id}` output artifact cannot be blank"
+                    );
+                    ensure!(
+                        worker.primary_artifact.as_deref() == Some(output.artifact.as_str()),
+                        "worker node `{id}` output artifact must match primary_artifact"
+                    );
+                }
+                if let Some(condition) = &worker.success_condition {
+                    ensure!(
+                        worker.output.as_ref().is_some_and(|output| output.kind == OutputKind::Json),
+                        "worker node `{id}` success_condition requires json output"
+                    );
+                    ensure!(
+                        !condition.path.trim().is_empty(),
+                        "worker node `{id}` success_condition path cannot be blank"
+                    );
+                }
             }
             NodeDsl::Verify(verify) => {
+                let provider = verify
+                    .provider
+                    .as_deref()
+                    .map(str::trim)
+                    .filter(|value| !value.is_empty())
+                    .ok_or_else(|| anyhow!("verify node `{id}` provider cannot be blank"))?;
+                ensure!(!provider.is_empty(), "verify node `{id}` provider cannot be blank");
                 if let Some(profile) = &verify.profile {
                     ensure!(
                         !profile.trim().is_empty(),
@@ -202,7 +257,7 @@ pub fn validate_workflow(workflow: WorkflowDsl) -> Result<ValidatedWorkflow> {
             edge.from
         );
         ensure!(
-            edge.to == END_NODE || nodes_by_id.contains_key(&edge.to),
+            edge.to == END_NODE || edge.to == NEW_ROUND_NODE || nodes_by_id.contains_key(&edge.to),
             "edge target not found: {}",
             edge.to
         );
@@ -211,15 +266,26 @@ pub fn validate_workflow(workflow: WorkflowDsl) -> Result<ValidatedWorkflow> {
             "edge `{}` cannot target `$end` on invalid",
             edge.from
         );
+        ensure!(
+            edge.from != END_NODE && edge.from != NEW_ROUND_NODE,
+            "edge source cannot be a terminal target: {}",
+            edge.from
+        );
 
         if matches!(edge.session, Some(SessionMode::Continue)) {
+            ensure!(
+                edge.to != END_NODE && edge.to != NEW_ROUND_NODE,
+                "session=continue requires a real node target"
+            );
             let target = nodes_by_id
                 .get(&edge.to)
                 .ok_or_else(|| anyhow!("edge target not found: {}", edge.to))?;
-            let provider = target.provider().unwrap_or(DEFAULT_PROVIDER);
+            let provider = target
+                .provider()
+                .ok_or_else(|| anyhow!("target node `{}` provider cannot be blank", edge.to))?;
             ensure!(
                 supports_continue_session(provider)?,
-                "session=continue currently only supports provider `{DEFAULT_PROVIDER}`"
+                "session=continue currently only supports agents with continue-session capability"
             );
         }
     }
