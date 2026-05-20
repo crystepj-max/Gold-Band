@@ -262,6 +262,7 @@ function CreateTaskSheet({ open, onOpenChange, onCreateTask, onOpenProfileManage
   const [profileList, setProfileList] = useState<ProfileListVm | null>(null);
   const [templateStore, setTemplateStore] = useState<WorkflowTemplateStore | null>(null);
   const [selectedTemplateId, setSelectedTemplateId] = useState<string | null>(null);
+  const [lastUsedHintDismissed, setLastUsedHintDismissed] = useState(false);
   const [baseWorkflow, setBaseWorkflow] = useState<WorkflowDsl | null>(null);
   const [saveTemplateName, setSaveTemplateName] = useState('');
   const [title, setTitle] = useState('');
@@ -284,10 +285,10 @@ function CreateTaskSheet({ open, onOpenChange, onCreateTask, onOpenProfileManage
         setProfileList(profiles);
         const provider = registry.agents.find((agent) => agent.supported)?.agentType ?? 'claude-code';
         const fallback = createDefaultWorkflow(provider, profiles.profiles);
-        const selectedTemplate = templates.templates.find((template) => template.id === templates.lastUsedTemplateId) ?? templates.templates[0] ?? null;
+        const selectedTemplate = templates.templates[0] ?? null;
         const initialWorkflow = selectedTemplate?.workflow ?? templates.lastCreatedWorkflow ?? fallback;
-        const templateId = selectedTemplate?.id ?? null;
-        setSelectedTemplateId(templateId);
+        setSelectedTemplateId(selectedTemplate?.id ?? null);
+        setLastUsedHintDismissed(false);
         setBaseWorkflow(initialWorkflow);
         setWorkflow(initialWorkflow);
         setSaveTemplateName('');
@@ -325,20 +326,12 @@ function CreateTaskSheet({ open, onOpenChange, onCreateTask, onOpenProfileManage
 
   const selectWorkflowTemplate = (templateId: string) => {
     if (!templateStore) return;
-    if (templateId === '__last_created__') {
-      const lastWorkflow = templateStore.lastCreatedWorkflow;
-      if (!lastWorkflow) return;
-      setSelectedTemplateId(null);
-      setBaseWorkflow(lastWorkflow);
-      setWorkflow(lastWorkflow);
-      setSaveTemplateName('');
-      return;
-    }
     const template = templateStore.templates.find((item) => item.id === templateId);
     if (!template) return;
     setSelectedTemplateId(template.id);
     setBaseWorkflow(template.workflow);
     setWorkflow(template.workflow);
+    setLastUsedHintDismissed(template.id === templateStore.lastUsedTemplateId);
     setSaveTemplateName('');
   };
 
@@ -368,6 +361,8 @@ function CreateTaskSheet({ open, onOpenChange, onCreateTask, onOpenProfileManage
   };
 
   const defaultWorkflow = templateStore?.templates.find((template) => template.id === 'default')?.workflow ?? null;
+  const lastUsedTemplate = templateStore?.templates.find((template) => template.id === templateStore.lastUsedTemplateId) ?? null;
+  const showLastUsedHint = Boolean(lastUsedTemplate && selectedTemplateId !== lastUsedTemplate.id && !lastUsedHintDismissed);
 
   const submit = async (workflowDraft: WorkflowDsl) => {
     if (!requirementFileName || !requirementContent.trim()) {
@@ -460,13 +455,25 @@ function CreateTaskSheet({ open, onOpenChange, onCreateTask, onOpenProfileManage
                 <AppCard className="flex flex-col gap-3 p-3 lg:flex-row lg:items-center lg:justify-between">
                   <div className="flex min-w-0 flex-1 flex-col gap-2 sm:flex-row sm:items-center">
                     <span className="text-xs font-medium text-muted-foreground">{t('taskList.create.workflowTemplate')}</span>
-                    <Select value={selectedTemplateId ?? (templateStore?.lastCreatedWorkflow ? '__last_created__' : '')} onValueChange={selectWorkflowTemplate}>
+                    <Select value={selectedTemplateId ?? ''} onValueChange={selectWorkflowTemplate}>
                       <SelectTrigger className="w-full sm:w-64"><SelectValue placeholder={t('taskList.create.workflowTemplatePlaceholder')} /></SelectTrigger>
                       <SelectContent>
                         {templateStore?.templates.map((template) => <SelectItem value={template.id} key={template.id}>{template.name}</SelectItem>)}
-                        {templateStore?.lastCreatedWorkflow ? <SelectItem value="__last_created__">{t('taskList.create.lastCreatedWorkflow')}</SelectItem> : null}
                       </SelectContent>
                     </Select>
+                    {showLastUsedHint && lastUsedTemplate ? (
+                      <span className="text-xs text-muted-foreground">
+                        {t('taskList.create.lastUsedWorkflowPrefix')}
+                        <button
+                          type="button"
+                          className="font-medium text-foreground underline-offset-4 hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"
+                          aria-label={t('taskList.create.selectLastUsedWorkflow', { name: lastUsedTemplate.name })}
+                          onClick={() => selectWorkflowTemplate(lastUsedTemplate.id)}
+                        >
+                          {lastUsedTemplate.name}
+                        </button>
+                      </span>
+                    ) : null}
                     {workflowDirty ? <Badge variant="outline">{t('taskList.create.workflowDirty')}</Badge> : null}
                   </div>
                   {workflowDirty ? (
