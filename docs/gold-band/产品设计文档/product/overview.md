@@ -33,16 +33,16 @@ Gold Band 主要解决 3 个问题：
 - 执行面 probabilistic
 - 完成判断基于 artifact 与验证，而不是 self-report
 
-### 3. CLI-first，但本质是 runtime-first、command-first
-- CLI 是核心 backend 接口
-- CLI 同时包含 scriptable subcommand CLI 与 command-driven console CLI
-- VSCode 插件主要封装 CLI
-- 新前端 / 插件层将在保留 CLI/runtime 契约的前提下重新设计
+### 3. desktop-first，但本质是 runtime-first、command-first
+- 桌面客户端是当前主产品入口，面向本地项目的任务编排、执行观测与恢复操作
+- Rust runtime / storage / DSL / provider adapter 是 canonical backend contract
+- CLI 保留为脚本化、调试和自动化入口，但不再主导产品交互心智
+- 新前端 / 插件层必须复用 runtime 契约，而不是基于日志或 provider 输出重新推断终局状态
 
 ### 4. step-first，而不是 chat-first
-- Gold Band 当前不提供自然语言交互入口
-- console CLI 前期只接受显式命令输入，不做自然语言解析
-- 若后续接入需求 / workflow 的 AI 生成能力，再在 authoring 层扩展自然语言体验
+- Gold Band 桌面端不提供自然语言命令入口
+- 核心操作通过菜单、按钮、表格、工作流画布、抽屉和设置页完成
+- 若后续接入需求 / workflow 的 AI 生成能力，应放在 authoring 层扩展，而不是把运行主路径改造成 chat
 
 Gold Band 的核心对象是：
 
