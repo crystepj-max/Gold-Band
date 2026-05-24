@@ -77,7 +77,7 @@ Gold Band DSL 是一份面向 runtime 的最小工作流描述规范：节点统
 - `$end` 只能作为边目标，不能作为节点 id；`invalid -> $end` 非法。
 - `session=continue` 只能指向真实 worker 节点，并且目标 provider 必须支持 continue session。
 - `control.max_attempts` / `control.max_rounds` 都是可选正整数；不填表示不限制。
-- `max_attempts` 按当前 round 内的 `来源节点 -> 目标节点` 分别计数，`max_rounds` 只统计 `$new-round` 打开的新 round。
+- `max_attempts` 按当前 round 内 `failure` / `invalid` 触发的修复跳转计数，正常 `success` 前进不消耗次数；`max_rounds` 只统计 `$new-round` 打开的新 round。
 - 同一来源节点的同一结果类型只能有一条出边，例如一个节点只能配置一条 `success` 边。
 - `manual_check=true` 与 AI 输出验证互斥。
 - `success_condition` 必须搭配 JSON `output` 使用。

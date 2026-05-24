@@ -45,7 +45,7 @@
 | 完成 | `验收输出产物` 规范化落盘 | 已支持 `验收输出产物` 解析、校验与 canonical 写入。 | `docs/gold-band/开发计划/gold-band-mvp-plan.md:151-164`; `docs/gold-band/产品设计文档/runtime/control.md:141-152` |
 | 完成 | outcome/status 分离 | 已在 run/round/node 状态模型中实现 `status` 与 `outcome` 分离约束。 | `docs/gold-band/产品设计文档/runtime/overview.md:66-80`; `docs/gold-band/产品设计文档/runtime/control.md:62-98` |
 | 完成 | 控制流决策引擎 | 已实现基于 node outcome 的 `TransitionToNode / OpenNewRound / PauseRun / CompleteRun` 决策。 | `docs/gold-band/开发计划/gold-band-mvp-plan.md:206-237`; `docs/gold-band/产品设计文档/runtime/control.md:155-180` |
-| 完成 | attempt 限制 | 已支持 `worker.failure/invalid` 经显式 edge 回到 worker，并按当前 round 内 `来源节点 -> 目标节点` 统计 `max_attempts`。 | `docs/gold-band/产品设计文档/runtime/control.md`; `docs/gold-band/产品设计文档/dsl/control.md` |
+| 完成 | attempt 限制 | 已支持 `worker.failure/invalid` 经显式 edge 回到 worker，并按当前 round 内修复/重试跳转统计 `max_attempts`；正常 success 前进不消耗次数。 | `docs/gold-band/产品设计文档/runtime/control.md`; `docs/gold-band/产品设计文档/dsl/control.md` |
 | 部分完成 | `worker.invalid` 默认 repair 规则 | 已支持 `worker.invalid` 进入暂停阻塞，但尚未实现“无显式 edge 时默认回到 `显式 edge` 且优先 continue”的默认策略。 | `docs/gold-band/产品设计文档/runtime/control.md:215-220, 412-413`; `docs/gold-band/开发计划/gold-band-mvp-plan.md:316-320` |
 | 完成 | acceptance loop | 已支持 `worker.failure + auto_loop` 新建 round，并将最新 output validation 反馈带回 entry。 | `docs/gold-band/产品设计文档/runtime/control.md:236-307, 414-416`; `docs/gold-band/开发计划/gold-band-mvp-plan.md:423-424, 447-449` |
 | 完成 | `$end` 终止语义 | 已支持命中 `$end` 时按 success/failure 完成 run。 | `docs/gold-band/产品设计文档/runtime/control.md:176-181, 446-449`; `docs/gold-band/开发计划/gold-band-mvp-plan.md:403-405, 447-449` |

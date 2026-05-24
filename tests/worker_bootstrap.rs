@@ -268,6 +268,73 @@ impl ProviderAdapter for MultiAttemptContinueProvider {
     }
 }
 
+#[derive(Clone, Default)]
+struct OneRepairProvider {
+    invocations: Arc<Mutex<Vec<WorkerInvocation>>>,
+}
+
+impl ProviderAdapter for OneRepairProvider {
+    fn describe_provider(&self) -> ProviderInfo {
+        MultiAttemptContinueProvider::default().describe_provider()
+    }
+
+    fn doctor(&self) -> DoctorResult {
+        MultiAttemptContinueProvider::default().doctor()
+    }
+
+    fn run_worker(&self, req: WorkerInvocation) -> anyhow::Result<ProviderRunResult> {
+        let node_id = req.runtime_context.node_id.clone();
+        let attempt_id = req.runtime_context.attempt_id.clone();
+        let session_mode = req.session_mode;
+        let review_count = if node_id == "review" {
+            self.invocations
+                .lock()
+                .unwrap()
+                .iter()
+                .filter(|invocation| invocation.runtime_context.node_id == "review")
+                .count()
+                + 1
+        } else {
+            0
+        };
+        self.invocations.lock().unwrap().push(req);
+        let success = node_id != "review" || review_count >= 2;
+
+        Ok(ProviderRunResult {
+            status: ProviderRunStatus::Success,
+            exit_code: Some(0),
+            result_payload: Some(ProviderResultPayload {
+                primary_artifact: Some(PrimaryArtifactPayload {
+                    name: format!("{node_id}-result"),
+                    content: format!(r#"{{"result":{success},"reason":"{node_id} {attempt_id}"}}"#),
+                }),
+            }),
+            worker_ref_seed: Some(SessionRef {
+                provider: "claude-acp".to_string(),
+                mode: session_mode,
+                supports_open_session: true,
+                supports_continue_session: true,
+                continue_ref: Some(
+                    serde_json::json!({"sessionId": format!("{node_id}-{attempt_id}")}),
+                ),
+                open_command: Some(format!("claude -c {node_id}-{attempt_id}")),
+            }),
+            stream_path: None,
+        })
+    }
+
+    fn open_session(&self, _worker_ref: &gold_band::domain::SessionRef) -> anyhow::Result<()> {
+        Ok(())
+    }
+
+    fn build_continue_command(
+        &self,
+        worker_ref: &gold_band::domain::SessionRef,
+    ) -> anyhow::Result<Option<String>> {
+        Ok(worker_ref.open_command.clone())
+    }
+}
+
 #[test]
 fn run_start_executes_entry_worker_and_persists_outputs() {
     let temp = tempdir().unwrap();
@@ -545,7 +612,70 @@ fn transition_continue_uses_latest_target_attempt_ref() {
 }
 
 #[test]
-fn max_attempts_fails_workflow_when_edge_limit_is_exceeded() {
+fn max_attempts_allows_one_repair_loop_then_forward_success() {
+    let temp = tempdir().unwrap();
+    let repo_root = Utf8PathBuf::from_path_buf(temp.path().to_path_buf()).unwrap();
+    let task_id = "task-max-attempts-success";
+
+    let provider = OneRepairProvider::default();
+    let app = App::with_provider(repo_root.clone(), Box::new(provider.clone()));
+
+    std::fs::create_dir_all(app.paths.task_dir(task_id).join("authoring").as_std_path()).unwrap();
+    let dev_profile = app
+        .profiles()
+        .unwrap()
+        .profiles
+        .into_iter()
+        .find(|profile| profile.name == "开发")
+        .unwrap()
+        .id;
+    std::fs::write(
+        app.paths.requirement_file(task_id).as_std_path(),
+        "Exercise one repair loop",
+    )
+    .unwrap();
+    std::fs::write(
+        app.paths.workflow_file(task_id).as_std_path(),
+        format!(
+            r#"{{
+          "version": "0.1",
+          "id": "attempt-limit-success-flow",
+          "entry": "dev",
+          "control": {{ "max_attempts": 1 }},
+          "nodes": [
+            {{"id":"dev","type":"worker","provider":"claude-acp","profile":"{}","primary_artifact":"dev-result","output":{{"kind":"json","artifact":"dev-result","schema":{{"result":"boolean","reason":"String"}}}},"success_condition":{{"expression":"$.result == true"}}}},
+            {{"id":"review","type":"worker","provider":"claude-acp","profile":"{}","primary_artifact":"review-result","output":{{"kind":"json","artifact":"review-result","schema":{{"result":"boolean","reason":"String"}}}},"success_condition":{{"expression":"$.result == true"}}}}
+          ],
+          "edges": [
+            {{"from":"dev","to":"review","on":"success"}},
+            {{"from":"review","to":"dev","on":"failure","session":"continue"}},
+            {{"from":"review","to":"$end","on":"success"}}
+          ]
+        }}"#,
+            dev_profile, dev_profile
+        ),
+    )
+    .unwrap();
+    std::fs::write(
+        app.paths.task_file(task_id).as_std_path(),
+        r#"{"version":"0.1","id":"task-max-attempts-success"}"#,
+    )
+    .unwrap();
+
+    let run = app.run_start(task_id, None).unwrap();
+    assert_eq!(run.status, RunStatus::Completed);
+    assert_eq!(run.outcome, Some(RunOutcome::Success));
+
+    let invocations = provider.invocations.lock().unwrap();
+    assert_eq!(invocations.len(), 4);
+    assert_eq!(invocations[0].runtime_context.node_id, "dev");
+    assert_eq!(invocations[1].runtime_context.node_id, "review");
+    assert_eq!(invocations[2].runtime_context.node_id, "dev");
+    assert_eq!(invocations[3].runtime_context.node_id, "review");
+}
+
+#[test]
+fn max_attempts_fails_when_repair_budget_is_exceeded() {
     let temp = tempdir().unwrap();
     let repo_root = Utf8PathBuf::from_path_buf(temp.path().to_path_buf()).unwrap();
     let task_id = "task-max-attempts";
@@ -600,10 +730,11 @@ fn max_attempts_fails_workflow_when_edge_limit_is_exceeded() {
     assert_eq!(run.outcome, Some(RunOutcome::Failure));
 
     let invocations = provider.invocations.lock().unwrap();
-    assert_eq!(invocations.len(), 3);
+    assert_eq!(invocations.len(), 4);
     assert_eq!(invocations[0].runtime_context.node_id, "dev");
     assert_eq!(invocations[1].runtime_context.node_id, "review");
     assert_eq!(invocations[2].runtime_context.node_id, "dev");
+    assert_eq!(invocations[3].runtime_context.node_id, "review");
 }
 
 #[test]

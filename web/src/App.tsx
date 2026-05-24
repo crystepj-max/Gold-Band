@@ -17,7 +17,7 @@ import {
 import { Alert, AlertDescription } from '@/components/ui/alert';
 import { Breadcrumbs } from './components/Breadcrumbs';
 import { Shell } from './components/Shell';
-import i18n, { i18nLanguage } from './i18n';
+import i18n, { displayAppError, i18nLanguage } from './i18n';
 import { useTranslation } from 'react-i18next';
 import { AgentManagementPage } from './pages/AgentManagementPage';
 import { ContextManagementPage } from './pages/ContextManagementPage';
@@ -104,8 +104,8 @@ export function App() {
   useEffect(() => {
     getAppBootstrap()
       .then(setBootstrap)
-      .catch((err) => setError(String(err)));
-  }, []);
+      .catch((err) => setError(displayAppError(t, err)));
+  }, [t]);
 
   const resetWorkspaceViews = () => {
     setTaskPage({ kind: 'task-list' });
@@ -150,7 +150,7 @@ export function App() {
         setRoundDetail(await getRoundDetail(taskPage.taskId, taskPage.runId, taskPage.roundId, roundSelection));
       }
     } catch (err) {
-      setError(String(err));
+      setError(displayAppError(t, err));
     } finally {
       if (mode === 'background') {
         backgroundRefreshInFlightRef.current = false;
@@ -158,7 +158,7 @@ export function App() {
         setLoading(null);
       }
     }
-  }, [bootstrap, primaryModule, roundSelection, taskPage]);
+  }, [bootstrap, primaryModule, roundSelection, t, taskPage]);
 
   useEffect(() => {
     void refresh(hasPageData ? 'background' : 'initial');
@@ -192,7 +192,7 @@ export function App() {
       await refresh('background');
       return result;
     } catch (err) {
-      setError(String(err));
+      setError(displayAppError(t, err));
       return undefined;
     } finally {
       setBusy(false);
@@ -232,7 +232,7 @@ export function App() {
         applyWorkspace(nextBootstrap);
       }
     } catch (err) {
-      setError(String(err));
+      setError(displayAppError(t, err));
     } finally {
       setBusy(false);
     }
@@ -244,7 +244,7 @@ export function App() {
     try {
       applyWorkspace(await selectRecentWorkspace(workspace));
     } catch (err) {
-      setError(String(err));
+      setError(displayAppError(t, err));
     } finally {
       setBusy(false);
     }
@@ -259,7 +259,7 @@ export function App() {
       setWorkflow(null);
       setRoundDetail(null);
     } catch (err) {
-      setError(String(err));
+      setError(displayAppError(t, err));
     } finally {
       setBusy(false);
     }

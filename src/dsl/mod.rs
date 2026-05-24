@@ -9,6 +9,13 @@ pub const END_NODE: &str = "$end";
 pub const NEW_ROUND_NODE: &str = "$new-round";
 const RESERVED_NODE_IDS: &[&str] = &[END_NODE, NEW_ROUND_NODE];
 
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, thiserror::Error)]
+#[serde(tag = "kind", rename_all = "kebab-case")]
+pub enum WorkflowValidationError {
+    #[error("edge `{from}` cannot target `$new-round` on success")]
+    SuccessNewRoundTarget { from: String },
+}
+
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum JsonPathSegment {
     Key(String),
@@ -415,6 +422,12 @@ pub fn validate_workflow(workflow: WorkflowDsl) -> Result<ValidatedWorkflow> {
             "edge `{}` cannot target `$end` on invalid",
             edge.from
         );
+        if edge.to == NEW_ROUND_NODE && edge.on == EdgeOutcome::Success {
+            return Err(WorkflowValidationError::SuccessNewRoundTarget {
+                from: edge.from.clone(),
+            }
+            .into());
+        }
         ensure!(
             edge.from != END_NODE && edge.from != NEW_ROUND_NODE,
             "edge source cannot be a terminal target: {}",

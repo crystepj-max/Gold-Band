@@ -116,6 +116,7 @@
 - 2026-05-23：continue 恢复路径改为重新渲染当前节点 system prompt，并随 `session/load._meta.systemPrompt.append` 传给 Claude Agent ACP；ACP 内部 create session 表示用 SDK `resume` 创建 query 进程，不改变 Gold Band 的 continue 语义。系统提示入口应同时解析 `session/new` 与 `session/load` 的追加内容。
 - 2026-05-23：Codex ACP 0.14.0 会忽略 ACP `_meta.systemPrompt`；Gold Band 对 `codex-acp` 在 `session/prompt` 前内联当前节点 system prompt，避免首次调用丢失节点约束。
 - 2026-05-23：桌面 ACP 会话面板的手动追问入口改为复用当前节点 prompt bundle，`session/load` 恢复旧会话后也重新追加节点 system prompt，避免用户追问时模型忘记输出 DSL。
+- 2026-05-24：`max_attempts` 收敛为 round 内修复/重试预算，只统计 `failure/invalid` 修复跳转；超限时写入结构化控制失败原因。Round 详情工作图按逻辑节点合并多 attempt，以 attempt 标记和 ACP conversation 聚合展示 continue/new 会话差异；`session=new` 始终独立成可切换 conversation，只有后续 `session=continue` 才挂回被继续的 conversation；运行中 synthetic/provider echo 的同文 user prompt 只展示一条。
 - 2026-05-21：工作流编辑器的节点 id 输入改为本地草稿提交，避免中文输入法 composition 阶段被受控值和 sanitize 打断；作者态画布普通节点直接展示原始 id，不再把 `test` 等默认模板名称本地化显示。
 - 2026-05-21：AI 输出验证的 JSON 输出约束输入改为本地草稿 + 延迟校验，停止输入约 2 秒或失焦后再写入 DSL；自动 beautify 改为输入框右上角手动美化按钮，避免编辑半截 JSON 时被重排。
 - 启动：`npm run dev`；构建：`npm run build`。

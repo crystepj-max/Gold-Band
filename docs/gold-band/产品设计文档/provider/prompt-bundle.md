@@ -218,6 +218,8 @@ ACP 的 `systemPrompt` 在 `session/new` 和 `session/load` 时都通过 `_meta.
 
 桌面 ACP 会话面板的手动追问也必须复用同一套 prompt bundle 渲染逻辑；不能只把用户输入包装成空 `systemPrompt` 的临时 `PromptBundle`。
 
+ACP 会话展示按 Gold Band 的 session 策略聚合：`session=new` 始终创建独立 conversation，即使底层 provider 暴露了相同或临时 session id，也不把两个 new attempt 合并；后续 `session=continue` 且指向已有 ACP session id 时，挂回被继续的 conversation，并以 attempt 分隔行标记新 attempt 进入。会话流中 Gold Band synthetic user prompt 与 provider 回放的同文 user prompt 只展示一条，避免运行中出现重复用户消息。
+
 说明：Claude Agent ACP 的 `session/load` 会在恢复已有 Claude 会话时创建新的 SDK query 进程；这里的 create session 是 provider 进程内的查询对象创建，不表示 Gold Band 开启了新的对话语义。
 
 Codex ACP 0.14.0 当前会接收但不消费 `session/new` / `session/load` 中的 `_meta.systemPrompt`；Gold Band 对 `codex-acp` 额外在 `session/prompt` 文本前内联当前节点 system prompt，保证节点角色、文件规则和输出约束首次调用即可生效。

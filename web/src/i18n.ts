@@ -1,6 +1,6 @@
 import i18n, { type TFunction } from 'i18next';
 import { initReactI18next } from 'react-i18next';
-import type { DesktopLanguage } from './types';
+import type { AppErrorVm, DesktopLanguage, WorkflowErrorVm } from './types';
 
 const resources = {
   'zh-CN': {
@@ -58,6 +58,33 @@ const resources = {
         taskList: '任务列表',
         workflow: '工作流',
         workflowList: '工作流列表',
+      },
+      errors: {
+        agent: {
+          'already-exists': 'Agent {{agentType}} 已存在。',
+          'not-configured': 'Agent {{agentType}} 尚未配置。',
+        },
+        acp: {
+          'missing-provider': '当前节点缺少 provider 配置。',
+        },
+        app: {
+          'task-join-failed': '后台任务执行失败。',
+          unexpected: '操作失败，请重试。',
+        },
+        'manual-check': {
+          'invalid-outcome': '人工 check 结果无效。',
+        },
+        workflow: {
+          'agent-doctor-failed': 'Agent {{agentType}} 未通过 doctor。',
+          'agent-doctor-required': 'Agent {{agentType}} 需要先通过 doctor。',
+          'permission-mode-unsupported': 'Agent {{agentType}} 不支持权限模式 {{permissionMode}}。',
+          'success-new-round-target': '{{from}} 的 success 边不能指向 new round。',
+          invalid: '工作流配置无效。',
+        },
+        workspace: {
+          'path-invalid-utf8': '选择的工作空间路径不是有效 UTF-8。',
+          'path-resolve-failed': '无法解析选择的工作空间路径。',
+        },
       },
       status: {
         running: '运行中',
@@ -267,6 +294,7 @@ const resources = {
         createWorkflowTitle: '新建工作流',
         editWorkflowTitle: '修改工作流',
         repairWorkflowTitle: '修复工作流',
+        viewErrorReasons: '查看错误原因',
         noWorkflow: '暂无工作流',
         noWorkflowTemplate: '无可用工作流模板，无法新建或修复工作流。',
         expandBlueprint: '展开',
@@ -311,7 +339,7 @@ const resources = {
         workflowControls: '工作流控制',
         workflowControlsHelp: '未填写表示不限制；限制超出后当前工作流失败。',
         maxAttempts: 'Attempt 最大次数',
-        maxAttemptsHelp: '每个 Round 内按来源节点 → 目标节点分别计数。比如 3 表示 A → B 最多执行 3 次，C → B 也可执行 3 次。',
+        maxAttemptsHelp: '每个 Round 内按 failure/invalid 触发的修复跳转计数。比如 1 表示允许一次修复循环；修复后的 success 前进不消耗次数。',
         maxRounds: 'Round 最大次数',
         maxRoundsHelp: '限制 $new-round 可打开的新 Round 数；初始 Round 不计入。',
         nodeConfig: '节点配置',
@@ -377,6 +405,7 @@ const resources = {
         validationEdgeTargetMissing: '边的目标节点 {{node}} 不存在。',
         validationEdgeOutcomeRequired: '第 {{index}} 条边类型无效。',
         validationDuplicateEdgeOutcome: '{{node}} 有 {{num}} 条 {{outcome}} 边，同类型边最多只能有一条。',
+        validationSuccessNewRoundTarget: '{{node}} 的 success 边不能指向 new round。',
         validationTerminalEdgeSource: '终止节点 {{node}} 不能作为边的来源。',
         validationContinueTerminalTarget: '第 {{index}} 条边的 continue session 不能指向终止节点。',
         nodeLabels: {
@@ -453,6 +482,11 @@ const resources = {
         nodeId: '节点 ID',
         sequence: '序号',
         attemptId: 'Attempt ID',
+        attemptCount: 'Attempt 数',
+        viewFailureReason: '查看原因',
+        transition: '跳转',
+        edgeOutcome: '分支',
+        limitUsage: '次数',
         startedAt: '开始时间',
         finishedAt: '结束时间',
         noArtifacts: '暂无产物',
@@ -652,6 +686,33 @@ const resources = {
         taskList: 'Task List',
         workflow: 'Workflow',
         workflowList: 'Workflow List',
+      },
+      errors: {
+        agent: {
+          'already-exists': 'Agent {{agentType}} already exists.',
+          'not-configured': 'Agent {{agentType}} is not configured.',
+        },
+        acp: {
+          'missing-provider': 'The current node is missing provider configuration.',
+        },
+        app: {
+          'task-join-failed': 'Background task failed.',
+          unexpected: 'The operation failed. Please try again.',
+        },
+        'manual-check': {
+          'invalid-outcome': 'Manual check outcome is invalid.',
+        },
+        workflow: {
+          'agent-doctor-failed': 'Agent {{agentType}} has not passed doctor.',
+          'agent-doctor-required': 'Agent {{agentType}} must pass doctor first.',
+          'permission-mode-unsupported': 'Agent {{agentType}} does not support permission mode {{permissionMode}}.',
+          'success-new-round-target': '{{from}} success edge cannot target new round.',
+          invalid: 'Workflow configuration is invalid.',
+        },
+        workspace: {
+          'path-invalid-utf8': 'Selected workspace path is not valid UTF-8.',
+          'path-resolve-failed': 'Failed to resolve selected workspace path.',
+        },
       },
       status: {
         running: 'Running',
@@ -861,6 +922,7 @@ const resources = {
         createWorkflowTitle: 'Create Workflow',
         editWorkflowTitle: 'Edit Workflow',
         repairWorkflowTitle: 'Repair Workflow',
+        viewErrorReasons: 'View error reasons',
         noWorkflow: 'No workflow yet',
         noWorkflowTemplate: 'No workflow template is available, so the workflow cannot be created or repaired.',
         expandBlueprint: 'Expand',
@@ -905,7 +967,7 @@ const resources = {
         workflowControls: 'Workflow Controls',
         workflowControlsHelp: 'Blank means unlimited. The workflow fails when a limit is exceeded.',
         maxAttempts: 'Max Attempts',
-        maxAttemptsHelp: 'Counts each source node → target node separately within a round. For example, 3 allows A → B three times and C → B three times.',
+        maxAttemptsHelp: 'Counts repair transitions caused by failure/invalid outcomes within a round. For example, 1 allows one repair loop; success transitions after repair do not consume it.',
         maxRounds: 'Max Rounds',
         maxRoundsHelp: 'Limits how many new rounds $new-round can open. The initial round is not counted.',
         nodeConfig: 'Node Config',
@@ -971,6 +1033,7 @@ const resources = {
         validationEdgeTargetMissing: 'Edge target node {{node}} does not exist.',
         validationEdgeOutcomeRequired: 'Edge {{index}} has an invalid outcome.',
         validationDuplicateEdgeOutcome: '{{node}} has {{num}} {{outcome}} edges; each outcome type can only have one edge.',
+        validationSuccessNewRoundTarget: '{{node}} success edge cannot target new round.',
         validationTerminalEdgeSource: 'Terminal node {{node}} cannot be an edge source.',
         validationContinueTerminalTarget: 'Edge {{index}} continue session cannot target a terminal node.',
         nodeLabels: {
@@ -1047,6 +1110,11 @@ const resources = {
         nodeId: 'Node ID',
         sequence: 'Sequence',
         attemptId: 'Attempt ID',
+        attemptCount: 'Attempts',
+        viewFailureReason: 'View reason',
+        transition: 'Transition',
+        edgeOutcome: 'Branch',
+        limitUsage: 'Count',
         startedAt: 'Started at',
         finishedAt: 'Finished at',
         noArtifacts: 'No artifacts',
@@ -1209,6 +1277,26 @@ export function displayPolicy(t: TFunction, value?: string | null) {
 export function displayNodeType(t: TFunction, value?: string | null) {
   if (!value) return t('nodeType.unknown');
   return t(`nodeType.${value.toLowerCase()}`, { defaultValue: value });
+}
+
+export function displayAppError(t: TFunction, error: unknown) {
+  if (isAppError(error)) {
+    return t(`errors.${error.code}`, { ...error.params, defaultValue: t('errors.app.unexpected') });
+  }
+  return String(error);
+}
+
+export function displayWorkflowError(t: TFunction, error?: WorkflowErrorVm | null) {
+  if (!error) return '';
+  return displayAppError(t, error);
+}
+
+function isAppError(value: unknown): value is AppErrorVm {
+  return Boolean(value)
+    && typeof value === 'object'
+    && typeof (value as Partial<AppErrorVm>).code === 'string'
+    && Boolean((value as Partial<AppErrorVm>).params)
+    && typeof (value as Partial<AppErrorVm>).params === 'object';
 }
 
 if (!i18n.isInitialized) {

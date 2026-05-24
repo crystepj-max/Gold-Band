@@ -647,6 +647,7 @@ fn fail_workflow_control_limit(
     round: &mut RoundState,
     node: &NodeState,
     summary: String,
+    control_failure: serde_json::Value,
 ) -> Result<Option<NextExecution>> {
     let now = now_rfc3339_like();
     run.status = RunStatus::Completed;
@@ -664,22 +665,24 @@ fn fail_workflow_control_limit(
         ProgressStage::Completed,
         summary.clone(),
     );
+    let mut event_data = run_event_data(
+        &ExecutionContext::for_run(task_id, &run.id)
+            .with_round(round.id.clone())
+            .with_node(node.node_id.clone())
+            .with_attempt(node.attempt_id.clone()),
+        Some(ProgressStage::Completed),
+        Some(run.status),
+        Some(summary),
+        None,
+    );
+    event_data.control_failure = Some(control_failure);
     append_run_event_best_effort(
         &app.paths,
         task_id,
         &run.id,
         "workflow_control_limit_exceeded",
         now,
-        run_event_data(
-            &ExecutionContext::for_run(task_id, &run.id)
-                .with_round(round.id.clone())
-                .with_node(node.node_id.clone())
-                .with_attempt(node.attempt_id.clone()),
-            Some(ProgressStage::Completed),
-            Some(run.status),
-            Some(summary),
-            None,
-        ),
+        event_data,
     );
     validate_round_state(round)?;
     validate_run_state(run)?;
@@ -694,6 +697,10 @@ fn edge_outcome_label(outcome: NodeOutcome) -> String {
         NodeOutcome::Invalid => "invalid".to_string(),
         NodeOutcome::Killed => "killed".to_string(),
     }
+}
+
+fn is_repair_outcome(outcome: &str) -> bool {
+    matches!(outcome, "failure" | "invalid")
 }
 
 fn run_is_killed(app: &App, task_id: &str, run_id: &str) -> Result<bool> {
@@ -804,33 +811,49 @@ fn apply_control_decision(
                 .get_node(&node_id)
                 .expect("validated transition target exists");
             let previous_node_id = node.node_id.clone();
-            if let Some(max_attempts) = workflow.raw.control.max_attempts {
-                let proposed_attempts = round
-                    .trace
-                    .iter()
-                    .filter(|step| {
-                        step.from_node_id.as_deref() == Some(previous_node_id.as_str())
-                            && step.node_id == node_id
-                    })
-                    .count() as u32
-                    + 1;
-                if proposed_attempts > max_attempts {
-                    return fail_workflow_control_limit(
-                        app,
-                        task_id,
-                        run,
-                        round,
-                        node,
-                        format!(
-                            "max attempts exceeded for {} -> {}: {} > {}",
+            let edge_outcome = node.outcome.map(edge_outcome_label);
+            if let (Some(max_attempts), Some(outcome)) =
+                (workflow.raw.control.max_attempts, edge_outcome.as_deref())
+            {
+                if is_repair_outcome(outcome) {
+                    let proposed_attempts = round
+                        .trace
+                        .iter()
+                        .filter(|step| {
+                            step.from_node_id.as_deref() == Some(previous_node_id.as_str())
+                                && step.node_id == node_id
+                                && step.edge_outcome.as_deref().is_some_and(is_repair_outcome)
+                        })
+                        .count() as u32
+                        + 1;
+                    if proposed_attempts > max_attempts {
+                        let summary = format!(
+                            "max repair attempts exceeded for {} -> {}: {} > {}",
                             previous_node_id, node_id, proposed_attempts, max_attempts
-                        ),
-                    );
+                        );
+                        return fail_workflow_control_limit(
+                            app,
+                            task_id,
+                            run,
+                            round,
+                            node,
+                            summary.clone(),
+                            serde_json::json!({
+                                "reasonKind": "max_repair_attempts_exceeded",
+                                "fromNodeId": previous_node_id,
+                                "toNodeId": node_id,
+                                "target": node_id,
+                                "edgeOutcome": outcome,
+                                "proposedCount": proposed_attempts,
+                                "limit": max_attempts,
+                                "message": summary,
+                            }),
+                        );
+                    }
                 }
             }
             let next_attempt_id =
                 next_attempt_id(&app.paths.node_dir(task_id, &run.id, &round.id, &node_id))?;
-            let edge_outcome = node.outcome.map(edge_outcome_label);
             let continue_ref = find_latest_worker_ref_for_transition(
                 app, task_id, &run.id, &round.id, node, &node_id, session,
             )?
@@ -906,16 +929,24 @@ fn apply_control_decision(
             if let Some(max_rounds) = workflow.raw.control.max_rounds {
                 let proposed_rounds = run.new_rounds_opened + 1;
                 if proposed_rounds > max_rounds {
+                    let summary = format!(
+                        "max rounds exceeded for $new-round: {} > {}",
+                        proposed_rounds, max_rounds
+                    );
                     return fail_workflow_control_limit(
                         app,
                         task_id,
                         run,
                         round,
                         node,
-                        format!(
-                            "max rounds exceeded for $new-round: {} > {}",
-                            proposed_rounds, max_rounds
-                        ),
+                        summary.clone(),
+                        serde_json::json!({
+                            "reasonKind": "max_rounds_exceeded",
+                            "target": "$new-round",
+                            "proposedCount": proposed_rounds,
+                            "limit": max_rounds,
+                            "message": summary,
+                        }),
                     );
                 }
             }

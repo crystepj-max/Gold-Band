@@ -18,7 +18,8 @@ use crate::domain::{NodeOutcome, RunOutcome};
 use crate::domain::{PauseReason, RunStatus, SessionMode, VERSION};
 use crate::dsl::{
     END_NODE, EdgeDsl, EdgeOutcome, JsonConditionDsl, NEW_ROUND_NODE, NodeDsl, OutputContractDsl,
-    OutputKind, ValidatedWorkflow, WorkerNode, WorkflowControl, WorkflowDsl, validate_workflow,
+    OutputKind, ValidatedWorkflow, WorkerNode, WorkflowControl, WorkflowDsl, WorkflowValidationError,
+    validate_workflow,
 };
 use crate::process::kill_process_tree;
 use crate::provider::{
@@ -302,6 +303,7 @@ pub struct TaskSummary {
     pub workflow_exists: bool,
     pub workflow_valid: bool,
     pub workflow_error: Option<String>,
+    pub workflow_validation_error: Option<WorkflowValidationError>,
     pub latest_run: Option<RunState>,
     pub resumable_run_id: Option<String>,
     pub suggested_run_id: Option<String>,
@@ -752,7 +754,7 @@ impl App {
     pub fn task_summary(&self, task_id: &str) -> Result<TaskSummary> {
         let task = self.task_show(task_id)?;
         let workflow_exists = self.paths.workflow_file(task_id).exists();
-        let workflow_error = self.workflow_validation_error(task_id)?;
+        let (workflow_error, workflow_validation_error) = self.workflow_validation_error(task_id)?;
         let workflow_valid = workflow_exists && workflow_error.is_none();
         let latest_run = self.latest_run(task_id)?;
         let resumable_run_id = self.find_resumable_run_id(task_id)?;
@@ -762,6 +764,7 @@ impl App {
             workflow_exists,
             workflow_valid,
             workflow_error,
+            workflow_validation_error,
             latest_run,
             resumable_run_id,
             suggested_run_id,
@@ -1511,29 +1514,32 @@ impl App {
         Ok(Some(read_json(path)?))
     }
 
-    fn workflow_validation_error(&self, task_id: &str) -> Result<Option<String>> {
+    fn workflow_validation_error(&self, task_id: &str) -> Result<(Option<String>, Option<WorkflowValidationError>)> {
         let path = self.paths.workflow_file(task_id);
         if !path.exists() {
-            return Ok(Some("missing authoring/workflow.json".to_string()));
+            return Ok((Some("missing authoring/workflow.json".to_string()), None));
         }
 
         let workflow: WorkflowDsl = match read_json(&path) {
             Ok(workflow) => workflow,
-            Err(err) => return Ok(Some(err.to_string())),
+            Err(err) => return Ok((Some(err.to_string()), None)),
         };
 
         let validated = match validate_workflow(workflow.clone()) {
             Ok(validated) => validated,
-            Err(err) => return Ok(Some(err.to_string())),
+            Err(err) => {
+                let validation_error = err.downcast_ref::<WorkflowValidationError>().cloned();
+                return Ok((Some(err.to_string()), validation_error));
+            }
         };
 
         if let Err(err) = self.validate_workflow_agents(&validated) {
-            return Ok(Some(err.to_string()));
+            return Ok((Some(err.to_string()), None));
         }
 
         match resolve_workflow_profiles(&self.paths, &validated.raw) {
-            Ok(_) => Ok(None),
-            Err(err) => Ok(Some(err.to_string())),
+            Ok(_) => Ok((None, None)),
+            Err(err) => Ok((Some(err.to_string()), None)),
         }
     }
 

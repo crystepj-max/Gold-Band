@@ -56,6 +56,27 @@ fn validates_basic_workflow() {
 }
 
 #[test]
+fn rejects_success_edge_to_new_round() {
+    let workflow = parse_workflow(
+        r#"{
+            "version": "0.1",
+            "id": "success-new-round",
+            "entry": "accept",
+            "control": { "max_rounds": 1 },
+            "nodes": [
+                { "id": "accept", "type": "worker", "provider": "claude-acp" }
+            ],
+            "edges": [
+                { "from": "accept", "to": "$new-round", "on": "success" }
+            ]
+        }"#,
+    );
+
+    let error = validate_workflow(workflow).expect_err("success should not open new round");
+    assert!(error.to_string().contains("cannot target `$new-round` on success"));
+}
+
+#[test]
 fn rejects_unknown_node_type() {
     let workflow = serde_json::from_str::<WorkflowDsl>(
         r#"{

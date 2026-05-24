@@ -7,7 +7,7 @@ use gold_band::app::{
     CreateTaskInput, ProfileEntry, ProfileInput, ProfileList, WorkflowTemplateStore,
 };
 use gold_band::domain::{NodeOutcome, SessionMode};
-use gold_band::dsl::{NodeDsl, WorkflowDsl};
+use gold_band::dsl::{NodeDsl, WorkflowDsl, WorkflowValidationError};
 use gold_band::provider::supported_modes_from_capabilities;
 use gold_band::runtime::{NodeState, WorkerRefState};
 use gold_band::storage::read_json;
@@ -22,7 +22,7 @@ use gold_band::config::{
     AcpAdapterConfig, DesktopFontPreference, DesktopLanguage, DesktopThemePreference,
     ManagedAgentConfig, ManagedAgentType, RuntimeConfig,
 };
-use serde::Deserialize;
+use serde::{Deserialize, Serialize};
 use tauri::State;
 use tauri_plugin_dialog::DialogExt;
 
@@ -37,7 +37,23 @@ use crate::view_models::{
     workflow_vm,
 };
 
-pub type CommandResult<T> = Result<T, String>;
+pub type CommandResult<T> = Result<T, CommandErrorVm>;
+
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct CommandErrorVm {
+    pub code: String,
+    pub params: serde_json::Value,
+}
+
+impl CommandErrorVm {
+    fn new(code: impl Into<String>, params: serde_json::Value) -> Self {
+        Self {
+            code: code.into(),
+            params,
+        }
+    }
+}
 
 #[derive(Debug, Deserialize)]
 #[serde(rename_all = "camelCase")]
@@ -115,7 +131,10 @@ pub fn create_agent(
     let app = state.app().map_err(command_error)?;
     let agent_type = ManagedAgentType::from_str(&agent_type).map_err(command_error)?;
     if app.managed_agents().contains_key(&agent_type) {
-        return Err(format!("agent `{}` already exists", agent_type.as_str()));
+        return Err(CommandErrorVm::new(
+            "agent.already-exists",
+            serde_json::json!({ "agentType": agent_type.as_str() }),
+        ));
     }
     let user_config = app
         .save_managed_agent(
@@ -144,7 +163,10 @@ pub fn update_agent(
     let app = state.app().map_err(command_error)?;
     let agent_type = ManagedAgentType::from_str(&agent_type).map_err(command_error)?;
     if !app.managed_agents().contains_key(&agent_type) {
-        return Err(format!("agent `{}` is not configured", agent_type.as_str()));
+        return Err(CommandErrorVm::new(
+            "agent.not-configured",
+            serde_json::json!({ "agentType": agent_type.as_str() }),
+        ));
     }
     let user_config = app
         .save_managed_agent(
@@ -249,11 +271,12 @@ pub fn choose_workspace(
     else {
         return Ok(None);
     };
-    let path = path
-        .into_path()
-        .map_err(|error| format!("failed to resolve selected workspace path: {error}"))?;
-    let repo_root = Utf8PathBuf::from_path_buf(path)
-        .map_err(|_| "selected workspace path is not valid UTF-8".to_string())?;
+    let path = path.into_path().map_err(|_| {
+        CommandErrorVm::new("workspace.path-resolve-failed", serde_json::json!({}))
+    })?;
+    let repo_root = Utf8PathBuf::from_path_buf(path).map_err(|_| {
+        CommandErrorVm::new("workspace.path-invalid-utf8", serde_json::json!({}))
+    })?;
     let context = state.set_workspace(repo_root).map_err(command_error)?;
     Ok(Some(bootstrap_vm(
         &context.app(),
@@ -417,7 +440,12 @@ pub fn submit_manual_check(
     let outcome = match outcome.as_str() {
         "success" => NodeOutcome::Success,
         "failure" => NodeOutcome::Failure,
-        _ => return Err("manual check outcome must be success or failure".to_string()),
+        _ => {
+            return Err(CommandErrorVm::new(
+                "manual-check.invalid-outcome",
+                serde_json::json!({ "outcome": outcome }),
+            ));
+        }
     };
     app.submit_manual_check_background(&task_id, &run_id, &round_id, &node_id, &attempt_id, outcome)
         .map(run_summary_vm)
@@ -529,7 +557,7 @@ pub async fn send_acp_prompt(
             .resolved_config
             .get("provider")
             .and_then(|value| value.as_str())
-            .ok_or_else(|| "node is missing resolved provider".to_string())?;
+            .ok_or_else(|| CommandErrorVm::new("acp.missing-provider", serde_json::json!({})))?;
         let (_, agent_config) = app.managed_agent(provider).map_err(command_error)?;
         let permission_mode = node
             .resolved_config
@@ -578,7 +606,7 @@ pub async fn send_acp_prompt(
         .map_err(command_error)
     })
     .await
-    .map_err(|error| error.to_string())?
+    .map_err(|_| CommandErrorVm::new("app.task-join-failed", serde_json::json!({})))?
 }
 
 #[tauri::command]
@@ -698,7 +726,7 @@ pub async fn get_acp_raw_frames(
         .map_err(command_error)
     })
     .await
-    .map_err(|error| error.to_string())?
+    .map_err(|_| CommandErrorVm::new("app.task-join-failed", serde_json::json!({})))?
 }
 
 #[tauri::command]
@@ -777,14 +805,15 @@ fn ensure_workflow_agents_doctor_ready(
         match diagnostics.get(&agent_type) {
             Some(diagnostic) if diagnostic.available => {}
             Some(diagnostic) => {
-                return Err(format!(
-                    "agent `{provider}` must pass doctor before it can be used in workflows: {}",
-                    diagnostic.reason.as_deref().unwrap_or("doctor failed")
+                return Err(CommandErrorVm::new(
+                    "workflow.agent-doctor-failed",
+                    serde_json::json!({ "agentType": provider, "reason": diagnostic.reason }),
                 ));
             }
             None => {
-                return Err(format!(
-                    "agent `{provider}` must pass doctor before it can be used in workflows"
+                return Err(CommandErrorVm::new(
+                    "workflow.agent-doctor-required",
+                    serde_json::json!({ "agentType": provider }),
                 ));
             }
         }
@@ -804,20 +833,36 @@ fn ensure_workflow_agents_doctor_ready(
         };
         let agent_type = ManagedAgentType::from_str(provider).map_err(command_error)?;
         let diagnostic = diagnostics.get(&agent_type).ok_or_else(|| {
-            format!("agent `{provider}` must pass doctor before it can be used in workflows")
+            CommandErrorVm::new(
+                "workflow.agent-doctor-required",
+                serde_json::json!({ "agentType": provider }),
+            )
         })?;
         let supported_modes = supported_modes_from_capabilities(diagnostic.capabilities.as_ref());
         if !supported_modes.is_empty()
             && !supported_modes.iter().any(|mode| mode.id == permission_mode)
         {
-            return Err(format!(
-                "agent `{provider}` does not support permission mode `{permission_mode}`"
+            return Err(CommandErrorVm::new(
+                "workflow.permission-mode-unsupported",
+                serde_json::json!({ "agentType": provider, "permissionMode": permission_mode }),
             ));
         }
     }
     Ok(())
 }
 
-fn command_error(error: anyhow::Error) -> String {
-    error.to_string()
+fn command_error(error: anyhow::Error) -> CommandErrorVm {
+    if let Some(error) = error.downcast_ref::<WorkflowValidationError>() {
+        return workflow_validation_command_error(error);
+    }
+    CommandErrorVm::new("app.unexpected", serde_json::json!({}))
+}
+
+fn workflow_validation_command_error(error: &WorkflowValidationError) -> CommandErrorVm {
+    match error {
+        WorkflowValidationError::SuccessNewRoundTarget { from } => CommandErrorVm::new(
+            "workflow.success-new-round-target",
+            serde_json::json!({ "from": from }),
+        ),
+    }
 }

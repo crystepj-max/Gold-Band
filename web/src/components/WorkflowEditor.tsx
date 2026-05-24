@@ -49,6 +49,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { Tabs, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Textarea } from '@/components/ui/textarea';
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip';
+import { displayAppError } from '../i18n';
 import { cn } from '@/lib/utils';
 
 function providerToIconKey(provider: string): string | undefined {
@@ -121,9 +122,10 @@ interface WorkflowEditorProps {
   defaultWorkflow?: WorkflowDsl | null;
   saving?: boolean;
   showSaveAction?: boolean;
+  validationRequestId?: number;
 }
 
-export function WorkflowEditor({ value, agentRegistry, profiles = [], onOpenProfileManagement, onSave, onChange, onApplyDefaultTemplate, defaultWorkflow, saving, showSaveAction = true }: WorkflowEditorProps) {
+export function WorkflowEditor({ value, agentRegistry, profiles = [], onOpenProfileManagement, onSave, onChange, onApplyDefaultTemplate, defaultWorkflow, saving, showSaveAction = true, validationRequestId = 0 }: WorkflowEditorProps) {
   const { t } = useTranslation();
   const initialWorkflow = useMemo(() => normalizeWorkflowSchemas(value), [value]);
   const [workflow, setWorkflow] = useState<WorkflowDsl>(initialWorkflow);
@@ -138,7 +140,8 @@ export function WorkflowEditor({ value, agentRegistry, profiles = [], onOpenProf
   const [pendingValidation, setPendingValidation] = useState<WorkflowValidationResult | null>(null);
   const [fieldErrors, setFieldErrors] = useState<Record<string, string[]>>({});
   const [invalidNodeIds, setInvalidNodeIds] = useState<Set<string>>(new Set());
-  const agents = agentRegistry?.agents.filter((agent) => agent.supported && agent.diagnostic?.available === true) ?? [];
+  const handledValidationRequestIdRef = useRef(0);
+  const agents = useMemo(() => agentRegistry?.agents.filter((agent) => agent.supported && agent.diagnostic?.available === true) ?? [], [agentRegistry]);
   const selectedNode = selectedNodeId ? workflow.nodes.find((node) => node.id === selectedNodeId) ?? null : null;
   const selectedEdgeIndex = selectedEdgeId ? Number(selectedEdgeId.split(':').at(-1)) : -1;
   const selectedEdge = selectedEdgeIndex >= 0 ? workflow.edges[selectedEdgeIndex] ?? null : null;
@@ -154,6 +157,15 @@ export function WorkflowEditor({ value, agentRegistry, profiles = [], onOpenProf
     setVisibleTerminalIds(new Set());
     setTerminalMenu(null);
   }, [initialWorkflow]);
+
+  useEffect(() => {
+    if (validationRequestId <= 0 || handledValidationRequestIdRef.current === validationRequestId) return;
+    handledValidationRequestIdRef.current = validationRequestId;
+    const validation = validateWorkflowForSave(workflow, profiles, agents, t);
+    if (validation.valid) return;
+    setPendingValidation(validation);
+    setValidationDialogOpen(true);
+  }, [agents, profiles, t, validationRequestId, workflow]);
 
   useEffect(() => {
     if (!pendingFocusNodeId || !flowInstance) return;
@@ -199,7 +211,11 @@ export function WorkflowEditor({ value, agentRegistry, profiles = [], onOpenProf
   const handleConnect = (connection: Connection) => {
     if (!connection.source || !connection.target) return;
     if (connection.source === END_NODE || connection.source === NEW_ROUND_NODE) return;
-    const edge: WorkflowEdgeDsl = { from: connection.source, to: connection.target, on: 'success' };
+    const edge: WorkflowEdgeDsl = {
+      from: connection.source,
+      to: connection.target,
+      on: connection.target === NEW_ROUND_NODE ? 'failure' : 'success',
+    };
     const next = { ...workflow, edges: [...workflow.edges, edge] };
     syncWorkflow(next);
     setSelectedEdgeId(edgeId(edge, next.edges.length - 1));
@@ -235,7 +251,7 @@ export function WorkflowEditor({ value, agentRegistry, profiles = [], onOpenProf
     } catch (error) {
       setPendingValidation({
         valid: false,
-        issues: [{ message: String(error) }],
+        issues: [{ message: displayAppError(t, error) }],
         fieldErrors: {},
         sanitizedWorkflow: validation.sanitizedWorkflow,
       });
@@ -289,6 +305,7 @@ export function WorkflowEditor({ value, agentRegistry, profiles = [], onOpenProf
     const currentEdge = workflow.edges[index];
     if (!currentEdge) return;
     const updatedEdge = { ...currentEdge, ...patch };
+    if (updatedEdge.on === 'success' && updatedEdge.to === NEW_ROUND_NODE) updatedEdge.to = END_NODE;
     const next = {
       ...workflow,
       edges: workflow.edges.map((edge, edgeIndex) => edgeIndex === index ? updatedEdge : edge),
@@ -792,6 +809,7 @@ function profileCommandScore(itemValue: string, search: string) {
 
 function EdgeInspector({ edge, index, workflow, fieldErrors, onUpdate, onDelete, t }: { edge: WorkflowEdgeDsl; index: number; workflow: WorkflowDsl; fieldErrors: Record<string, string[]>; onUpdate: (index: number, patch: Partial<WorkflowEdgeDsl>) => void; onDelete: () => void; t: (key: string) => string }) {
   const errorsFor = (field: string) => fieldErrors[`edge:${index}:${field}`] ?? [];
+  const targetOptions = edge.on === 'success' ? [END_NODE] : [END_NODE, NEW_ROUND_NODE];
   return (
     <div className="space-y-3 rounded-xl border bg-card/45 p-3">
       <div className="flex items-center justify-between gap-2">
@@ -809,8 +827,7 @@ function EdgeInspector({ edge, index, workflow, fieldErrors, onUpdate, onDelete,
           <SelectTrigger className={errorClass(errorsFor('to'))}><SelectValue /></SelectTrigger>
           <SelectContent>
             {workflow.nodes.map((node) => <SelectItem value={node.id} key={node.id}>{node.id}</SelectItem>)}
-            <SelectItem value={END_NODE}>{END_NODE}</SelectItem>
-            <SelectItem value={NEW_ROUND_NODE}>{NEW_ROUND_NODE}</SelectItem>
+            {targetOptions.map((target) => <SelectItem value={target} key={target}>{target}</SelectItem>)}
           </SelectContent>
         </Select>
       </Field>
@@ -1205,7 +1222,9 @@ export function validateWorkflowForSave(
     if (!edge.to.trim()) addIssue(t('workflowEditor.validationEdgeTargetRequired', { index: index + 1 }), edgeField(index, 'to'), undefined, index);
     else if (![END_NODE, NEW_ROUND_NODE].includes(edge.to) && !nodeIds.has(edge.to)) addIssue(t('workflowEditor.validationEdgeTargetMissing', { node: edge.to }), edgeField(index, 'to'), edge.to, index);
     if (!['success', 'failure', 'invalid'].includes(edge.on)) addIssue(t('workflowEditor.validationEdgeOutcomeRequired', { index: index + 1 }), edgeField(index, 'on'), undefined, index);
-    else if (edge.from.trim()) {
+    else if (edge.on === 'success' && edge.to === NEW_ROUND_NODE) {
+      addIssue(t('workflowEditor.validationSuccessNewRoundTarget', { node: edge.from }), edgeField(index, 'to'), edge.from, index);
+    } else if (edge.from.trim()) {
       const edgeOutcomeKey = `${edge.from}\0${edge.on}`;
       const edgeOutcomeCount = edgeOutcomeCounts[edgeOutcomeKey] ?? 0;
       if (edgeOutcomeCount > 1 && !reportedDuplicateEdgeOutcomes.has(edgeOutcomeKey)) {

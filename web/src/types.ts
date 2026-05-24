@@ -90,12 +90,19 @@ export interface TaskRowVm {
   displayStatus: string;
   workflowExists: boolean;
   workflowValid: boolean;
-  workflowError?: string | null;
+  workflowError?: WorkflowErrorVm | null;
   latestRun?: RunSummaryVm | null;
   resumableRunId?: string | null;
   artifactCount: number;
   attachmentCount: number;
 }
+
+export interface AppErrorVm {
+  code: string;
+  params: Record<string, unknown>;
+}
+
+export type WorkflowErrorVm = AppErrorVm;
 
 export interface TaskDetailVm {
   task: TaskRowVm;
@@ -226,8 +233,25 @@ export interface RoundDetailVm {
   round: RoundSummaryVm;
   graph: GraphVm;
   control?: WorkflowControlVm | null;
+  controlFailure?: ControlFailureVm | null;
   requirement: string;
   selectedNodeDetail?: NodeDetailVm | null;
+}
+
+export interface ControlFailureVm {
+  reasonKind: string;
+  title: string;
+  message: string;
+  fromNodeId?: string | null;
+  toNodeId?: string | null;
+  target?: string | null;
+  edgeOutcome?: string | null;
+  proposedCount?: number | null;
+  limit?: number | null;
+  timestamp?: string | null;
+  roundId?: string | null;
+  nodeId?: string | null;
+  attemptId?: string | null;
 }
 
 export interface RunGroupVm {
@@ -276,16 +300,31 @@ export interface GraphNodeVm {
   status?: string | null;
   outcome?: string | null;
   attemptId?: string | null;
+  attemptCount?: number;
+  attempts?: GraphAttemptVm[];
   artifactCount: number;
   attachmentCount: number;
   current: boolean;
   iconKey?: string | null;
 }
 
+export interface GraphAttemptVm {
+  attemptId: string;
+  sequence?: number | null;
+  status: string;
+  outcome?: string | null;
+  sessionMode?: string | null;
+  acpSessionId?: string | null;
+  current: boolean;
+}
+
 export interface GraphEdgeVm {
   from: string;
   to: string;
   label: string;
+  traversalCount?: number;
+  lastOutcome?: string | null;
+  blockedReason?: ControlFailureVm | null;
 }
 
 export interface NodeDetailVm {
@@ -311,6 +350,29 @@ export interface NodeDetailVm {
   hasWorkerRef: boolean;
   manualCheckEnabled: boolean;
   manualCheckPending: boolean;
+  acpSession?: AcpSessionVm | null;
+  acpConversations?: AcpConversationVm[];
+  selectedConversationKey?: string | null;
+}
+
+export interface AcpConversationVm {
+  key: string;
+  label: string;
+  sessionId?: string | null;
+  sessionMode: string;
+  activeAttemptId: string;
+  attempts: AcpAttemptSessionVm[];
+}
+
+export interface AcpAttemptSessionVm {
+  nodeId: string;
+  attemptId: string;
+  sequence?: number | null;
+  status: string;
+  outcome?: string | null;
+  current: boolean;
+  sessionMode?: string | null;
+  acpSessionId?: string | null;
   acpSession?: AcpSessionVm | null;
 }
 
@@ -508,7 +570,7 @@ type RoundSelectionContext = { contextNodeId?: string };
 export type RoundSelection = RoundSelectionContext & (
   | { kind: 'round' }
   | { kind: 'requirement' }
-  | { kind: 'node'; nodeId: string }
+  | { kind: 'node'; nodeId: string; attemptId?: string }
   | { kind: 'artifact'; nodeId: string; attemptId: string; name: string }
   | { kind: 'attachment'; nodeId: string; attemptId: string; name: string }
   | { kind: 'worker-ref'; nodeId: string; attemptId: string }

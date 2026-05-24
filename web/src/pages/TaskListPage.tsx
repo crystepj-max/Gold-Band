@@ -3,7 +3,7 @@ import type { TFunction } from 'i18next';
 import { Check, ChevronDown, Copy, Plus, RefreshCw, Trash2, Upload, X } from 'lucide-react';
 import { useTranslation } from 'react-i18next';
 import type { AgentRegistryVm, CreateTaskInput, ProfileListVm, TaskListVm, TaskPage, TaskRowVm, WorkflowDsl, WorkflowTemplate, WorkflowTemplateStore, WorkflowVm } from '../types';
-import { displayStatus } from '../i18n';
+import { displayAppError, displayStatus, displayWorkflowError } from '../i18n';
 import { deleteWorkflowTemplate, getAgentRegistry, getProfiles, getWorkflowTemplates, saveWorkflowTemplate, updateWorkflowTemplate } from '../api';
 import { StatusBadge } from '../components/StatusBadge';
 import { validateWorkflowForSave, WorkflowEditor } from '../components/WorkflowEditor';
@@ -306,7 +306,7 @@ function CreateTaskSheet({ open, onOpenChange, onCreateTask, onOpenProfileManage
         setSaveTemplateName('');
         if (!initialWorkflow) setFormError(t('taskList.create.noWorkflowTemplate'));
       })
-      .catch((err) => setFormError(String(err)));
+      .catch((err) => setFormError(displayAppError(t, err)));
   }, [open]);
 
   const readRequirementFile = async (file: File | undefined) => {
@@ -406,7 +406,7 @@ function CreateTaskSheet({ open, onOpenChange, onCreateTask, onOpenProfileManage
       setWorkflowNotice(t('taskList.create.workflowTemplateSaved'));
     } catch (err) {
       setWorkflowNotice(null);
-      setWorkflowError(String(err));
+      setWorkflowError(displayAppError(t, err));
     } finally {
       setSaving(false);
     }
@@ -429,7 +429,7 @@ function CreateTaskSheet({ open, onOpenChange, onCreateTask, onOpenProfileManage
       setWorkflowNotice(t('taskList.create.workflowTemplateUpdated'));
     } catch (err) {
       setWorkflowNotice(null);
-      setWorkflowError(String(err));
+      setWorkflowError(displayAppError(t, err));
     } finally {
       setSaving(false);
     }
@@ -452,7 +452,7 @@ function CreateTaskSheet({ open, onOpenChange, onCreateTask, onOpenProfileManage
       setWorkflowNotice(t('taskList.create.workflowTemplateDeleted'));
     } catch (err) {
       setWorkflowNotice(null);
-      setWorkflowError(String(err));
+      setWorkflowError(displayAppError(t, err));
     } finally {
       setSaving(false);
     }
@@ -780,7 +780,7 @@ function taskSearchText(task: TaskRowVm, t: TFunction) {
     task.requirement,
     task.displayStatus,
     displayStatus(t, task.displayStatus),
-    task.workflowError,
+    displayWorkflowError(t, task.workflowError),
     workflowStatus,
     displayStatus(t, workflowStatus),
     task.latestRun?.id,

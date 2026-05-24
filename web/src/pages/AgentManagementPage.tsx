@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useState, type ChangeEvent, type InputHTMLAttributes, type TextareaHTMLAttributes } from 'react';
 import { useTranslation } from 'react-i18next';
 import { createAgent, deleteAgent, doctorAgent, updateAgent } from '../api';
+import { displayAppError } from '../i18n';
 import type { AgentRegistryVm, ManagedAgentInput, ManagedAgentVm, SupportedAgentTypeVm } from '../types';
 import { AppCard } from '@/components/AppCard';
 import { EmptyState, Page, PageHeader } from '@/components/PageScaffold';
@@ -105,7 +106,7 @@ export function AgentManagementPage({ vm, loading, onRefresh, onRegistryChange }
       onRegistryChange(next);
       setSheetOpen(false);
     } catch (nextError) {
-      setError(String(nextError));
+      setError(displayAppError(t, nextError));
     } finally {
       setSaving(false);
     }
@@ -123,7 +124,7 @@ export function AgentManagementPage({ vm, loading, onRefresh, onRegistryChange }
         ? { tone: 'success', message: t('agentManagement.diagnosticComplete') }
         : { tone: 'error', message: t('agentManagement.diagnosticFailed', { reason: diagnostic?.reason ?? t('agentManagement.diagnosticFailedFallback') }) });
     } catch (nextError) {
-      setNotice({ tone: 'error', message: t('agentManagement.diagnosticFailed', { reason: String(nextError) }) });
+      setNotice({ tone: 'error', message: t('agentManagement.diagnosticFailed', { reason: displayAppError(t, nextError) }) });
     } finally {
       setDiagnosingType(null);
     }
@@ -135,7 +136,7 @@ export function AgentManagementPage({ vm, loading, onRefresh, onRegistryChange }
       onRegistryChange(await deleteAgent(deleteTarget.agentType));
       setDeleteTarget(null);
     } catch (nextError) {
-      setError(String(nextError));
+      setError(displayAppError(t, nextError));
       setDeleteTarget(null);
     }
   };

@@ -329,7 +329,7 @@ function toRoundSelectionInput(selection?: RoundSelection) {
   if (!selection) return selection;
   if (selection.kind === 'round' || selection.kind === 'requirement') return { kind: selection.kind, context_node_id: selection.contextNodeId };
   if (selection.kind === 'event' || selection.kind === 'log') return { kind: selection.kind, id: selection.id, node_id: selection.nodeId, attempt_id: selection.attemptId, context_node_id: selection.contextNodeId };
-  if (selection.kind === 'node') return { kind: selection.kind, node_id: selection.nodeId, context_node_id: selection.contextNodeId };
+  if (selection.kind === 'node') return { kind: selection.kind, node_id: selection.nodeId, attempt_id: selection.attemptId, context_node_id: selection.contextNodeId };
   if (selection.kind === 'worker-ref') return { kind: selection.kind, node_id: selection.nodeId, attempt_id: selection.attemptId, context_node_id: selection.contextNodeId };
   return { kind: selection.kind, node_id: selection.nodeId, attempt_id: selection.attemptId, name: selection.name, context_node_id: selection.contextNodeId };
 }
