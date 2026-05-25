@@ -23,7 +23,7 @@ use crate::dsl::{
 };
 use crate::process::kill_process_tree;
 use crate::provider::{
-    DoctorResult, PromptBundle, ProviderAdapter, ProviderCapabilities, ProviderInfo,
+    DoctorResult, PromptBundle, PromptVisibility, ProviderAdapter, ProviderCapabilities, ProviderInfo,
     provider_capabilities, provider_from_agent, render_prompt_bundle,
 };
 use crate::runtime::{
@@ -100,7 +100,6 @@ fn default_workflow_dsl(provider: &str, profiles: &DefaultProfileIds) -> Workflo
                     .to_string(),
             ),
             goal: Some(goal.to_string()),
-            primary_artifact: artifact.clone(),
             output: artifact.clone().map(|artifact| OutputContractDsl {
                 kind: OutputKind::Json,
                 artifact,
@@ -1331,6 +1330,7 @@ impl App {
             continue_ref,
             Some(prompt),
             prompt_id,
+            PromptVisibility::Visible,
         )?;
         render_prompt_bundle(&invocation)
     }

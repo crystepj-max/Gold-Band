@@ -14,6 +14,7 @@ use crate::observability::{
     ExecutionContext, ProgressStage, append_run_event_best_effort, progress, run_event_data,
     write_progress_hint, write_run_progress_best_effort,
 };
+use crate::provider::PromptVisibility;
 use crate::runtime::{
     NodeState, RoundState, RoundTraceStep, RunState, WorkerRefState, validate_round_state,
     validate_run_state,
@@ -42,11 +43,29 @@ struct NextExecution {
     continue_ref: Option<serde_json::Value>,
 }
 
+const MAX_INVALID_OUTPUT_REPAIR_PROMPTS: u32 = 3;
+
 fn localized_continue_prompt(language: DesktopLanguage) -> String {
     match language {
         DesktopLanguage::ZhCn => "继续".to_string(),
         DesktopLanguage::En => "Continue".to_string(),
     }
+}
+
+fn output_schema_for_node<'a>(
+    workflow: &'a ValidatedWorkflow,
+    node_id: &str,
+) -> Option<&'a serde_json::Value> {
+    match workflow.get_node(node_id)? {
+        crate::dsl::NodeDsl::Worker(worker) => worker.output.as_ref()?.schema.as_ref(),
+    }
+}
+
+fn invalid_output_repair_prompt(schema: &serde_json::Value) -> String {
+    let dsl = serde_json::to_string_pretty(schema).unwrap_or_else(|_| schema.to_string());
+    format!(
+        "当前输出不合法。请修复当前节点的最终输出。\n\n最后一次输出必须按照以下 DSL 输出，不要输出解释、Markdown、代码围栏或任何额外内容，只输出符合 DSL 的内容。\n\n{dsl}"
+    )
 }
 
 pub(crate) fn run_start(
@@ -700,7 +719,7 @@ fn edge_outcome_label(outcome: NodeOutcome) -> String {
 }
 
 fn is_repair_outcome(outcome: &str) -> bool {
-    matches!(outcome, "failure" | "invalid")
+    outcome == "failure"
 }
 
 fn run_is_killed(app: &App, task_id: &str, run_id: &str) -> Result<bool> {
@@ -1167,6 +1186,8 @@ fn drive_from_node_with_initial_session(
     let mut continue_ref = initial_continue_ref;
     let mut resume_prompt = initial_resume_prompt;
     let mut resume_prompt_id = initial_resume_prompt_id;
+    let mut resume_prompt_visibility = PromptVisibility::Visible;
+    let mut invalid_output_repair_prompts = 0;
 
     loop {
         if run_is_killed(app, task_id, &run.id)? {
@@ -1229,6 +1250,7 @@ fn drive_from_node_with_initial_session(
             continue_ref.as_ref().cloned(),
             resume_prompt.take(),
             resume_prompt_id.take(),
+            resume_prompt_visibility,
         ) {
             Ok(node) => node,
             Err(err) => {
@@ -1285,6 +1307,104 @@ fn drive_from_node_with_initial_session(
 
         if node.status == RunStatus::Completed {
             teardown_node_environment_best_effort(app, task_id, &run.id, &round.id, &node, &ctx);
+        }
+
+        if node.status == RunStatus::Completed && node.outcome == Some(NodeOutcome::Invalid) {
+            if let Some(schema) = output_schema_for_node(workflow, &node.node_id) {
+                if invalid_output_repair_prompts >= MAX_INVALID_OUTPUT_REPAIR_PROMPTS {
+                    append_run_event_best_effort(
+                        &app.paths,
+                        task_id,
+                        &run.id,
+                        "invalid_output_repair_exhausted",
+                        now_rfc3339_like(),
+                        run_event_data(
+                            &ctx,
+                            Some(ProgressStage::Completed),
+                            Some(node.status),
+                            Some(format!(
+                                "invalid output repair exhausted at {}/{}/{}",
+                                round.id, node.node_id, node.attempt_id
+                            )),
+                            None,
+                        ),
+                    );
+                    apply_control_decision(
+                        app,
+                        task_id,
+                        workflow,
+                        resolved_profiles,
+                        run,
+                        round,
+                        &node,
+                        ControlDecision::CompleteRun(RunOutcome::Failure),
+                    )?;
+                    return Ok(());
+                }
+
+                let worker_ref_path = app.paths.worker_ref_file(
+                    task_id,
+                    &run.id,
+                    &round.id,
+                    &node.node_id,
+                    &node.attempt_id,
+                );
+                let repair_continue_ref = read_json::<WorkerRefState>(&worker_ref_path)
+                    .ok()
+                    .and_then(|worker_ref| worker_ref.continue_ref);
+                let Some(repair_continue_ref) = repair_continue_ref else {
+                    apply_control_decision(
+                        app,
+                        task_id,
+                        workflow,
+                        resolved_profiles,
+                        run,
+                        round,
+                        &node,
+                        ControlDecision::PauseRun(PauseReason::ErrorBlocked),
+                    )?;
+                    return Ok(());
+                };
+
+                invalid_output_repair_prompts += 1;
+                let summary = format!(
+                    "invalid output repair requested at {}/{}/{} ({}/{})",
+                    round.id,
+                    node.node_id,
+                    node.attempt_id,
+                    invalid_output_repair_prompts,
+                    MAX_INVALID_OUTPUT_REPAIR_PROMPTS
+                );
+                progress(&summary);
+                append_run_event_best_effort(
+                    &app.paths,
+                    task_id,
+                    &run.id,
+                    "invalid_output_repair_requested",
+                    now_rfc3339_like(),
+                    run_event_data(
+                        &ctx,
+                        Some(ProgressStage::CallingProvider),
+                        Some(RunStatus::Running),
+                        Some(summary),
+                        None,
+                    ),
+                );
+                node.status = RunStatus::Running;
+                node.outcome = None;
+                node.finished_at = None;
+                run.status = RunStatus::Running;
+                run.pause_reason = None;
+                run.updated_at = now_rfc3339_like();
+                round.status = RunStatus::Running;
+                persist_runtime_state(app, task_id, run, round, &node)?;
+                session_mode = SessionMode::Continue;
+                continue_ref = Some(repair_continue_ref);
+                resume_prompt = Some(invalid_output_repair_prompt(schema));
+                resume_prompt_id = None;
+                resume_prompt_visibility = PromptVisibility::Hidden;
+                continue;
+            }
         }
 
         if should_pause_for_manual_check(workflow, &node) {
@@ -1377,6 +1497,8 @@ fn drive_from_node_with_initial_session(
             continue_ref = next.continue_ref;
             resume_prompt = None;
             resume_prompt_id = None;
+            resume_prompt_visibility = PromptVisibility::Visible;
+            invalid_output_repair_prompts = 0;
             continue;
         }
         return Ok(());

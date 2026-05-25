@@ -2,7 +2,7 @@ use camino::Utf8PathBuf;
 use gold_band::app::{App, is_run_continuable};
 use gold_band::domain::{PauseReason, RunOutcome, RunStatus, SessionMode, VERSION};
 use gold_band::provider::{
-    DoctorResult, PrimaryArtifactPayload, ProviderAdapter, ProviderCapabilities, ProviderInfo,
+    DoctorResult, OutputArtifactPayload, ProviderAdapter, ProviderCapabilities, ProviderInfo,
     ProviderResultPayload, ProviderRunResult, ProviderRunStatus, SessionRef, WorkerInvocation,
 };
 use gold_band::runtime::{RunState, WorkerRefState};
@@ -42,7 +42,7 @@ impl ProviderAdapter for RecordingProvider {
             status: ProviderRunStatus::Success,
             exit_code: Some(0),
             result_payload: Some(ProviderResultPayload {
-                primary_artifact: Some(PrimaryArtifactPayload {
+                output_artifact: Some(OutputArtifactPayload {
                     name: "implementation-result".to_string(),
                     content: r#"{"version":"0.1","commands":[{"id":"build","run":"cargo test","purpose":"validate"}]}"#.to_string(),
                 }),
@@ -111,7 +111,7 @@ impl ProviderAdapter for InterruptThenSuccessProvider {
             status,
             exit_code: Some(0),
             result_payload: Some(ProviderResultPayload {
-                primary_artifact: Some(PrimaryArtifactPayload {
+                output_artifact: Some(OutputArtifactPayload {
                     name: "accept-result".to_string(),
                     content: r#"{"result":true,"reason":"accepted"}"#.to_string(),
                 }),
@@ -166,7 +166,7 @@ impl ProviderAdapter for AlwaysFailAcceptanceProvider {
             status: ProviderRunStatus::Success,
             exit_code: Some(0),
             result_payload: Some(ProviderResultPayload {
-                primary_artifact: Some(PrimaryArtifactPayload {
+                output_artifact: Some(OutputArtifactPayload {
                     name: "accept-result".to_string(),
                     content: r#"{"result":false,"reason":"needs another round"}"#.to_string(),
                 }),
@@ -237,7 +237,7 @@ impl ProviderAdapter for MultiAttemptContinueProvider {
             status: ProviderRunStatus::Success,
             exit_code: Some(0),
             result_payload: Some(ProviderResultPayload {
-                primary_artifact: Some(PrimaryArtifactPayload {
+                output_artifact: Some(OutputArtifactPayload {
                     name: format!("{node_id}-result"),
                     content: format!(r#"{{"result":{success},"reason":"{node_id} {attempt_id}"}}"#),
                 }),
@@ -304,7 +304,7 @@ impl ProviderAdapter for OneRepairProvider {
             status: ProviderRunStatus::Success,
             exit_code: Some(0),
             result_payload: Some(ProviderResultPayload {
-                primary_artifact: Some(PrimaryArtifactPayload {
+                output_artifact: Some(OutputArtifactPayload {
                     name: format!("{node_id}-result"),
                     content: format!(r#"{{"result":{success},"reason":"{node_id} {attempt_id}"}}"#),
                 }),
@@ -376,7 +376,7 @@ fn run_start_executes_entry_worker_and_persists_outputs() {
               "provider": "claude-acp",
               "profile": "{}",
               "goal": "Create an implementation result",
-              "primary_artifact": "implementation-result"
+              "output": {{ "kind": "json", "artifact": "implementation-result" }}
             }}
           ],
           "edges": []
@@ -449,7 +449,7 @@ fn run_continue_sends_localized_resume_prompt_to_existing_session() {
           "entry": "accept",
           "control": {{ "max_attempts": 1 }},
           "nodes": [
-            {{"id":"accept","type":"worker","provider":"claude-acp","profile":"{}","primary_artifact":"accept-result","output":{{"kind":"json","artifact":"accept-result","schema":{{"result":"boolean","reason":"String"}}}},"success_condition":{{"expression":"$.result == true"}}}}
+            {{"id":"accept","type":"worker","provider":"claude-acp","profile":"{}","output":{{"kind":"json","artifact":"accept-result","schema":{{"result":"boolean","reason":"String"}}}},"success_condition":{{"expression":"$.result == true"}}}}
           ],
           "edges": [
             {{"from":"accept","to":"$end","on":"success"}}
@@ -563,8 +563,8 @@ fn transition_continue_uses_latest_target_attempt_ref() {
           "entry": "dev",
           "control": {{ "max_attempts": 3 }},
           "nodes": [
-            {{"id":"dev","type":"worker","provider":"claude-acp","profile":"{}","primary_artifact":"dev-result","output":{{"kind":"json","artifact":"dev-result","schema":{{"result":"boolean","reason":"String"}}}},"success_condition":{{"expression":"$.result == true"}}}},
-            {{"id":"review","type":"worker","provider":"claude-acp","profile":"{}","primary_artifact":"review-result","output":{{"kind":"json","artifact":"review-result","schema":{{"result":"boolean","reason":"String"}}}},"success_condition":{{"expression":"$.result == true"}}}}
+            {{"id":"dev","type":"worker","provider":"claude-acp","profile":"{}","output":{{"kind":"json","artifact":"dev-result","schema":{{"result":"boolean","reason":"String"}}}},"success_condition":{{"expression":"$.result == true"}}}},
+            {{"id":"review","type":"worker","provider":"claude-acp","profile":"{}","output":{{"kind":"json","artifact":"review-result","schema":{{"result":"boolean","reason":"String"}}}},"success_condition":{{"expression":"$.result == true"}}}}
           ],
           "edges": [
             {{"from":"dev","to":"review","on":"success"}},
@@ -643,8 +643,8 @@ fn max_attempts_allows_one_repair_loop_then_forward_success() {
           "entry": "dev",
           "control": {{ "max_attempts": 1 }},
           "nodes": [
-            {{"id":"dev","type":"worker","provider":"claude-acp","profile":"{}","primary_artifact":"dev-result","output":{{"kind":"json","artifact":"dev-result","schema":{{"result":"boolean","reason":"String"}}}},"success_condition":{{"expression":"$.result == true"}}}},
-            {{"id":"review","type":"worker","provider":"claude-acp","profile":"{}","primary_artifact":"review-result","output":{{"kind":"json","artifact":"review-result","schema":{{"result":"boolean","reason":"String"}}}},"success_condition":{{"expression":"$.result == true"}}}}
+            {{"id":"dev","type":"worker","provider":"claude-acp","profile":"{}","output":{{"kind":"json","artifact":"dev-result","schema":{{"result":"boolean","reason":"String"}}}},"success_condition":{{"expression":"$.result == true"}}}},
+            {{"id":"review","type":"worker","provider":"claude-acp","profile":"{}","output":{{"kind":"json","artifact":"review-result","schema":{{"result":"boolean","reason":"String"}}}},"success_condition":{{"expression":"$.result == true"}}}}
           ],
           "edges": [
             {{"from":"dev","to":"review","on":"success"}},
@@ -706,8 +706,8 @@ fn max_attempts_fails_when_repair_budget_is_exceeded() {
           "entry": "dev",
           "control": {{ "max_attempts": 1 }},
           "nodes": [
-            {{"id":"dev","type":"worker","provider":"claude-acp","profile":"{}","primary_artifact":"dev-result","output":{{"kind":"json","artifact":"dev-result","schema":{{"result":"boolean","reason":"String"}}}},"success_condition":{{"expression":"$.result == true"}}}},
-            {{"id":"review","type":"worker","provider":"claude-acp","profile":"{}","primary_artifact":"review-result","output":{{"kind":"json","artifact":"review-result","schema":{{"result":"boolean","reason":"String"}}}},"success_condition":{{"expression":"$.result == true"}}}}
+            {{"id":"dev","type":"worker","provider":"claude-acp","profile":"{}","output":{{"kind":"json","artifact":"dev-result","schema":{{"result":"boolean","reason":"String"}}}},"success_condition":{{"expression":"$.result == true"}}}},
+            {{"id":"review","type":"worker","provider":"claude-acp","profile":"{}","output":{{"kind":"json","artifact":"review-result","schema":{{"result":"boolean","reason":"String"}}}},"success_condition":{{"expression":"$.result == true"}}}}
           ],
           "edges": [
             {{"from":"dev","to":"review","on":"success"}},
@@ -769,7 +769,7 @@ fn max_rounds_fails_workflow_when_new_round_limit_is_exceeded() {
           "entry": "accept",
           "control": {{ "max_rounds": 1 }},
           "nodes": [
-            {{"id":"accept","type":"worker","provider":"claude-acp","profile":"{}","primary_artifact":"accept-result","output":{{"kind":"json","artifact":"accept-result","schema":{{"result":"boolean","reason":"String"}}}},"success_condition":{{"expression":"$.result == true"}}}}
+            {{"id":"accept","type":"worker","provider":"claude-acp","profile":"{}","output":{{"kind":"json","artifact":"accept-result","schema":{{"result":"boolean","reason":"String"}}}},"success_condition":{{"expression":"$.result == true"}}}}
           ],
           "edges": [
             {{"from":"accept","to":"$new-round","on":"failure"}}

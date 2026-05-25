@@ -2041,6 +2041,20 @@ fn scan_acp_events(
                     usage = Some(compact_raw_value(raw.clone()));
                 }
             }
+            if is_hidden_from_chat(&event) {
+                flush_normalized_event(
+                    pending_delta.take(),
+                    before_seq,
+                    after_seq,
+                    limit,
+                    &mut window,
+                    &mut after_window,
+                    &mut normalized_event_count,
+                    &mut first_seq,
+                    &mut last_seq,
+                );
+                continue;
+            }
             if !is_session_timeline_event(&event) {
                 continue;
             }
@@ -2409,6 +2423,15 @@ fn merge_pending_delta(pending: &mut Option<AcpUiEventVm>, event: &AcpUiEventVm)
 
 fn is_delta_event(event: &AcpUiEventVm) -> bool {
     matches!(event.kind.as_str(), "textDelta" | "thoughtDelta")
+}
+
+fn is_hidden_from_chat(event: &AcpUiEventVm) -> bool {
+    event
+        .raw
+        .as_ref()
+        .and_then(|raw| raw.get("hiddenFromChat"))
+        .and_then(|value| value.as_bool())
+        .unwrap_or(false)
 }
 
 fn is_session_timeline_event(event: &AcpUiEventVm) -> bool {

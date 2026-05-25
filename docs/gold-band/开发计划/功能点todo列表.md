@@ -21,9 +21,9 @@
 | 完成 | Workflow DSL 基础解析 | 已实现 `WorkflowDsl`、节点/边模型与结构化反序列化。 | `docs/gold-band/产品设计文档/dsl/overview.md:1-999`; `docs/gold-band/开发计划/gold-band-mvp-plan.md:113-126` |
 | 完成 | Workflow DSL 基本校验 | 已实现 version、entry、节点唯一性、edge 合法性、开启 AI 输出验证的 worker 节点唯一性等校验。 | `docs/gold-band/开发计划/gold-band-mvp-plan.md:113-126`; `docs/gold-band/产品设计文档/runtime/overview.md:43-65` |
 | 完成 | `session=continue` DSL 约束 | 已对显式 `session=continue` 做 provider 能力边界校验，当前仅允许真实节点目标，`$end` / `$new-round` 不允许 continue。 | `docs/gold-band/产品设计文档/product/overview.md:66-70`; `docs/gold-band/产品设计文档/provider/adapter.md:119-127` |
-| 完成 | Worker JSON 输出验证 | `worker` 支持 `output.kind=json` 与 `success_condition.path/equals`，runtime 根据指定字段值产生 success/failure/invalid 并进入对应边。 | `docs/gold-band/产品设计文档/dsl/nodes/worker.md`; `docs/gold-band/开发计划/新增流程/新增任务&工作流.md` |
+| 完成 | Worker JSON 输出验证 | `worker` 支持 `output.kind=json` 与 `success_condition.path/equals`，runtime 根据指定字段值产生 success/failure；schema 输出不合法时自动隐藏追问修复。 | `docs/gold-band/产品设计文档/dsl/nodes/worker.md`; `docs/gold-band/开发计划/新增流程/新增任务&工作流.md` |
 | 完成 | `$new-round` 边目标 | workflow edge 可显式指向 `$new-round`，控制引擎返回 `OpenNewRound`。 | `docs/gold-band/产品设计文档/dsl/overview.md`; `docs/gold-band/产品设计文档/runtime/layout.md` |
-| 完成 | `worker.显式 edge` 合法性校验 | 已校验 `worker` 只能引用 worker 节点，且来源 worker 必须声明 `primaryArtifact=节点输出产物`。 | `docs/gold-band/开发计划/gold-band-mvp-plan.md:194-204`; `docs/gold-band/产品设计文档/runtime/control.md:187-220` |
+| 完成 | `worker.显式 edge` 合法性校验 | 已校验 `worker` 只能引用 worker 节点；需要产物校验的来源 worker 通过 `output.artifact` 声明 canonical artifact。 | `docs/gold-band/开发计划/gold-band-mvp-plan.md:194-204`; `docs/gold-band/产品设计文档/runtime/control.md:187-220` |
 | 完成 | runtime 顶层目录布局 | 已实现 `.gold-band/` 下 logs、tasks、runs、rounds、attempt、artifacts、attachments、raw stream 等路径模型。 | `docs/gold-band/产品设计文档/runtime/layout.md:98-445` |
 | 完成 | 用户级 / 项目级 profile 路径解析 | 已实现项目级 `~/.gold-band/projects/{project-id}/context/profiles/<name>-<id>.md` 优先、用户级 `~/.gold-band/context/profiles/<name>-<id>.md` 兜底的 profile id 定位。 | `docs/gold-band/产品设计文档/runtime/overview.md:57-65`; `docs/gold-band/产品设计文档/runtime/layout.md:153-175` |
 | 待办 | workflow preset 解析链路 | 设计文档要求支持项目/用户预设 workflow，当前仅支持 task workflow 与 CLI `--workflow` 覆盖。 | `docs/gold-band/产品设计文档/interaction/cli.md:74-86`; `docs/gold-band/产品设计文档/runtime/layout.md:153-160` |
@@ -37,7 +37,7 @@
 | 完成 | ACP provider 默认实现 | 已实现基于 ACP registry ID 的 `claude-acp` 默认 provider、doctor、worker 调用、sessionId 提取、open command 构建。 | `docs/gold-band/产品设计文档/provider/overview.md:20-46`; `docs/gold-band/产品设计文档/provider/implementations/claude-code.md:17-39, 147-238, 275-341` |
 | 完成 | provider 能力暴露 | 已实现 `supports_open_session / supports_continue_session / supports_raw_stream` 能力模型。 | `docs/gold-band/产品设计文档/provider/adapter.md:27-141`; `docs/gold-band/产品设计文档/provider/implementations/claude-code.md:303-324` |
 | 完成 | prompt bundle 渲染 | 已实现 system/user prompt 组织、冷数据索引、feedback summary 注入。 | `docs/gold-band/产品设计文档/provider/prompt-bundle.md:1-999`; `docs/gold-band/产品设计文档/provider/implementations/claude-code.md:71-145` |
-| 完成 | worker 节点执行 | 已支持 `worker` 节点按 resolved config 调用 provider，并生成 primary artifact / worker-ref。 | `docs/gold-band/开发计划/gold-band-mvp-plan.md:264-270`; `docs/gold-band/产品设计文档/runtime/control.md:102-128` |
+| 完成 | worker 节点执行 | 已支持 `worker` 节点按 resolved config 调用 provider，并生成 output artifact / worker-ref。 | `docs/gold-band/开发计划/gold-band-mvp-plan.md:264-270`; `docs/gold-band/产品设计文档/runtime/control.md:102-128` |
 | 完成 | 开启 AI 输出验证的 worker 节点执行 | 已支持 output validation 通过 provider 通道运行，自动收集证据并产出 `验收输出产物`。 | `docs/gold-band/开发计划/gold-band-mvp-plan.md:278-282`; `docs/gold-band/产品设计文档/runtime/control.md:141-152` |
 | 完成 | worker 节点执行 | 已支持读取 `节点输出产物`、串行执行命令、生成 `节点输出产物`。 | `docs/gold-band/开发计划/gold-band-mvp-plan.md:272-276`; `docs/gold-band/开发计划/gold-band-mvp-plan.md:194-204` |
 | 完成 | `节点输出产物` 规范化落盘 | 已支持对 provider 返回的 `节点输出产物` 做解析、校验与规范化写入。 | `docs/gold-band/开发计划/gold-band-mvp-plan.md:151-164`; `docs/gold-band/产品设计文档/runtime/layout.md:394-406` |
@@ -45,8 +45,8 @@
 | 完成 | `验收输出产物` 规范化落盘 | 已支持 `验收输出产物` 解析、校验与 canonical 写入。 | `docs/gold-band/开发计划/gold-band-mvp-plan.md:151-164`; `docs/gold-band/产品设计文档/runtime/control.md:141-152` |
 | 完成 | outcome/status 分离 | 已在 run/round/node 状态模型中实现 `status` 与 `outcome` 分离约束。 | `docs/gold-band/产品设计文档/runtime/overview.md:66-80`; `docs/gold-band/产品设计文档/runtime/control.md:62-98` |
 | 完成 | 控制流决策引擎 | 已实现基于 node outcome 的 `TransitionToNode / OpenNewRound / PauseRun / CompleteRun` 决策。 | `docs/gold-band/开发计划/gold-band-mvp-plan.md:206-237`; `docs/gold-band/产品设计文档/runtime/control.md:155-180` |
-| 完成 | attempt 限制 | 已支持 `worker.failure/invalid` 经显式 edge 回到 worker，并按当前 round 内修复/重试跳转统计 `max_attempts`；正常 success 前进不消耗次数。 | `docs/gold-band/产品设计文档/runtime/control.md`; `docs/gold-band/产品设计文档/dsl/control.md` |
-| 部分完成 | `worker.invalid` 默认 repair 规则 | 已支持 `worker.invalid` 进入暂停阻塞，但尚未实现“无显式 edge 时默认回到 `显式 edge` 且优先 continue”的默认策略。 | `docs/gold-band/产品设计文档/runtime/control.md:215-220, 412-413`; `docs/gold-band/开发计划/gold-band-mvp-plan.md:316-320` |
+| 完成 | attempt 限制 | 已支持 `worker.failure` 经显式 edge 回到 worker，并按当前 round 内修复/重试跳转统计 `max_attempts`；正常 success 前进与 schema 隐藏修复不消耗次数。 | `docs/gold-band/产品设计文档/runtime/control.md`; `docs/gold-band/产品设计文档/dsl/control.md` |
+| 完成 | `output.schema` 自动修复 | 已移除 `invalid` edge；声明 `output.schema` 的 worker 输出不合法时同 attempt 隐藏追问修复，最多 3 次，仍不合法则 workflow failure。 | `docs/gold-band/产品设计文档/runtime/control.md`; `docs/gold-band/产品设计文档/dsl/control.md` |
 | 完成 | acceptance loop | 已支持 `worker.failure + auto_loop` 新建 round，并将最新 output validation 反馈带回 entry。 | `docs/gold-band/产品设计文档/runtime/control.md:236-307, 414-416`; `docs/gold-band/开发计划/gold-band-mvp-plan.md:423-424, 447-449` |
 | 完成 | `$end` 终止语义 | 已支持命中 `$end` 时按 success/failure 完成 run。 | `docs/gold-band/产品设计文档/runtime/control.md:176-181, 446-449`; `docs/gold-band/开发计划/gold-band-mvp-plan.md:403-405, 447-449` |
 | 完成 | run 级 progress 快照 | 已实现 `run-progress.json` 最小快照写入。 | `docs/gold-band/产品设计文档/interaction/progress.md:58-110, 142-156`; `docs/gold-band/开发计划/可观测性plan.md:80-112` |
@@ -55,12 +55,12 @@
 | 完成 | runtime debug 日志 | 已实现 user project runtime 下的 `logs/runtime.log` 与 observability 初始化。 | `docs/gold-band/开发计划/可观测性plan.md:19-47, 162-176`; `docs/gold-band/产品设计文档/runtime/layout.md` |
 | 待办 | `progress.events.jsonl` 规范化事件流 | 当前仅保留路径与设计占位，尚未完整实现 attempt 级规范化进度事件。 | `docs/gold-band/产品设计文档/interaction/progress.md:47-57, 112-156`; `docs/gold-band/开发计划/可观测性plan.md:113-145, 217-218` |
 | 完成 | DSL loop 参数合法性校验 | 已校验可选 `max_attempts`、`max_rounds` 必须为正整数；留空表示不限制。 | `docs/gold-band/产品设计文档/dsl/control.md` |
-| 待办 | 无 output validation 场景的 acceptance 配置校验 | 需校验没有 `worker` 节点时，`failure/invalid 边` 不能作为有效控制配置单独存在。 | `docs/gold-band/产品设计文档/dsl/control.md:233-237, 346-348` |
+| 待办 | 无 output validation 场景的 acceptance 配置校验 | 需校验没有 `worker` 节点时，`failure 边` 不能作为有效控制配置单独存在。 | `docs/gold-band/产品设计文档/dsl/control.md` |
 | 待办 | 节点保留字与 `$end` 合法性校验 | 需补齐节点 id 保留字冲突校验，以及 `to = "$end"` 时仅允许 `success/failure` 的约束。 | `docs/gold-band/产品设计文档/dsl/control.md:44-53, 336-337, 325-330` |
 | 待办 | `session=continue` 目标能力校验 | 需按目标节点/provider 校验 continue 能力，而不只做当前的基础限制。 | `docs/gold-band/产品设计文档/dsl/control.md:349-350`; `docs/gold-band/产品设计文档/provider/adapter.md:124-126` |
 | 完成 | repair / continue 的 session lineage | 已明确并实现 `session=continue` 回到目标 worker 时复用该目标节点当前最新 attempt 的 worker-ref。 | `docs/gold-band/产品设计文档/runtime/control.md` |
 | 待办 | `node.json.resolvedConfig.sessionMode` 对齐 | 需在 attempt 元信息中记录实际启动的 `sessionMode`，保证 continue/new 语义可追溯。 | `docs/gold-band/产品设计文档/runtime/state/node.json.md:83-104`; `docs/gold-band/产品设计文档/runtime/control.md:337-374` |
-| 待办 | output validation 证据包边界完善 | 需补齐 output validation 对当前 round 最新 `节点输出产物`、上游 worker primary artifact、显式暴露 attachments 的证据收集规则。 | `docs/gold-band/产品设计文档/provider/invocation.md:173-188, 206-213`; `docs/gold-band/产品设计文档/runtime/layout.md:408-425` |
+| 待办 | output validation 证据包边界完善 | 需补齐 output validation 对当前 round 最新 `节点输出产物`、上游 worker output artifact、显式暴露 attachments 的证据收集规则。 | `docs/gold-band/产品设计文档/provider/invocation.md:173-188, 206-213`; `docs/gold-band/产品设计文档/runtime/layout.md:408-425` |
 | 待办 | cold attachments 暴露链路 | 需增加 attachments 的发现、筛选、暴露到 provider invocation 的完整链路。 | `docs/gold-band/产品设计文档/provider/invocation.md:206-213`; `docs/gold-band/产品设计文档/runtime/layout.md:408-425` |
 | 待办 | prompt bundle 完整契约 | 需补齐 role contract、artifact schema prompt、cold attachment index 与更完整 runtime context 注入。 | `docs/gold-band/产品设计文档/provider/prompt-bundle.md:97-243` |
 | 待办 | `worker-ref.json` 完整 schema 校验 | 当前仅有最小校验，仍需补齐字段、枚举、布尔类型、`openCommand` 结构等完整约束。 | `docs/gold-band/产品设计文档/provider/worker-ref.md:30-69` |

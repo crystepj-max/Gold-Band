@@ -1624,8 +1624,10 @@ function groupChildAgentTimeline(events: AcpTimelineEvent[]): AcpTimelineItem[] 
 }
 
 function isRenderableEvent(event: AcpUiEventVm) {
+  const raw = rawObject(event.raw);
+  if (raw?.hiddenFromChat === true) return false;
   if (hiddenEventKinds.has(event.kind)) return false;
-  const sessionUpdate = rawObject(event.raw)?.sessionUpdate;
+  const sessionUpdate = raw?.sessionUpdate;
   return typeof sessionUpdate !== 'string' || !hiddenSessionUpdates.has(sessionUpdate);
 }
 

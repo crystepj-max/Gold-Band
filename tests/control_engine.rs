@@ -87,39 +87,7 @@ fn worker_success_to_end_completes_run() {
 }
 
 #[test]
-fn worker_invalid_prefers_explicit_edge() {
-    let workflow = parse_workflow(
-        r#"{
-            "version": "0.1",
-            "id": "worker-invalid-edge",
-            "entry": "test",
-            "control": { "max_attempts": 2 },
-            "nodes": [
-                { "id": "test", "type": "worker", "provider": "claude-acp", "primary_artifact": "test-result", "output": { "kind": "json", "artifact": "test-result" }, "success_condition": { "path": "passed", "equals": true } },
-                { "id": "fix", "type": "worker", "provider": "claude-acp" },
-                { "id": "accept", "type": "worker", "provider": "claude-acp" }
-            ],
-            "edges": [
-                { "from": "test", "to": "fix", "on": "invalid", "session": "continue" },
-                { "from": "fix", "to": "accept", "on": "success" }
-            ]
-        }"#,
-    );
-
-    let validated = gold_band::dsl::validate_workflow(workflow).unwrap();
-    let decision = decide_next_step(
-        &validated,
-        &sample_run(),
-        &sample_round(),
-        &sample_node("test", NodeOutcome::Invalid),
-    );
-    assert!(
-        matches!(decision, ControlDecision::TransitionToNode { node_id, session: SessionMode::Continue } if node_id == "fix")
-    );
-}
-
-#[test]
-fn worker_invalid_without_edge_pauses() {
+fn worker_invalid_completes_run_as_failure() {
     let workflow = parse_workflow(
         r#"{
             "version": "0.1",
@@ -145,7 +113,7 @@ fn worker_invalid_without_edge_pauses() {
     );
     assert!(matches!(
         decision,
-        ControlDecision::PauseRun(gold_band::domain::PauseReason::ErrorBlocked)
+        ControlDecision::CompleteRun(gold_band::domain::RunOutcome::Failure)
     ));
 }
 
@@ -158,7 +126,7 @@ fn worker_manual_check_rejects_output_validation() {
             "entry": "review",
             "control": { "max_attempts": 1 },
             "nodes": [
-                { "id": "review", "type": "worker", "provider": "claude-acp", "manual_check": true, "primary_artifact": "review-result", "output": { "kind": "json", "artifact": "review-result" }, "success_condition": { "path": "passed", "equals": true } }
+                { "id": "review", "type": "worker", "provider": "claude-acp", "manual_check": true, "output": { "kind": "json", "artifact": "review-result" }, "success_condition": { "path": "passed", "equals": true } }
             ],
             "edges": []
         }"#,
@@ -180,7 +148,7 @@ fn worker_failure_uses_explicit_edge() {
             "entry": "review",
             "control": { "max_attempts": 1 },
             "nodes": [
-                { "id": "review", "type": "worker", "provider": "claude-acp", "primary_artifact": "review-result", "output": { "kind": "json", "artifact": "review-result" }, "success_condition": { "path": "passed", "equals": true } },
+                { "id": "review", "type": "worker", "provider": "claude-acp", "output": { "kind": "json", "artifact": "review-result" }, "success_condition": { "path": "passed", "equals": true } },
                 { "id": "dev", "type": "worker", "provider": "claude-acp" }
             ],
             "edges": [
@@ -210,7 +178,7 @@ fn edge_to_new_round_opens_round() {
             "entry": "accept",
             "control": { "max_attempts": 1 },
             "nodes": [
-                { "id": "accept", "type": "worker", "provider": "claude-acp", "primary_artifact": "accept-result", "output": { "kind": "json", "artifact": "accept-result" }, "success_condition": { "path": "passed", "equals": true } }
+                { "id": "accept", "type": "worker", "provider": "claude-acp", "output": { "kind": "json", "artifact": "accept-result" }, "success_condition": { "path": "passed", "equals": true } }
             ],
             "edges": [
                 { "from": "accept", "to": "$new-round", "on": "failure" }

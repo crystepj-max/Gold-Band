@@ -69,7 +69,7 @@ function workflowIconClass(iconKey: string) {
 const DEFAULT_PERMISSION_MODE = '__default_permission_mode__';
 
 type EditorTab = 'canvas' | 'json';
-type EdgeOutcome = 'success' | 'failure' | 'invalid';
+type EdgeOutcome = 'success' | 'failure';
 type SessionMode = 'new' | 'continue';
 type EditorNodeData = { label: string; kind: string; detail: string; terminal?: boolean; iconKey?: string };
 type WorkflowEdgeData = { outcome: WorkflowEdgeDsl['on']; lane?: number };
@@ -267,7 +267,6 @@ export function WorkflowEditor({ value, agentRegistry, profiles = [], onOpenProf
       id,
       provider: null,
       goal: t('workflowEditor.defaultNodeGoal'),
-      primary_artifact: null,
     };
     const next = { ...workflow, entry: workflow.entry || id, nodes: [...workflow.nodes, node] };
     syncWorkflow(next);
@@ -497,19 +496,18 @@ function NodeInspector({ node, agents, profiles, workflow, fieldErrors, onUpdate
   const [schemaDirty, setSchemaDirty] = useState(false);
   const schemaSelfUpdateNodeId = useRef<string | null>(null);
 
-  const validationEnabled = Boolean(node.output || node.success_condition || node.primary_artifact);
+  const validationEnabled = Boolean(node.output || node.success_condition);
   const manualCheckEnabled = Boolean(node.manual_check);
   const resultMode = validationEnabled ? 'ai' : manualCheckEnabled ? 'manual' : 'none';
   const expression = conditionExpression(node.success_condition);
   const selectedAgent = agents.find((agent) => agent.agentType === node.provider) ?? null;
   const permissionModes = selectedAgent?.supportedModes ?? [];
   const errorsFor = (field: string) => fieldErrors[`node:${node.id}:${field}`] ?? [];
-  const clearValidationPatch = { output: null, success_condition: null, primary_artifact: null };
+  const clearValidationPatch = { output: null, success_condition: null };
   const updateOutput = useCallback((patch: Partial<WorkflowOutputContractDsl>) => {
     const artifact = patch.artifact ?? node.output?.artifact ?? `${node.id}-result`;
     onUpdate(node.id, {
       manual_check: null,
-      primary_artifact: artifact,
       output: { kind: 'json', artifact, schema: node.output?.schema ?? null, ...patch },
     });
   }, [node.id, node.output?.artifact, node.output?.schema, onUpdate]);
@@ -819,7 +817,7 @@ function EdgeInspector({ edge, index, workflow, fieldErrors, onUpdate, onDelete,
       <Field label={t('workflowEditor.edgeOutcome')} errors={errorsFor('on')}>
         <Select value={edge.on} onValueChange={(on) => onUpdate(index, { on: on as EdgeOutcome })}>
           <SelectTrigger className={errorClass(errorsFor('on'))}><SelectValue /></SelectTrigger>
-          <SelectContent>{(['success', 'failure', 'invalid'] as EdgeOutcome[]).map((value) => <SelectItem value={value} key={value}>{value}</SelectItem>)}</SelectContent>
+          <SelectContent>{(['success', 'failure'] as EdgeOutcome[]).map((value) => <SelectItem value={value} key={value}>{value}</SelectItem>)}</SelectContent>
         </Select>
       </Field>
       <Field label={t('workflowEditor.edgeTarget')} errors={errorsFor('to')}>
@@ -996,7 +994,7 @@ function workflowNodeLabel(id: string, terminal: boolean, t: (key: string) => st
 }
 
 function workflowEdgeLabel(outcome: WorkflowEdgeDsl['on'], t: (key: string) => string) {
-  if (['failure', 'invalid'].includes(outcome)) return t(`workflowEditor.edgeLabels.${outcome}`);
+  if (outcome === 'failure') return t('workflowEditor.edgeLabels.failure');
   return outcome;
 }
 
@@ -1034,7 +1032,6 @@ function sanitizeNodeId(value: string, workflow: WorkflowDsl, currentId?: string
 function defaultValidationPatch(nodeId: string): Partial<WorkflowWorkerNodeDsl> {
   const artifact = `${nodeId}-result`;
   return {
-    primary_artifact: artifact,
     output: { kind: 'json', artifact, schema: null },
     success_condition: { expression: '' },
   };
@@ -1064,12 +1061,14 @@ function normalizeWorkflowSchemas(workflow: WorkflowDsl): WorkflowDsl {
     ...workflow,
     control,
     nodes: workflow.nodes.map((node) => {
-      if (!node.output?.schema) return node;
+      const normalizedNode = { ...(node as WorkflowWorkerNodeDsl & { primary_artifact?: unknown }) };
+      delete normalizedNode.primary_artifact;
+      if (!normalizedNode.output?.schema) return normalizedNode;
       return {
-        ...node,
+        ...normalizedNode,
         output: {
-          ...node.output,
-          schema: normalizeOutputSchema(node.output.schema),
+          ...normalizedNode.output,
+          schema: normalizeOutputSchema(normalizedNode.output.schema),
         },
       };
     }),
@@ -1134,7 +1133,7 @@ export function validateWorkflowForSave(
   const agentIds = new Set(agentById.keys());
   const nodeIds = new Set(workflow.nodes.map((node) => node.id).filter(Boolean));
   const edgeOutcomeCounts = workflow.edges.reduce<Record<string, number>>((counts, edge) => {
-    if (edge.from.trim() && ['success', 'failure', 'invalid'].includes(edge.on)) {
+    if (edge.from.trim() && ['success', 'failure'].includes(edge.on)) {
       const key = `${edge.from}\0${edge.on}`;
       counts[key] = (counts[key] ?? 0) + 1;
     }
@@ -1188,15 +1187,12 @@ export function validateWorkflowForSave(
     }
     if (!node.goal?.trim()) addIssue(t('workflowEditor.validationNodeGoalRequired', { node: nodeLabel }), nodeField(node, 'goal'), node.id);
 
-    const validationEnabled = Boolean(node.output || node.success_condition || node.primary_artifact);
+    const validationEnabled = Boolean(node.output || node.success_condition);
     if (validationEnabled && node.manual_check) {
       addIssue(t('workflowEditor.validationResultModeExclusive', { node: nodeLabel }), nodeField(node, 'success_condition'), node.id);
     }
     if (validationEnabled) {
       if (!node.output?.artifact?.trim()) addIssue(t('workflowEditor.validationOutputArtifactRequired', { node: nodeLabel }), nodeField(node, 'output.artifact'), node.id);
-      if (node.output?.artifact && node.primary_artifact && node.output.artifact !== node.primary_artifact) {
-        addIssue(t('workflowEditor.validationOutputArtifactMismatch', { node: nodeLabel }), nodeField(node, 'output.artifact'), node.id);
-      }
       if (!node.success_condition) addIssue(t('workflowEditor.validationSuccessExpressionRequired', { node: nodeLabel }), nodeField(node, 'success_condition'), node.id);
       let path: PathSegment[] | null = null;
       if (node.success_condition) {
@@ -1221,7 +1217,7 @@ export function validateWorkflowForSave(
     else if (!nodeIds.has(edge.from)) addIssue(t('workflowEditor.validationEdgeSourceMissing', { node: edge.from }), edgeField(index, 'from'), edge.from, index);
     if (!edge.to.trim()) addIssue(t('workflowEditor.validationEdgeTargetRequired', { index: index + 1 }), edgeField(index, 'to'), undefined, index);
     else if (![END_NODE, NEW_ROUND_NODE].includes(edge.to) && !nodeIds.has(edge.to)) addIssue(t('workflowEditor.validationEdgeTargetMissing', { node: edge.to }), edgeField(index, 'to'), edge.to, index);
-    if (!['success', 'failure', 'invalid'].includes(edge.on)) addIssue(t('workflowEditor.validationEdgeOutcomeRequired', { index: index + 1 }), edgeField(index, 'on'), undefined, index);
+    if (!['success', 'failure'].includes(edge.on)) addIssue(t('workflowEditor.validationEdgeOutcomeRequired', { index: index + 1 }), edgeField(index, 'on'), undefined, index);
     else if (edge.on === 'success' && edge.to === NEW_ROUND_NODE) {
       addIssue(t('workflowEditor.validationSuccessNewRoundTarget', { node: edge.from }), edgeField(index, 'to'), edge.from, index);
     } else if (edge.from.trim()) {

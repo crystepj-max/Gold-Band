@@ -22,7 +22,7 @@ use crate::acp::permission::{
 use crate::config::AcpAdapterConfig;
 use crate::domain::{SessionMode, VERSION};
 use crate::process::kill_process_tree;
-use crate::provider::PromptBundle;
+use crate::provider::{PromptBundle, PromptVisibility};
 use crate::runtime::{WorkerRefState, validate_worker_ref_state};
 use crate::storage::{GoldBandPaths, ensure_parent_dir, read_json, write_json};
 
@@ -562,6 +562,7 @@ impl AcpRuntime {
                 session_id.clone(),
                 prompt.user_prompt.clone(),
                 prompt.prompt_id.clone(),
+                prompt.visibility == PromptVisibility::Hidden,
             ),
         )?;
         let result = self.request(
@@ -959,7 +960,7 @@ mod tests {
     use serde_json::json;
 
     use super::{
-        PromptBundle, cancel_notification_frame, contributes_to_final_text,
+        PromptBundle, PromptVisibility, cancel_notification_frame, contributes_to_final_text,
         resolve_permission_mode, response_matches_request, session_load_params, session_new_params,
         session_prompt_params, session_prompt_text,
     };
@@ -1031,6 +1032,7 @@ mod tests {
             system_prompt: "node constraints".to_string(),
             user_prompt: "do the task".to_string(),
             prompt_id: Some("prompt-001".to_string()),
+            visibility: PromptVisibility::Visible,
         };
 
         let text = session_prompt_text("codex-acp", &prompt);
@@ -1048,6 +1050,7 @@ mod tests {
             system_prompt: "node constraints".to_string(),
             user_prompt: "do the task".to_string(),
             prompt_id: None,
+            visibility: PromptVisibility::Visible,
         };
 
         assert_eq!(session_prompt_text("claude-acp", &prompt), "do the task");

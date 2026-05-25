@@ -140,7 +140,6 @@ export interface WorkflowWorkerNodeDsl {
   provider?: string | null;
   profile?: string | null;
   goal?: string | null;
-  primary_artifact?: string | null;
   output?: WorkflowOutputContractDsl | null;
   success_condition?: WorkflowJsonConditionDsl | null;
   permission_mode?: string | null;
@@ -160,7 +159,7 @@ export type WorkflowJsonConditionDsl =
 export interface WorkflowEdgeDsl {
   from: string;
   to: string;
-  on: 'success' | 'failure' | 'invalid' | string;
+  on: 'success' | 'failure' | string;
   session?: 'new' | 'continue' | null;
 }
 

@@ -48,12 +48,12 @@ const defaultWorkflow: WorkflowDsl = {
   entry: 'plan',
   control: {},
   nodes: [
-    { type: 'worker', id: 'plan', provider: 'claude-acp', profile: 'pf-m9jw0wq1-a7k3d2s1', goal: 'Analyze the imported requirement and produce an implementation plan.', primary_artifact: null },
-    { type: 'worker', id: 'dev', provider: 'claude-acp', profile: 'pf-m9jw0wq2-q8s6k4n0', goal: 'Implement the requirement in the workspace.', primary_artifact: null },
-    { type: 'worker', id: 'review', provider: 'claude-acp', profile: 'pf-m9jw0wq3-r2x9p7m5', goal: 'Review the implementation and return JSON with result and reason fields.', primary_artifact: 'review-result', output: { kind: 'json', artifact: 'review-result', schema: { reason: 'String', result: 'boolean' } }, success_condition: { expression: '$.result == true' } },
-    { type: 'worker', id: 'test', provider: 'claude-acp', profile: 'pf-m9jw0wq4-t3y8r1c6', goal: 'Run or describe verification and return JSON with result and reason fields.', primary_artifact: 'test-result', output: { kind: 'json', artifact: 'test-result', schema: { reason: 'String', result: 'boolean' } }, success_condition: { expression: '$.result == true' } },
-    { type: 'worker', id: 'accept', provider: 'claude-acp', profile: 'pf-m9jw0wq5-u4z7s2d7', goal: 'Validate acceptance and return JSON with result and reason fields.', primary_artifact: 'accept-result', output: { kind: 'json', artifact: 'accept-result', schema: { reason: 'String', result: 'boolean' } }, success_condition: { expression: '$.result == true' } },
-    { type: 'worker', id: 'cleanup', provider: 'claude-acp', profile: 'pf-m9jw0wq6-v5a8t3e8', goal: 'Clean up resources, finalize handoff notes, and close the task after acceptance succeeds.', primary_artifact: null },
+    { type: 'worker', id: 'plan', provider: 'claude-acp', profile: 'pf-m9jw0wq1-a7k3d2s1', goal: 'Analyze the imported requirement and produce an implementation plan.' },
+    { type: 'worker', id: 'dev', provider: 'claude-acp', profile: 'pf-m9jw0wq2-q8s6k4n0', goal: 'Implement the requirement in the workspace.' },
+    { type: 'worker', id: 'review', provider: 'claude-acp', profile: 'pf-m9jw0wq3-r2x9p7m5', goal: 'Review the implementation and return JSON with result and reason fields.', output: { kind: 'json', artifact: 'review-result', schema: { reason: 'String', result: 'boolean' } }, success_condition: { expression: '$.result == true' } },
+    { type: 'worker', id: 'test', provider: 'claude-acp', profile: 'pf-m9jw0wq4-t3y8r1c6', goal: 'Run or describe verification and return JSON with result and reason fields.', output: { kind: 'json', artifact: 'test-result', schema: { reason: 'String', result: 'boolean' } }, success_condition: { expression: '$.result == true' } },
+    { type: 'worker', id: 'accept', provider: 'claude-acp', profile: 'pf-m9jw0wq5-u4z7s2d7', goal: 'Validate acceptance and return JSON with result and reason fields.', output: { kind: 'json', artifact: 'accept-result', schema: { reason: 'String', result: 'boolean' } }, success_condition: { expression: '$.result == true' } },
+    { type: 'worker', id: 'cleanup', provider: 'claude-acp', profile: 'pf-m9jw0wq6-v5a8t3e8', goal: 'Clean up resources, finalize handoff notes, and close the task after acceptance succeeds.' },
   ],
   edges: [
     { from: 'plan', to: 'dev', on: 'success' },

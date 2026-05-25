@@ -53,7 +53,6 @@ pub struct WorkerInvocation {
     pub requirement_text: Option<String>,
     pub workspace_dir: Utf8PathBuf,
     pub attempt_dir: Utf8PathBuf,
-    pub primary_artifact: Option<String>,
     pub output_contract: Option<PromptOutputContract>,
     pub runtime_context: PromptRuntimeContext,
     pub predecessors: Vec<PromptPredecessorContext>,
@@ -63,6 +62,8 @@ pub struct WorkerInvocation {
     pub continue_ref: Option<serde_json::Value>,
     pub resume_prompt: Option<String>,
     pub resume_prompt_id: Option<String>,
+    #[serde(default)]
+    pub resume_prompt_visibility: PromptVisibility,
     pub stream_mode: StreamMode,
     #[serde(default)]
     pub log_prompts: bool,
@@ -151,11 +152,11 @@ pub enum ProviderRunStatus {
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct ProviderResultPayload {
-    pub primary_artifact: Option<PrimaryArtifactPayload>,
+    pub output_artifact: Option<OutputArtifactPayload>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct PrimaryArtifactPayload {
+pub struct OutputArtifactPayload {
     pub name: String,
     pub content: String,
 }
@@ -165,6 +166,20 @@ pub struct PromptBundle {
     pub system_prompt: String,
     pub user_prompt: String,
     pub prompt_id: Option<String>,
+    pub visibility: PromptVisibility,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "kebab-case")]
+pub enum PromptVisibility {
+    Visible,
+    Hidden,
+}
+
+impl Default for PromptVisibility {
+    fn default() -> Self {
+        Self::Visible
+    }
 }
 
 pub trait ProviderAdapter: Send + Sync {
@@ -290,7 +305,7 @@ impl ProviderAdapter for AcpProvider {
             &prompt,
             req.invocation_kind,
             req.profile.as_deref(),
-            req.primary_artifact.as_deref(),
+            req.output_contract.as_ref().map(|contract| contract.artifact.as_str()),
             req.cold_artifacts.len(),
             req.cold_attachments.len(),
             req.log_prompts,
@@ -316,12 +331,8 @@ impl ProviderAdapter for AcpProvider {
             Some("refusal" | "error") => ProviderRunStatus::Failure,
             _ => ProviderRunStatus::Success,
         };
-        let result_payload = req.primary_artifact.as_ref().map(|primary_artifact| {
-            let uses_json_output = req
-                .output_contract
-                .as_ref()
-                .is_some_and(|contract| contract.kind == "json")
-                || artifact_uses_json_output(primary_artifact);
+        let result_payload = req.output_contract.as_ref().map(|contract| {
+            let uses_json_output = contract.kind == "json" || artifact_uses_json_output(&contract.artifact);
             let content = if uses_json_output {
                 json_artifact_text_from_outputs(&run.final_outputs, &run.final_text)
                     .unwrap_or_else(|| run.final_text.clone())
@@ -329,8 +340,8 @@ impl ProviderAdapter for AcpProvider {
                 run.final_text.clone()
             };
             ProviderResultPayload {
-                primary_artifact: Some(PrimaryArtifactPayload {
-                    name: primary_artifact.clone(),
+                output_artifact: Some(OutputArtifactPayload {
+                    name: contract.artifact.clone(),
                     content,
                 }),
             }
@@ -363,6 +374,7 @@ pub fn render_prompt_bundle(req: &WorkerInvocation) -> Result<PromptBundle> {
                 system_prompt: render_system_prompt(req),
                 user_prompt: resume_prompt.clone(),
                 prompt_id: req.resume_prompt_id.clone(),
+                visibility: req.resume_prompt_visibility,
             });
         }
     }
@@ -412,6 +424,7 @@ pub fn render_prompt_bundle(req: &WorkerInvocation) -> Result<PromptBundle> {
         system_prompt,
         user_prompt: user_sections.join("\n\n"),
         prompt_id: None,
+        visibility: PromptVisibility::Visible,
     })
 }
 
@@ -422,10 +435,7 @@ fn render_system_prompt(req: &WorkerInvocation) -> String {
         render_predecessor_reasons(&req.predecessors),
         render_directory_rules(&req.runtime_context),
         render_role_section(req.profile.as_deref(), req.profile_content.as_deref()),
-        render_artifact_constraints(
-            req.primary_artifact.as_deref(),
-            req.output_contract.as_ref(),
-        ),
+        render_artifact_constraints(req.output_contract.as_ref()),
     ]
     .into_iter()
     .filter(|section| !section.trim().is_empty())
@@ -550,17 +560,9 @@ fn render_role_section(profile: Option<&str>, profile_content: Option<&str>) -> 
     }
 }
 
-fn render_artifact_constraints(
-    primary_artifact: Option<&str>,
-    contract: Option<&PromptOutputContract>,
-) -> String {
+fn render_artifact_constraints(contract: Option<&PromptOutputContract>) -> String {
     let Some(contract) = contract else {
-        return match primary_artifact {
-            Some(primary_artifact) => format!(
-                "当前节点 artifact 规则：\n- primary artifact: {primary_artifact}\n- 当前节点未声明结构化 output DSL；不要自行推断 JSON/schema 输出格式。"
-            ),
-            None => "当前节点 artifact 规则：\n- 当前节点未声明 primary_artifact / output DSL，不需要产出 canonical artifact。\n- 不需要查找、推断或读取 artifact/output 约束；只需完成 # Task。".to_string(),
-        };
+        return "当前节点 artifact 规则：\n- 当前节点未声明 output DSL，不需要产出 canonical artifact。\n- 不需要查找、推断或读取 artifact/output 约束；只需完成 # Task。".to_string();
     };
 
     let mut section = format!(
@@ -587,7 +589,7 @@ fn log_prompt_bundle(
     prompt: &PromptBundle,
     invocation_kind: InvocationKind,
     profile: Option<&str>,
-    primary_artifact: Option<&str>,
+    output_artifact: Option<&str>,
     cold_artifacts: usize,
     cold_attachments: usize,
     log_prompts: bool,
@@ -595,7 +597,7 @@ fn log_prompt_bundle(
     debug!(
         invocation_kind = ?invocation_kind,
         profile = ?profile,
-        primary_artifact = ?primary_artifact,
+        output_artifact = ?output_artifact,
         system_prompt_len = prompt.system_prompt.len(),
         user_prompt_len = prompt.user_prompt.len(),
         cold_artifacts,
@@ -681,7 +683,6 @@ mod tests {
             requirement_text: Some("Need a structured result".to_string()),
             workspace_dir: Utf8PathBuf::from("/repo"),
             attempt_dir: runtime_context.attempt_dir.clone(),
-            primary_artifact: Some("analysis-result".to_string()),
             output_contract: None,
             runtime_context,
             predecessors: Vec::new(),
@@ -691,6 +692,7 @@ mod tests {
             continue_ref: None,
             resume_prompt: None,
             resume_prompt_id: None,
+            resume_prompt_visibility: PromptVisibility::Visible,
             stream_mode: StreamMode::StreamJson,
             log_prompts: false,
             log_provider_command: false,

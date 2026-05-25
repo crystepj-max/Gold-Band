@@ -2,7 +2,7 @@ use camino::Utf8PathBuf;
 use gold_band::domain::{InvocationKind, SessionMode};
 use gold_band::provider::{
     ColdFileRef, PromptArtifactRef, PromptOutputContract, PromptPredecessorContext,
-    PromptRuntimeContext, StreamMode, WorkerInvocation, render_prompt_bundle,
+    PromptRuntimeContext, PromptVisibility, StreamMode, WorkerInvocation, render_prompt_bundle,
 };
 
 fn runtime_context() -> PromptRuntimeContext {
@@ -40,7 +40,6 @@ fn invocation() -> WorkerInvocation {
         requirement_text: Some("Need an implementation".to_string()),
         workspace_dir: Utf8PathBuf::from("/repo"),
         attempt_dir: runtime_context().attempt_dir,
-        primary_artifact: Some("dev-result".to_string()),
         output_contract: Some(PromptOutputContract {
             artifact: "dev-result".to_string(),
             kind: "json".to_string(),
@@ -74,6 +73,7 @@ fn invocation() -> WorkerInvocation {
         continue_ref: None,
         resume_prompt: None,
         resume_prompt_id: None,
+        resume_prompt_visibility: PromptVisibility::Visible,
         stream_mode: StreamMode::None,
         log_prompts: false,
         log_provider_command: false,
@@ -98,7 +98,7 @@ fn invocation() -> WorkerInvocation {
 #[test]
 fn worker_invocation_can_be_serialized_with_context_indexes() {
     let value = serde_json::to_value(invocation()).unwrap();
-    assert_eq!(value["primary_artifact"], "dev-result");
+    assert_eq!(value["output_contract"]["artifact"], "dev-result");
     assert_eq!(value["runtime_context"]["task_id"], "task-001");
     assert_eq!(value["cold_artifacts"][0]["name"], "review-result");
 }
@@ -124,7 +124,6 @@ fn render_prompt_bundle_uses_runtime_context_without_old_invocation_labels() {
 #[test]
 fn render_prompt_bundle_guides_nodes_without_artifacts() {
     let mut req = invocation();
-    req.primary_artifact = None;
     req.output_contract = None;
     req.predecessors.clear();
 
@@ -132,7 +131,7 @@ fn render_prompt_bundle_guides_nodes_without_artifacts() {
 
     assert!(
         prompt.system_prompt.contains(
-            "当前节点未声明 primary_artifact / output DSL，不需要产出 canonical artifact"
+            "当前节点未声明 output DSL，不需要产出 canonical artifact"
         )
     );
     assert!(

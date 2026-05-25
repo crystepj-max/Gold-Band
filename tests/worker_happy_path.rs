@@ -2,7 +2,7 @@ use camino::Utf8PathBuf;
 use gold_band::app::App;
 use gold_band::domain::SessionMode;
 use gold_band::provider::{
-    DoctorResult, PrimaryArtifactPayload, ProviderAdapter, ProviderCapabilities, ProviderInfo,
+    DoctorResult, OutputArtifactPayload, ProviderAdapter, ProviderCapabilities, ProviderInfo,
     ProviderResultPayload, ProviderRunResult, ProviderRunStatus, SessionRef, WorkerInvocation,
 };
 use tempfile::tempdir;
@@ -37,7 +37,7 @@ impl ProviderAdapter for FakeProvider {
             status: ProviderRunStatus::Success,
             exit_code: Some(0),
             result_payload: Some(ProviderResultPayload {
-                primary_artifact: Some(PrimaryArtifactPayload {
+                output_artifact: Some(OutputArtifactPayload {
                     name: "implementation-result".to_string(),
                     content: r#"{"summary":"implemented"}"#.to_string(),
                 }),
@@ -103,7 +103,7 @@ fn run_start_executes_worker_node() {
               "provider": "claude-acp",
               "profile": "{}",
               "goal": "Create an implementation result",
-              "primary_artifact": "implementation-result"
+              "output": {{ "kind": "json", "artifact": "implementation-result" }}
             }}
           ],
           "edges": []

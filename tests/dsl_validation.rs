@@ -26,7 +26,6 @@ fn validates_basic_workflow() {
                     "provider": "claude-acp",
                     "profile": "tester",
                     "goal": "Run checks and return JSON with result and reason fields.",
-                    "primary_artifact": "test-result",
                     "output": { "kind": "json", "artifact": "test-result" },
                     "success_condition": { "path": "result", "equals": true }
                 },
@@ -36,7 +35,6 @@ fn validates_basic_workflow() {
                     "provider": "claude-acp",
                     "profile": "acceptance",
                     "goal": "Assess acceptance and return JSON with result and reason fields.",
-                    "primary_artifact": "accept-result",
                     "output": { "kind": "json", "artifact": "accept-result" },
                     "success_condition": { "path": "result", "equals": true }
                 }
@@ -167,11 +165,11 @@ fn rejects_zero_round_limit() {
 }
 
 #[test]
-fn rejects_invalid_edges_to_end() {
-    let workflow = parse_workflow(
+fn rejects_invalid_edge_outcome() {
+    let err = serde_json::from_str::<WorkflowDsl>(
         r#"{
             "version": "0.1",
-            "id": "invalid-end",
+            "id": "invalid-edge-outcome",
             "entry": "dev",
             "control": { "max_attempts": 1 },
             "nodes": [
@@ -183,9 +181,10 @@ fn rejects_invalid_edges_to_end() {
                 { "from": "test", "to": "$end", "on": "invalid" }
             ]
         }"#,
-    );
+    )
+    .expect_err("invalid edge outcome should not deserialize");
 
-    assert!(validate_workflow(workflow).is_err());
+    assert!(err.to_string().contains("unknown variant"));
 }
 
 #[test]
@@ -247,7 +246,6 @@ fn accepts_worker_json_output_validation() {
                     "id": "review",
                     "type": "worker",
                     "provider": "claude-acp",
-                    "primary_artifact": "review-result",
                     "output": { "kind": "json", "artifact": "review-result" },
                     "success_condition": { "path": "passed", "equals": true }
                 },
@@ -255,7 +253,6 @@ fn accepts_worker_json_output_validation() {
                     "id": "test",
                     "type": "worker",
                     "provider": "claude-acp",
-                    "primary_artifact": "test-result",
                     "output": { "kind": "json", "artifact": "test-result" },
                     "success_condition": { "path": "passed", "equals": true }
                 }
@@ -284,7 +281,6 @@ fn accepts_simplified_output_schema_with_matching_expression() {
                     "id": "review",
                     "type": "worker",
                     "provider": "claude-acp",
-                    "primary_artifact": "review-result",
                     "output": {
                         "kind": "json",
                         "artifact": "review-result",
@@ -313,7 +309,6 @@ fn rejects_success_expression_missing_from_simplified_schema() {
                     "id": "review",
                     "type": "worker",
                     "provider": "claude-acp",
-                    "primary_artifact": "review-result",
                     "output": {
                         "kind": "json",
                         "artifact": "review-result",
@@ -342,7 +337,6 @@ fn accepts_nested_simplified_schema_path() {
                     "id": "review",
                     "type": "worker",
                     "provider": "claude-acp",
-                    "primary_artifact": "review-result",
                     "output": {
                         "kind": "json",
                         "artifact": "review-result",
@@ -371,7 +365,6 @@ fn rejects_malformed_success_expression_path() {
                     "id": "review",
                     "type": "worker",
                     "provider": "claude-acp",
-                    "primary_artifact": "review-result",
                     "output": {
                         "kind": "json",
                         "artifact": "review-result",
@@ -400,7 +393,6 @@ fn rejects_legacy_json_schema_output_constraint() {
                     "id": "review",
                     "type": "worker",
                     "provider": "claude-acp",
-                    "primary_artifact": "review-result",
                     "output": {
                         "kind": "json",
                         "artifact": "review-result",
@@ -421,7 +413,7 @@ fn rejects_legacy_json_schema_output_constraint() {
 }
 
 #[test]
-fn rejects_worker_output_mismatch() {
+fn rejects_success_condition_without_output() {
     let workflow = parse_workflow(
         r#"{
             "version": "0.1",
@@ -433,8 +425,6 @@ fn rejects_worker_output_mismatch() {
                     "id": "review",
                     "type": "worker",
                     "provider": "claude-acp",
-                    "primary_artifact": "review-result",
-                    "output": { "kind": "json", "artifact": "other-result" },
                     "success_condition": { "path": "passed", "equals": true }
                 }
             ],
