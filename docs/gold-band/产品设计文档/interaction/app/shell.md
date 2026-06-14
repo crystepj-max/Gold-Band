@@ -141,12 +141,13 @@ round 详情
 - 详情页滚动
 - 大屏展示更多列
 - 小窗口下保留左侧一级导航和当前页面核心内容
-- 应用整窗统一使用自定义顶栏，不保留可感知的原生 header
+- 应用整窗统一使用共享顶栏；macOS 保留原生左上角 traffic lights，并通过 overlay 标题栏与共享顶栏共存；Windows 与其他非 macOS 平台继续关闭原生 decorations，仅保留共享顶栏中的自定义窗口控制
 - 顶栏颜色跟随当前主题切换，浅色与深色主题都维持同一套结构
 - 顶栏左侧只保留一个侧边栏折叠按钮；Workbench / Conversation 形态切换集中到顶栏中部
 - 侧边栏折叠/展开使用平滑宽度过渡，不做瞬时消失；内容透明度可略早于宽度收起，以减少视觉突兀
 - 顶栏与侧边栏默认共用同一 surface 底色，并去掉强横向分割线；右侧主区使用更弱的 top/left 边界与左上圆角衔接，主区圆角后方露出的底色继续复用 sidebar surface，而不是把侧边栏自身裁成圆角，避免角后方出现异色小方块
-- 顶栏右侧统一承载窗口最小化、最大化/还原、关闭操作，保证跨平台桌面可用性
+- 非 macOS 平台的顶栏右侧统一承载窗口最小化、最大化/还原、关闭操作；macOS 不再渲染这组自定义按钮，最小化等行为交由原生 traffic lights 处理
+- 在平台事实源尚未解析完成的启动瞬间，共享顶栏不应提前渲染 Windows 风格自定义窗口按钮，避免与原生 chrome 重叠；同时顶栏左侧继续保留安全间距，确保后续 macOS 原生按钮出现时不与品牌区和折叠按钮相撞
 
 ### 6.4 运行态生命周期
 - Round 详情页的“继续运行”只在当前 run / round / node 处于可恢复暂停态时出现；成功、失败或 killed 的终局 round 不展示该入口。
@@ -170,6 +171,7 @@ MVP 中应用壳由 `web/src/components/Shell.tsx` 实现：
 - 2026-05-03 起应用壳使用 Tailwind CSS v4 + shadcn/ui Button、Tooltip、Separator 等现成组件重构；侧边栏 IA、workspace 切换入口和右侧页面栈行为不变。
 - 2026-06-08 起新旧 UI 共用 `web/src/components/AppTitleBar.tsx` 自定义顶栏；前端启动后通过 Tauri window API 关闭整窗 decorations，并由共享顶栏接管侧边栏折叠、形态切换和窗口控制。
 - 2026-06-14 起桌面 bootstrap 额外暴露 `platform` 字段，作为前端唯一的平台事实源；后续所有窗口控制分流（如 macOS 原生 title bar style 与非 macOS 自定义控制）都必须基于该字段判断，而不是在前端各处自行读取运行时平台。
+- 2026-06-14 起窗口控制按 `bootstrap.platform` 实际分流：macOS 恢复原生左上角 traffic lights，并启用 overlay 标题栏与共享顶栏共存；Windows 与其他非 macOS 平台继续关闭原生 decorations，保留右侧自定义窗口控制按钮。平台尚未解析时，顶栏先隐藏自定义按钮，但保留左侧安全间距，避免启动瞬间与原生 chrome 重叠。
 
 ---
 
