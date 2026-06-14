@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
-import type { ConversationPage, ConversationSidebarVm } from '../../types';
+import type { ConversationPage, ConversationSidebarVm, DesktopPlatform } from '../../types';
 import { ConversationSidebar } from './ConversationSidebar';
 import { saveConversationPreference } from '../../api';
 import { AppTitleBar } from '../AppTitleBar';
@@ -7,12 +7,16 @@ import { cn } from '@/lib/utils';
 
 interface ConversationShellProps {
   appName: string;
+  platform?: DesktopPlatform | null;
   vm: ConversationSidebarVm;
   active: ConversationPage;
+  repoRoot?: string;
+  needsWorkspace?: boolean;
   sidebarCollapsed: boolean;
   onSelect: (page: ConversationPage) => void;
   onToggleUiMode: () => void;
   onToggleSidebar: () => void;
+  onChooseWorkspace?: () => void;
   onNewConversation: () => void;
   onSearch: () => void;
   onSelectTask: (projectId: string, taskId: string) => void;
@@ -50,12 +54,16 @@ function loadSidebarWidth(prefs?: Record<string, unknown> | null): number {
 
 export function ConversationShell({
   appName,
+  platform,
   vm,
   active,
+  repoRoot,
+  needsWorkspace,
   sidebarCollapsed,
   onSelect,
   onToggleUiMode,
   onToggleSidebar,
+  onChooseWorkspace,
   onNewConversation,
   onSearch,
   onSelectTask,
@@ -122,6 +130,7 @@ export function ConversationShell({
     >
       <AppTitleBar
         appName={appName}
+        platform={platform}
         uiMode="conversation"
         sidebarCollapsed={sidebarCollapsed}
         onToggleSidebar={onToggleSidebar}
@@ -145,8 +154,11 @@ export function ConversationShell({
             <ConversationSidebar
               vm={vm}
               active={active}
+              repoRoot={repoRoot}
+              needsWorkspace={needsWorkspace}
               onSelect={onSelect}
               onToggleUiMode={onToggleUiMode}
+              onChooseWorkspace={onChooseWorkspace}
               onNewConversation={onNewConversation}
               onSearch={onSearch}
               onSelectTask={onSelectTask}

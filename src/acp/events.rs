@@ -154,7 +154,10 @@ pub fn read_session_tokens(session_path: &Utf8Path) -> (u64, u64, u64, u64) {
                 output = meta.output_tokens.unwrap_or(0);
                 cache_read = meta.cached_read_tokens.unwrap_or(0);
                 total = meta.total_tokens.unwrap_or(0);
-                eprintln!("[metrics] snapshot.json tokens: input={} output={} cacheRead={} total={}", input, output, cache_read, total);
+                eprintln!(
+                    "[metrics] snapshot.json tokens: input={} output={} cacheRead={} total={}",
+                    input, output, cache_read, total
+                );
             }
         }
     }
@@ -185,12 +188,18 @@ pub fn read_session_tokens(session_path: &Utf8Path) -> (u64, u64, u64, u64) {
                     }
                 }
             }
-            eprintln!("[metrics] timeline tokens (after scan): input={} output={} cacheRead={} total={}", input, output, cache_read, total);
+            eprintln!(
+                "[metrics] timeline tokens (after scan): input={} output={} cacheRead={} total={}",
+                input, output, cache_read, total
+            );
         } else {
             eprintln!("[metrics] failed to open timeline at {}", tp.as_str());
         }
     } else {
-        eprintln!("[metrics] no timeline file found for {}", session_path.as_str());
+        eprintln!(
+            "[metrics] no timeline file found for {}",
+            session_path.as_str()
+        );
     }
 
     // 3. Debug: list files in attempt dir and show first timeline line
@@ -207,9 +216,12 @@ pub fn read_session_tokens(session_path: &Utf8Path) -> (u64, u64, u64, u64) {
         if let Ok(file) = std::fs::File::open(tp.as_std_path()) {
             let reader = BufReader::new(file);
             for (i, line) in reader.lines().enumerate() {
-                if i >= 3 { break; }
+                if i >= 3 {
+                    break;
+                }
                 if let Ok(l) = line {
-                    eprintln!("[metrics] timeline[{}]: {}", i, &l[..l.len().min(200)]);
+                    let preview: String = l.chars().take(200).collect();
+                    eprintln!("[metrics] timeline[{}]: {}", i, preview);
                 }
             }
         }
@@ -747,18 +759,24 @@ mod tests {
     }
 
     // ── read_session_tokens tests ──
-    use tempfile::TempDir;
     use std::io::Write as _;
+    use tempfile::TempDir;
 
     #[test]
     fn tokens_from_snapshot() {
         let dir = TempDir::new().unwrap();
-        std::fs::write(dir.path().join("acp.snapshot.json"), r#"{
+        std::fs::write(
+            dir.path().join("acp.snapshot.json"),
+            r#"{
             "adapterId":"t","adapterDisplayName":"T","cwd":".","status":"ok",
             "restored":false,"capabilities":{},"createdAt":"","updatedAt":"",
             "inputTokens":1000,"outputTokens":500,"cachedReadTokens":200,"totalTokens":1700
-        }"#).unwrap();
-        let session_path = camino::Utf8Path::from_path(dir.path()).unwrap().join("acp.session.json");
+        }"#,
+        )
+        .unwrap();
+        let session_path = camino::Utf8Path::from_path(dir.path())
+            .unwrap()
+            .join("acp.session.json");
         let (i, o, c, t) = super::read_session_tokens(&session_path);
         assert_eq!(i, 1000);
         assert_eq!(o, 500);
@@ -769,7 +787,9 @@ mod tests {
     #[test]
     fn tokens_no_files_returns_zero() {
         let dir = TempDir::new().unwrap();
-        let session_path = camino::Utf8Path::from_path(dir.path()).unwrap().join("acp.session.json");
+        let session_path = camino::Utf8Path::from_path(dir.path())
+            .unwrap()
+            .join("acp.session.json");
         let (i, o, c, t) = super::read_session_tokens(&session_path);
         assert_eq!((i, o, c, t), (0, 0, 0, 0));
     }
@@ -779,7 +799,9 @@ mod tests {
         let dir = TempDir::new().unwrap();
         let mut f = std::fs::File::create(dir.path().join("acp.timeline.jsonl")).unwrap();
         writeln!(f, r#"{{"item":{{"kind":"usageUpdate","inputTokens":99,"outputTokens":33,"totalTokens":132}}}}"#).unwrap();
-        let session_path = camino::Utf8Path::from_path(dir.path()).unwrap().join("acp.session.json");
+        let session_path = camino::Utf8Path::from_path(dir.path())
+            .unwrap()
+            .join("acp.session.json");
         let (i, o, _c, t) = super::read_session_tokens(&session_path);
         assert_eq!(i, 99);
         assert_eq!(o, 33);
@@ -793,7 +815,9 @@ mod tests {
         writeln!(f, r#"{{"item":{{"kind":"usageUpdate","inputTokens":100,"outputTokens":10,"totalTokens":110}}}}"#).unwrap();
         writeln!(f, r#"{{"item":{{"kind":"usageUpdate","inputTokens":500,"outputTokens":20,"totalTokens":520}}}}"#).unwrap();
         writeln!(f, r#"{{"item":{{"kind":"usageUpdate","inputTokens":300,"outputTokens":5,"totalTokens":305}}}}"#).unwrap();
-        let session_path = camino::Utf8Path::from_path(dir.path()).unwrap().join("acp.session.json");
+        let session_path = camino::Utf8Path::from_path(dir.path())
+            .unwrap()
+            .join("acp.session.json");
         let (i, o, _c, t) = super::read_session_tokens(&session_path);
         assert_eq!(i, 500);
         assert_eq!(o, 20);
@@ -804,10 +828,16 @@ mod tests {
     fn tokens_ignores_non_usage_events() {
         let dir = TempDir::new().unwrap();
         let mut f = std::fs::File::create(dir.path().join("acp.timeline.jsonl")).unwrap();
-        writeln!(f, r#"{{"item":{{"kind":"userTextDelta","content":"hello"}}}}"#).unwrap();
+        writeln!(
+            f,
+            r#"{{"item":{{"kind":"userTextDelta","content":"hello"}}}}"#
+        )
+        .unwrap();
         writeln!(f, r#"{{"item":{{"kind":"availableCommands"}}}}"#).unwrap();
         writeln!(f, r#"{{"item":{{"kind":"usageUpdate","inputTokens":77,"outputTokens":7,"totalTokens":84}}}}"#).unwrap();
-        let session_path = camino::Utf8Path::from_path(dir.path()).unwrap().join("acp.session.json");
+        let session_path = camino::Utf8Path::from_path(dir.path())
+            .unwrap()
+            .join("acp.session.json");
         let (i, o, _c, t) = super::read_session_tokens(&session_path);
         assert_eq!(i, 77);
         assert_eq!(o, 7);
