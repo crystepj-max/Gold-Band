@@ -507,6 +507,7 @@ export function App() {
         updateBadges: defaultUpdateBadges,
         metricsSettings: defaultMetricsSettings,
         clientVersion: '',
+        platform: 'linux',
         appInfo: defaultAppInfo,
         appConfig: defaultAppConfig,
         needsWorkspace: false,
