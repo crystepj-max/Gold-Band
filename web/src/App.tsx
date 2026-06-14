@@ -213,7 +213,7 @@ export function App() {
   }, [sidebarCollapsed]);
 
   useEffect(() => {
-    if (!isTauriRuntime() || !bootstrap) return;
+    if (!isTauriRuntime() || !bootstrap?.platform) return;
     const currentWindow = getCurrentWindow();
     const policy = resolveWindowControlsPolicy(bootstrap.platform);
 
@@ -221,7 +221,7 @@ export function App() {
     if (policy.titleBarStyle) {
       currentWindow.setTitleBarStyle(policy.titleBarStyle).catch(() => {});
     }
-  }, [bootstrap]);
+  }, [bootstrap?.platform]);
 
   useEffect(() => {
     void i18n.changeLanguage(i18nLanguage(preferences.language));
@@ -691,7 +691,7 @@ export function App() {
       conversationPage={conversationPage}
       conversationSidebar={conversationSidebar}
       appName={appInfo.appName}
-      platform={bootstrap?.platform ?? 'windows'}
+      platform={bootstrap?.platform}
       repoRoot={bootstrap?.repoRoot}
       needsWorkspace={bootstrap?.needsWorkspace}
       showSettingsUpdateDot={showSettingsUpdateDot}

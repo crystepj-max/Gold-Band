@@ -11,7 +11,7 @@ import { cn } from '@/lib/utils';
 
 interface AppTitleBarProps {
   appName: string;
-  platform: DesktopPlatform;
+  platform?: DesktopPlatform | null;
   uiMode: DesktopUiMode;
   sidebarCollapsed: boolean;
   onToggleSidebar: () => void;
@@ -29,7 +29,14 @@ export function AppTitleBar({
   const { t } = useTranslation();
   const [isMaximized, setIsMaximized] = useState(false);
   const tauriRuntime = isTauriRuntime();
-  const policy = resolveWindowControlsPolicy(platform);
+  const policy = platform
+    ? resolveWindowControlsPolicy(platform)
+    : {
+        decorations: true,
+        titleBarStyle: null,
+        showCustomControls: false,
+        leadingInsetClassName: 'pl-[72px]',
+      };
 
   useEffect(() => {
     if (!tauriRuntime) return undefined;

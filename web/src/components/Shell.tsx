@@ -14,7 +14,7 @@ interface ShellProps {
   conversationPage: ConversationPage;
   conversationSidebar: ConversationSidebarVm;
   appName: string;
-  platform: DesktopPlatform;
+  platform?: DesktopPlatform | null;
   repoRoot?: string;
   needsWorkspace?: boolean;
   showSettingsUpdateDot?: boolean;
@@ -88,7 +88,7 @@ export function Shell({ uiMode, active, conversationPage, conversationSidebar, a
 interface WorkbenchShellProps {
   active: PrimaryModule;
   appName: string;
-  platform: DesktopPlatform;
+  platform?: DesktopPlatform | null;
   repoRoot?: string;
   needsWorkspace?: boolean;
   showSettingsUpdateDot?: boolean;

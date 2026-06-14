@@ -7,7 +7,7 @@ import { cn } from '@/lib/utils';
 
 interface ConversationShellProps {
   appName: string;
-  platform: DesktopPlatform;
+  platform?: DesktopPlatform | null;
   vm: ConversationSidebarVm;
   active: ConversationPage;
   sidebarCollapsed: boolean;

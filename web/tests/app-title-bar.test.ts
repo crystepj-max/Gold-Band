@@ -38,4 +38,19 @@ describe('AppTitleBar', () => {
     expect(html).toContain('common.minimizeWindow');
     expect(html).toContain('common.closeWindow');
   });
+
+  it('hides custom window controls while platform is unresolved', () => {
+    const html = renderToStaticMarkup(createElement(AppTitleBar, {
+      appName: 'Gold Band',
+      platform: undefined,
+      uiMode: 'workbench',
+      sidebarCollapsed: false,
+      onToggleSidebar: () => {},
+      onToggleUiMode: () => {},
+    }));
+
+    expect(html).toContain('pl-[72px]');
+    expect(html).not.toContain('common.minimizeWindow');
+    expect(html).not.toContain('common.closeWindow');
+  });
 });
