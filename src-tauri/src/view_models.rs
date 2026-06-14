@@ -65,6 +65,7 @@ pub struct AppBootstrapVm {
     pub update_badges: UpdateBadgeStateVm,
     pub persisted_available_update: Option<UpdateInfoVm>,
     pub client_version: String,
+    pub platform: String,
     pub app_info: AppInfoVm,
     pub app_config: AppConfigVm,
     pub needs_workspace: bool,
@@ -828,7 +829,10 @@ fn update_badge_state_vm(state: &DesktopUpdateBadgeState) -> UpdateBadgeStateVm 
     }
 }
 
-fn persisted_available_update_vm(update: Option<&DesktopAvailableUpdate>, current_version: &str) -> Option<UpdateInfoVm> {
+fn persisted_available_update_vm(
+    update: Option<&DesktopAvailableUpdate>,
+    current_version: &str,
+) -> Option<UpdateInfoVm> {
     let update = update?;
     // 退出安装后 current_version 会变为新版本号，此时应清除旧的 available 记录
     if update.current_version != current_version {
@@ -846,6 +850,14 @@ fn app_config_vm(config: &RuntimeConfig) -> AppConfigVm {
     AppConfigVm {
         acp_session_title_refresh_enabled: config.acp_session_title_refresh_enabled,
         acp_chat_event_page_size: config.acp_chat_event_page_size,
+    }
+}
+
+fn desktop_platform_vm(os_name: &str) -> &'static str {
+    match os_name {
+        "macos" => "macos",
+        "windows" => "windows",
+        _ => "linux",
     }
 }
 
@@ -876,6 +888,7 @@ pub fn bootstrap_vm(
             &client_version_string,
         ),
         client_version: client_version_string,
+        platform: desktop_platform_vm(std::env::consts::OS).to_string(),
         app_info: AppInfoVm {
             channel: channel_config.channel.to_string(),
             app_name: channel_config.app_name.to_string(),
@@ -5277,6 +5290,14 @@ mod tests {
     use super::*;
     use camino::Utf8PathBuf;
     use serde_json::json;
+
+    #[test]
+    fn desktop_platform_vm_maps_supported_os_names() {
+        assert_eq!(desktop_platform_vm("macos"), "macos");
+        assert_eq!(desktop_platform_vm("windows"), "windows");
+        assert_eq!(desktop_platform_vm("linux"), "linux");
+        assert_eq!(desktop_platform_vm("freebsd"), "linux");
+    }
 
     fn test_event(kind: &str, content: &str) -> AcpUiEventVm {
         AcpUiEventVm {
