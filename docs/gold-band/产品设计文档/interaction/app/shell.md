@@ -169,7 +169,7 @@ MVP 中应用壳由 `web/src/components/Shell.tsx` 实现：
 - Tauri window 默认尺寸为 1280x800，最小尺寸为 1040x680。
 - 应用壳不提供命令输入、slash command、terminal input 或 chat input。
 - 2026-05-03 起应用壳使用 Tailwind CSS v4 + shadcn/ui Button、Tooltip、Separator 等现成组件重构；侧边栏 IA、workspace 切换入口和右侧页面栈行为不变。
-- 2026-06-08 起新旧 UI 共用 `web/src/components/AppTitleBar.tsx` 自定义顶栏；前端启动后通过 Tauri window API 关闭整窗 decorations，并由共享顶栏接管侧边栏折叠、形态切换和窗口控制。
+- 2026-06-08 起新旧 UI 共用 `web/src/components/AppTitleBar.tsx` 共享顶栏，统一承载侧边栏折叠与形态切换；自 2026-06-14 起，窗口 decorations 与窗口控制再按 `bootstrap.platform` 分流，非 macOS 由共享顶栏承载右侧自定义窗口控制，macOS 改用原生左上角 traffic lights。
 - 2026-06-14 起桌面 bootstrap 额外暴露 `platform` 字段，作为前端唯一的平台事实源；后续所有窗口控制分流（如 macOS 原生 title bar style 与非 macOS 自定义控制）都必须基于该字段判断，而不是在前端各处自行读取运行时平台。
 - 2026-06-14 起窗口控制按 `bootstrap.platform` 实际分流：macOS 恢复原生左上角 traffic lights，并启用 overlay 标题栏与共享顶栏共存；Windows 与其他非 macOS 平台继续关闭原生 decorations，保留右侧自定义窗口控制按钮。平台尚未解析时，顶栏先隐藏自定义按钮，但保留左侧安全间距，避免启动瞬间与原生 chrome 重叠。
 
