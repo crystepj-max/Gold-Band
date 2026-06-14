@@ -85,6 +85,41 @@ pub(crate) async fn pick_folder_result<R: tauri::Runtime>(
     .await
 }
 
+fn workspace_project_id(path: &str) -> String {
+    path.to_lowercase()
+        .replace(|c: char| !c.is_alphanumeric() && c != '-' && c != '_', "-")
+}
+
+fn sync_conversation_workspace_selection(
+    app: &gold_band::app::App,
+    repo_root: &camino::Utf8Path,
+) -> anyhow::Result<()> {
+    let workspace_path = repo_root.to_string();
+    let project_id = workspace_project_id(&workspace_path);
+    let name = repo_root
+        .file_name()
+        .map(str::to_string)
+        .unwrap_or_else(|| workspace_path.clone());
+    let mut state = app.load_state()?;
+    if !state
+        .conversation_workspaces
+        .iter()
+        .any(|workspace| workspace.project_id == project_id)
+    {
+        state
+            .conversation_workspaces
+            .push(gold_band::config::ConversationWorkspaceEntry {
+                project_id: project_id.clone(),
+                workspace_path: workspace_path.clone(),
+                name,
+                added_at: chrono::Utc::now().to_rfc3339(),
+            });
+    }
+    state.last_conversation_workspace = Some(project_id);
+    app.save_state(&state)?;
+    Ok(())
+}
+
 fn resolve_acp_attempt_dir(
     app: &gold_band::app::App,
     task_id: &str,
@@ -422,12 +457,8 @@ pub async fn choose_workspace(
 ) -> CommandResult<Option<AppBootstrapVm>> {
     let current = state.context().map_err(command_error)?.repo_root;
     info!(current_repo_root = %current, "opening workspace picker");
-    let Some(path) = pick_folder_result(
-        app.dialog()
-            .file()
-            .set_directory(current.as_std_path()),
-    )
-    .await
+    let Some(path) =
+        pick_folder_result(app.dialog().file().set_directory(current.as_std_path())).await
     else {
         info!(current_repo_root = %current, "workspace picker cancelled");
         return Ok(None);
@@ -439,6 +470,8 @@ pub async fn choose_workspace(
         .map_err(|_| CommandErrorVm::new("workspace.path-invalid-utf8", serde_json::json!({})))?;
     info!(selected_repo_root = %repo_root, "workspace picker returned selection");
     let context = state.set_workspace(repo_root).map_err(command_error)?;
+    sync_conversation_workspace_selection(&context.app(), &context.repo_root)
+        .map_err(command_error)?;
     info!(
         active_repo_root = %context.repo_root,
         recent_workspace_count = context.recent_workspaces.len(),
@@ -463,6 +496,8 @@ pub fn select_recent_workspace(
     info!(selected_repo_root = %workspace, "switching to recent workspace");
     let repo_root = Utf8PathBuf::from(workspace);
     let context = state.set_workspace(repo_root).map_err(command_error)?;
+    sync_conversation_workspace_selection(&context.app(), &context.repo_root)
+        .map_err(command_error)?;
     info!(
         active_repo_root = %context.repo_root,
         recent_workspace_count = context.recent_workspaces.len(),
@@ -648,7 +683,10 @@ pub fn start_run(
     task_id: String,
 ) -> CommandResult<RunSummaryVm> {
     let context = state.context().map_err(command_error)?;
-    let app = context.app_with_metrics(acp_live_update_emitter(app_handle.clone()), crate::metrics::create_metrics_callback(app_handle));
+    let app = context.app_with_metrics(
+        acp_live_update_emitter(app_handle.clone()),
+        crate::metrics::create_metrics_callback(app_handle),
+    );
     app.run_start_background(&task_id, None)
         .map(run_summary_vm)
         .map_err(command_error)
@@ -663,7 +701,10 @@ pub fn continue_run(
     prompt_id: Option<String>,
 ) -> CommandResult<RunSummaryVm> {
     let context = state.context().map_err(command_error)?;
-    let app = context.app_with_metrics(acp_live_update_emitter(app_handle.clone()), crate::metrics::create_metrics_callback(app_handle));
+    let app = context.app_with_metrics(
+        acp_live_update_emitter(app_handle.clone()),
+        crate::metrics::create_metrics_callback(app_handle),
+    );
     app.run_continue_background(&task_id, &run_id, prompt_id)
         .map(run_summary_vm)
         .map_err(command_error)
@@ -681,7 +722,10 @@ pub fn submit_manual_check(
     outcome: String,
 ) -> CommandResult<RunSummaryVm> {
     let context = state.context().map_err(command_error)?;
-    let app = context.app_with_metrics(acp_live_update_emitter(app_handle.clone()), crate::metrics::create_metrics_callback(app_handle));
+    let app = context.app_with_metrics(
+        acp_live_update_emitter(app_handle.clone()),
+        crate::metrics::create_metrics_callback(app_handle),
+    );
     let outcome = match outcome.as_str() {
         "success" => NodeOutcome::Success,
         "failure" => NodeOutcome::Failure,
@@ -705,7 +749,10 @@ pub fn retry_run(
     run_id: String,
 ) -> CommandResult<RunSummaryVm> {
     let context = state.context().map_err(command_error)?;
-    let app = context.app_with_metrics(acp_live_update_emitter(app_handle.clone()), crate::metrics::create_metrics_callback(app_handle));
+    let app = context.app_with_metrics(
+        acp_live_update_emitter(app_handle.clone()),
+        crate::metrics::create_metrics_callback(app_handle),
+    );
     app.run_retry(&task_id, &run_id)
         .map(run_summary_vm)
         .map_err(command_error)
@@ -780,7 +827,11 @@ pub fn get_metrics_settings(state: State<'_, DesktopState>) -> CommandResult<Met
     let vm = metrics_settings(&context.config);
     eprintln!(
         "[metrics] enabled={} toggle_locked={} heartbeat={:?} node_metrics={:?} api_key_set={}",
-        vm.enabled, vm.toggle_locked, vm.heartbeat_endpoint, vm.node_metrics_endpoint, vm.api_key_set,
+        vm.enabled,
+        vm.toggle_locked,
+        vm.heartbeat_endpoint,
+        vm.node_metrics_endpoint,
+        vm.api_key_set,
     );
     Ok(vm)
 }
@@ -801,7 +852,9 @@ pub fn save_metrics_settings(
     existing.desktop_node_metrics_endpoint = node_metrics_endpoint.filter(|s| !s.trim().is_empty());
     existing.desktop_metrics_api_key = api_key.filter(|s| !s.trim().is_empty());
     app.save_settings(&existing).map_err(command_error)?;
-    state.update_settings_config(&existing).map_err(command_error)?;
+    state
+        .update_settings_config(&existing)
+        .map_err(command_error)?;
     let updated_context = state.context().map_err(command_error)?;
     Ok(metrics_settings(&updated_context.config))
 }
@@ -2522,6 +2575,9 @@ fn open_path(path: &std::path::Path) -> Result<(), String> {
 
 #[cfg(test)]
 mod tests {
+    use camino::Utf8PathBuf;
+    use gold_band::app::App;
+
     #[test]
     fn await_dialog_result_returns_selected_value() {
         let selected = tauri::async_runtime::block_on(super::await_dialog_result(|callback| {
@@ -2537,5 +2593,36 @@ mod tests {
                 callback(None);
             }));
         assert_eq!(selected, None);
+    }
+
+    #[test]
+    fn sync_conversation_workspace_selection_sets_last_active_workspace() {
+        let root = std::env::temp_dir().join(format!(
+            "gold-band-commands-test-{}",
+            std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .unwrap()
+                .as_nanos()
+        ));
+        let repo_root = Utf8PathBuf::from_path_buf(root.join("workspace-a")).unwrap();
+        let home = Utf8PathBuf::from_path_buf(root.join("gold-band-home")).unwrap();
+        std::fs::create_dir_all(repo_root.as_std_path()).unwrap();
+        std::fs::create_dir_all(home.as_std_path()).unwrap();
+        unsafe { std::env::set_var("GOLD_BAND_HOME", home.as_str()) };
+
+        let app = App::new(repo_root.clone());
+        super::sync_conversation_workspace_selection(&app, repo_root.as_path()).unwrap();
+
+        let state = app.load_state().unwrap();
+        let project_id = super::workspace_project_id(repo_root.as_str());
+        assert_eq!(state.last_conversation_workspace.as_deref(), Some(project_id.as_str()));
+        assert!(
+            state
+                .conversation_workspaces
+                .iter()
+                .any(|workspace| workspace.project_id == project_id)
+        );
+
+        let _ = std::fs::remove_dir_all(root);
     }
 }
