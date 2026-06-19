@@ -9,10 +9,13 @@ interface ConversationShellProps {
   appName: string;
   vm: ConversationSidebarVm;
   active: ConversationPage;
+  repoRoot?: string;
+  needsWorkspace?: boolean;
   sidebarCollapsed: boolean;
   onSelect: (page: ConversationPage) => void;
   onToggleUiMode: () => void;
   onToggleSidebar: () => void;
+  onChooseWorkspace: () => void;
   onNewConversation: () => void;
   onSearch: () => void;
   onSelectTask: (projectId: string, taskId: string) => void;
@@ -54,10 +57,13 @@ export function ConversationShell({
   appName,
   vm,
   active,
+  repoRoot,
+  needsWorkspace,
   sidebarCollapsed,
   onSelect,
   onToggleUiMode,
   onToggleSidebar,
+  onChooseWorkspace,
   onNewConversation,
   onSearch,
   onSelectTask,
@@ -149,9 +155,12 @@ export function ConversationShell({
             <ConversationSidebar
               vm={vm}
               active={active}
+              repoRoot={repoRoot}
+              needsWorkspace={needsWorkspace}
               activeWorkspaceId={activeWorkspaceId}
               onSelect={onSelect}
               onToggleUiMode={onToggleUiMode}
+              onChooseWorkspace={onChooseWorkspace}
               onNewConversation={onNewConversation}
               onSearch={onSearch}
               onSelectTask={onSelectTask}
