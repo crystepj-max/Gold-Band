@@ -16,7 +16,7 @@ const fencedBlocks = (markdown) =>
 test('localized READMEs route macOS users to the matching guide language', async () => {
   const [english, chinese] = await Promise.all([
     readRepoFile('README.md'),
-    readRepoFile('README.zh-CN.md'),
+    readRepoFile('docs/i18n/README.zh-CN.md'),
   ]);
 
   assert.match(
@@ -26,7 +26,7 @@ test('localized READMEs route macOS users to the matching guide language', async
   assert.doesNotMatch(english, /macos-install\.zh-CN\.md/);
   assert.match(
     chinese,
-    /\[macOS 安装与排错指南\]\(docs\/guide\/macos-install\.zh-CN\.md\)/,
+    /\[macOS 安装与排错指南\]\(\.\.\/guide\/macos-install\.zh-CN\.md\)/,
   );
   assert.doesNotMatch(chinese, /docs\/guide\/macos-install\.md/);
 
