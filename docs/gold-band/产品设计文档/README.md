@@ -7,6 +7,7 @@ Gold Band 当前文档按目录式结构整理为 6 个主板块：
 
 ## 2. 交互层
 - [交互层概览](interaction/cli/overview.md)
+- [应用设置与更新流程（含 Tauri updater manifest 约定）](interaction/app/settings.md)
 - [定时任务交互设计](interaction/app/scheduled-task-management.md)
 - [CLI 规范](interaction/cli/cli.md)
 - [Progress 规范](interaction/cli/progress.md)

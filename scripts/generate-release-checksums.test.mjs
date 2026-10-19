@@ -8,6 +8,30 @@ import test from 'node:test';
 
 const script = path.resolve('scripts/generate-release-checksums.mjs');
 
+const releaseWorkflowContracts = [
+  {
+    workflow: '.github/workflows/release.yml',
+    manifestGenerator: 'release-tools/scripts/generate-release-assets.mjs',
+    checksumGenerator: 'release-tools/scripts/generate-release-checksums.mjs',
+    installer: 'release-tools/scripts/install-gold-band-macos.sh',
+  },
+  {
+    workflow: '.github/workflows/release-please.yml',
+    manifestGenerator: 'scripts/generate-release-assets.mjs',
+    checksumGenerator: 'scripts/generate-release-checksums.mjs',
+    installer: 'scripts/install-gold-band-macos.sh',
+  },
+];
+
+function getWorkflowStep(source, workflow, stepName) {
+  const marker = `      - name: ${stepName}\n`;
+  const start = source.indexOf(marker);
+  assert.notEqual(start, -1, `${workflow} must include the ${stepName} step`);
+
+  const nextStep = source.indexOf('\n      - name: ', start + marker.length);
+  return source.slice(start, nextStep === -1 ? undefined : nextStep);
+}
+
 function createDirectory(t) {
   const directory = mkdtempSync(path.join(tmpdir(), 'gold-band-checksums-'));
   t.after(() => rmSync(directory, { recursive: true, force: true }));
@@ -57,17 +81,23 @@ test('fails when the release contains no supported platform artifacts', (t) => {
   assert.match(result.stderr, /No supported release assets/);
 });
 
-test('both release entry points publish the installer and checksums after the updater manifest', () => {
-  for (const workflow of ['.github/workflows/release.yml', '.github/workflows/release-please.yml']) {
-    const source = readFileSync(path.resolve(workflow), 'utf8');
-    const manifestIndex = source.indexOf('node scripts/generate-updater-json.mjs release-assets latest.json');
-    const checksumIndex = source.indexOf('node scripts/generate-release-checksums.mjs release-assets');
-    const uploadIndex = source.indexOf(
-      'gh release upload "${RELEASE_TAG}" latest.json scripts/install-gold-band-macos.sh release-assets/*.sha256 --clobber',
-    );
+test('both release entry points generate and upload manifests, checksums, and the installer in order', () => {
+  for (const contract of releaseWorkflowContracts) {
+    const source = readFileSync(path.resolve(contract.workflow), 'utf8');
+    const manifestCommand = `node ${contract.manifestGenerator} release-assets release-output --version "\${RELEASE_TAG#v}"`;
+    const checksumCommand = `node ${contract.checksumGenerator} release-assets`;
+    const uploadCommand = `gh release upload "\${RELEASE_TAG}" release-output/latest*.json ${contract.installer} release-assets/*.sha256 --clobber`;
+    const manifestStep = getWorkflowStep(source, contract.workflow, 'Generate localized updater manifests and release body');
+    const checksumStep = getWorkflowStep(source, contract.workflow, 'Generate release checksums');
+    const uploadStep = getWorkflowStep(source, contract.workflow, 'Upload updater manifests, macOS installer, and release checksums');
+    const manifestIndex = source.indexOf(manifestCommand);
+    const checksumIndex = source.indexOf(checksumCommand);
+    const uploadIndex = source.indexOf(uploadCommand);
 
-    assert.notEqual(manifestIndex, -1, `${workflow} must generate latest.json`);
-    assert.ok(checksumIndex > manifestIndex, `${workflow} must generate checksums after latest.json`);
-    assert.ok(uploadIndex > checksumIndex, `${workflow} must upload the installer and generated checksums`);
+    assert.ok(manifestStep.includes(manifestCommand), `${contract.workflow} must generate manifests into release-output`);
+    assert.ok(checksumStep.includes(checksumCommand), `${contract.workflow} must generate sidecars for release-assets`);
+    assert.ok(uploadStep.includes(uploadCommand), `${contract.workflow} must upload manifests, installer, and sidecars`);
+    assert.ok(checksumIndex > manifestIndex, `${contract.workflow} must generate checksums after the manifests`);
+    assert.ok(uploadIndex > checksumIndex, `${contract.workflow} must upload artifacts after the checksums`);
   }
 });

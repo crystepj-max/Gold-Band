@@ -1,5 +1,13 @@
 # Gold Band Rust MVP 实现方案
 
+## 2026-10-19 发布工作流测试契约修复
+
+- 根因：`generate-release-checksums.test.mjs` 仍断言已废弃的单一 `latest.json` 生成命令和上传路径；当前两条发布工作流已使用本地化 manifest 生成器，并通过 `release-output/latest*.json` 上传兼容 manifest 与语言版本。该失败在本次 README 文档 PR 之前已存在。
+- 修改：将工作流契约断言改为逐条验证两个命名步骤及顺序；`release.yml` 使用 `release-tools/scripts/` 中的生成器、校验器和安装脚本，`release-please.yml` 使用根 `scripts/`。产品设计索引补充 Tauri updater manifest 约定的资料入口。生产工作流和生成器不变。
+- 验收：修复前 `npm run test:release-checksums` 的工作流断言稳定失败，前两项校验和测试通过；`npm run test:release-notes` 的 18 项测试通过。修复后 `npm run test:release-checksums` 3/3、`npm run test:release-notes` 18/18、`git diff --check` 全部通过；PR 的 GitHub required verify 待 PR 创建后核对。
+- 验收边界：本地测试验证生成器行为和工作流静态契约，不代表真实 GitHub Release 已生成或上传完整资产；仍需检查修复 PR 的 GitHub required verify。
+- 过度设计与性能评审：只调整 Node 测试和文档索引，不改运行时代码、不新增依赖或状态，不进入产品运行路径。
+
 ## 2026-10-16 续接会话的模型与权限以会话快照为准
 
 - 根因：09-24 让 `session/new` 把不支持的模型、权限回滚为不指定，但同一会话再次构建调用（AI-DYNAMIC proposal repair、提交提醒、workflow continue）时，模型和权限仍从冻结的节点配置取值，只有 `config_options` 以 snapshot 为准。task-334 的 bootstrap 用 `deepseek-flash` 新建 Codex 会话并已回滚，proposal 因 `dynamic.fanout.workspace-dirty` 进入 repair 后又以 `continue` 发出 `deepseek-flash`，在已建立会话分支得到 `acp.session-config-value-unavailable`。属于「复用会话以 snapshot 为权威」契约只覆盖了配置项的设计缺口。
