@@ -1,13 +1,14 @@
 # Gold Band Rust MVP 实现方案
 
-## 2026-10-19 发布与文档链接 CI 契约修复
+## 2026-10-19 发布、文档链接与格式 CI 契约修复
 
 - 根因：`generate-release-checksums.test.mjs` 仍断言已废弃的单一 `latest.json` 生成命令和上传路径；当前两条发布工作流已使用本地化 manifest 生成器，并通过 `release-output/latest*.json` 上传兼容 manifest 与语言版本。该失败在本次 README 文档 PR 之前已存在。
 - 修改：将工作流契约断言改为逐条验证两个命名步骤及顺序；`release.yml` 使用 `release-tools/scripts/` 中的生成器、校验器和安装脚本，`release-please.yml` 使用根 `scripts/`。产品设计索引补充 Tauri updater manifest 约定的资料入口。生产工作流和生成器不变。
 - CI 跟进：GitHub required verify 暴露 `scripts/readme-i18n-links.test.mjs` 读取不存在的根目录 `README.zh-CN.md`，且按根目录计算中文指南链接。实际中文 README 位于 `docs/i18n/README.zh-CN.md`，其中链接为 `../guide/macos-install.zh-CN.md`；已将测试路径和期望链接修正为现行文档位置，保留语言、指南及 marker 断言。
-- 验收：修复前 `npm run test:release-checksums` 的工作流断言失败（2/3），`npm run test:readme-i18n` 因缺少根目录中文 README 失败（2/3）。修复后 `npm run test:release-checksums` 3/3、`npm run test:readme-i18n` 3/3、`npm run test:release-notes` 18/18、`git diff --check` 全部通过；这些新改动尚未推送，PR #149 的 GitHub required verify 待更新后重新运行。
-- 验收边界：本地测试验证生成器行为和工作流静态契约，不代表真实 GitHub Release 已生成或上传完整资产；仍需检查修复 PR 的 GitHub required verify。
-- 过度设计与性能评审：只调整 Node 测试和文档索引，不改运行时代码、不新增依赖或状态，不进入产品运行路径。
+- 格式跟进：PR #149 后续 CI 与本地 `cargo fmt --all -- --check` 均指出 `src/acp/usage.rs` 和 `src/git/source_control.rs` 的既有格式差异；仅对这两个文件应用 `rustfmt` 排版，不改变代码逻辑、功能或测试行为。
+- 验收：修复前 `npm run test:release-checksums` 的工作流断言失败（2/3），`npm run test:readme-i18n` 因缺少根目录中文 README 失败（2/3）。修复后 `cargo fmt --all -- --check`、`npm run test:release-checksums` 3/3、`npm run test:readme-i18n` 3/3、`npm run test:release-notes` 18/18、`git diff --check` 全部通过；PR #149 的 GitHub required verify 待格式增量提交并推送后重新运行。
+- 验收边界：本地测试验证生成器行为、工作流静态契约和文档链接；rustfmt 检查格式一致性；这些结果不代表真实 GitHub Release 已生成或上传完整资产，亦不替代 PR #149 的 required verify。
+- 过度设计与性能评审：Node 测试和文档索引调整不进入产品运行路径；两个 Rust 改动仅为 CI 所需格式统一，不改逻辑、不新增依赖或运行时状态。
 
 ## 2026-10-16 续接会话的模型与权限以会话快照为准
 
