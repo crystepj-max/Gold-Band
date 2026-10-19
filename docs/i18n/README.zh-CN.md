@@ -155,6 +155,13 @@ npm run web:test
 npm run web:build
 ```
 
+### 开发资料
+
+- [产品设计文档](../gold-band/产品设计文档/README.md)：产品设计与交互等专题资料索引。
+- [MVP 开发计划](../gold-band/开发计划/gold-band-mvp-plan.md)：当前已有的 MVP 阶段实施计划。
+
+涉及设计或实施范围的调整时，请同时遵循根 AGENTS.md 中的协作约定。本 README 仅提供资料入口，不重复维护设计和开发规则。
+
 ## 技术栈
 
 - Rust

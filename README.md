@@ -155,6 +155,13 @@ npm run web:test
 npm run web:build
 ```
 
+### Development Resources
+
+- [Product Design Documentation](docs/gold-band/产品设计文档/README.md): Index of product design, interaction, and related design topics.
+- [MVP Development Plan](docs/gold-band/开发计划/gold-band-mvp-plan.md): Existing implementation plan for the MVP phase.
+
+For changes affecting design or implementation scope, follow the collaboration guidance in the root AGENTS.md. This README provides navigation only and does not duplicate the authoritative design and development rules.
+
 ## Tech Stack
 
 - Rust
